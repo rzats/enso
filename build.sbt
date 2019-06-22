@@ -31,10 +31,12 @@ lazy val syntax = (project in file("syntax"))
   )
   .settings(
     libraryDependencies ++= Seq(
-      "com.storm-enroute" %% "scalameter" % "0.17" % "bench",
-      "org.typelevel"     %% "cats-core"  % "1.6.0",
-      "org.scalatest"     %% "scalatest"  % "3.0.5" % Test,
-      "com.lihaoyi"       %% "pprint"     % "0.5.3"
+      "com.storm-enroute" %% "scalameter"    % "0.17" % "bench",
+      "org.typelevel"     %% "cats-core"     % "1.6.0",
+      "org.scalatest"     %% "scalatest"     % "3.0.5" % Test,
+      "com.lihaoyi"       %% "pprint"        % "0.5.3",
+      "org.scala-lang"    % "scala-reflect"  % "2.12.8",
+      "org.scala-lang"    % "scala-compiler" % "2.12.8"
     ),
     resolvers ++= Seq(
       "Sonatype OSS Snapshots" at
