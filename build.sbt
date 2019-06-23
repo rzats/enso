@@ -24,7 +24,17 @@ lazy val enso = (project in file("."))
   )
 
 // Sub-Projects
-//lazy val macro = (project in file(""))
+lazy val macros = (project in file("macro"))
+  .settings(
+    version := "0.1"
+  )
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.scala-lang" % "scala-reflect"  % "2.12.8",
+      "org.scala-lang" % "scala-compiler" % "2.12.8"
+    )
+  )
+
 lazy val syntax = (project in file("syntax"))
   .settings(
     mainClass in (Compile, run) := Some("org.enso.syntax.Main"),
@@ -48,6 +58,7 @@ lazy val syntax = (project in file("syntax"))
     )
   )
   .settings(SbtJFlexPlugin.jflexSettings)
+  .dependsOn(macros)
   .configs(Test)
   .settings(
     testFrameworks += new TestFramework("org.scalameter.ScalaMeterFramework"),
