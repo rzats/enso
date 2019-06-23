@@ -374,9 +374,13 @@ case class CodeGen(dfa: DFA) {
     code
       .add("while(state >= 0)")
       .block(() => {
-        code.addLine("codePoint = buffer(offset).toInt")
+        code.addLine("val char = buffer(offset)")
+        code.addLine("codePoint = char.toInt")
         generateStateMatch()
-        code.addLine("if(state >= 0) {offset += 1}")
+        code._if("state >= 0")(() => {
+          code.addLine("offset += 1")
+          code.addLine("matchBuilder.append(char)")
+        })
       })
     code.build()
   }
@@ -386,7 +390,41 @@ case class CodeGen(dfa: DFA) {
 class CodeBuilder {
   var lines       = mutable.ArrayBuffer[String]()
   var currentLine = ""
-  var indentation = 0
+  var indentation = 2
+
+  var pfx =
+    """
+      |private class Parser extends Function[String,Int]{
+      |  import java.io.{Reader, StringReader}
+      |  import scala.collection.mutable.StringBuilder
+      |  
+      |  val BUFFERSIZE = 16384
+      |  
+      |  var sreader: Reader      = null
+      |  val buffer : Array[Char] = new Array(BUFFERSIZE)
+      |
+      |  var offset    : Int = 0
+      |  var codePoint : Int = 0
+      |  var state     : Int = 0
+      |  
+      |  var matchBuilder = new StringBuilder(64)
+      |  
+      |  override def apply(input: String): Int = {
+      |      sreader     = new StringReader(input)
+      |      val numRead = sreader.read(buffer, 0, buffer.length)
+      |      step()
+      |  }
+      |  
+      |  def step(): Int = {
+      |""".stripMargin
+
+  var sfx =
+    """
+      |    state
+      |  }
+      |}
+      |scala.reflect.classTag[Parser].runtimeClass
+      |""".stripMargin
 
   def submitLine(): CodeBuilder = {
     if (!currentLine.isEmpty) {
@@ -452,7 +490,7 @@ class CodeBuilder {
 
   def build(): String = {
     submitLine()
-    lines.mkString("\n")
+    pfx + lines.mkString("\n") + sfx
   }
 
 }
@@ -486,7 +524,7 @@ case class Recipe(rules: List[Rule]) {
   def buildRuleAutomata(nfa: NFA, previous: Int, rule: Rule): Int = {
     val end = buildExprAutomata(nfa, previous, rule.expr)
     nfa.state(end).end  = true
-    nfa.state(end).code = rule.fn.toString + "(\"dd\")"
+    nfa.state(end).code = rule.fn.toString + "(matchBuilder.result())"
     end
   }
 
@@ -597,13 +635,6 @@ object Main extends App {
   println(sparser.strInput)
   pprint(sparser.parse.toString)
 
-//  val p_ab: Expr = ('a' || 'b').many
-//  val p_ac: Expr = ('a' || 'c').many
-//
-//  val recipe = Recipe(Rule(p_ab, "") :: Rule(p_ac, "") :: Nil)
-//
-//  val nfa = recipe.buildAutomata()
-
   val lowerLetter = range('a', 'z')
   val upperLetter = range('A', 'Z')
   val digit       = range('0', '9')
@@ -624,461 +655,39 @@ object Main extends App {
   val p_x_ac: Expr = char('x') >> p_ac >> char('y')
 
   val recipe = Recipe(
-    Rule(variable, Func(s => println("variable!")))
-    :: Rule(number, Func(s => println("number!"))) :: Nil
+    Rule(variable, Func(s => println(s"variable '${s}'")))
+    :: Rule(number, Func(s => println(s"number '${s}'"))) :: Nil
   )
 
   val nfa = recipe.buildAutomata()
 
-//  val nfa = new NFA
-//  val s1  = nfa.addState()
-//  val s2  = nfa.addState()
-//  val s3  = nfa.addState()
-//  val s4  = nfa.addState()
-//  val s5  = nfa.addState()
-//  val s6  = nfa.addState()
-//  val s7  = nfa.addState()
-//  val s8  = nfa.addState()
-//  val s9  = nfa.addState()
-//  val s10 = nfa.addState()
-//  nfa.state(s5).end  = true
-//  nfa.state(s9).end  = true
-//  nfa.state(s10).end = true
-//
-//  nfa.link(s1, s2)
-//  nfa.link(s2, s3)
-//  nfa.link(s2, s5)
-//  nfa.link(s3, s4, 'A')
-//  nfa.link(s3, s4, 'B')
-//  nfa.link(s4, s5)
-//  nfa.link(s5, s3)
-//  nfa.link(s5, s10)
-//
-//  nfa.link(s1, s6)
-//  nfa.link(s6, s7)
-//  nfa.link(s6, s9)
-//  nfa.link(s7, s8, 'A')
-//  nfa.link(s7, s8, 'C')
-//  nfa.link(s8, s9)
-//  nfa.link(s9, s7)
-//  nfa.link(s9, s10)
-
   println("--------------------")
   println(nfa.vocabulary)
-
-//  println(nfa.visualize())
 
   println("--------------------")
 
   nfa.computeIsos()
 
-//  println(nfa.state(s1).isos)
   val m2 = nfa.computeNFAMatrix2()
   println(showMatrix(m2))
 
   val dfa = nfa.computeDFA()
 
-  println(CodeGen(dfa).generate())
+  val xcode = CodeGen(dfa).generate()
+  println(xcode)
 
-  val BUFFERSIZE = 16384
-  val sreader    = new StringReader("foo ")
-  val buffer     = new Array[Char](BUFFERSIZE)
-  val numRead    = sreader.read(buffer, 0, buffer.length)
+  println(Console.RED + "Using debug runtime compilation method.")
+  println(Console.RED + "Do not use it on production!")
+  println(Console.RESET)
 
-  var offset: Int    = 0
-  var codePoint: Int = 0
-  var state: Int     = 0
+  val toolbox  = currentMirror.mkToolBox()
+  val classDef = toolbox.parse(xcode)
 
-  while (state >= 0) {
-    codePoint = buffer(offset).toInt
-    state match {
-      case 0 => {
-        if (codePoint <= 38) {
-          state = -2
-        }
-        else if (codePoint <= 39) {
-          state = -2
-        }
-        else if (codePoint <= 47) {
-          state = -2
-        }
-        else if (codePoint <= 57) {
-          state = 1
-        }
-        else if (codePoint <= 64) {
-          state = -2
-        }
-        else if (codePoint <= 90) {
-          state = -2
-        }
-        else if (codePoint <= 94) {
-          state = -2
-        }
-        else if (codePoint <= 95) {
-          state = -2
-        }
-        else if (codePoint <= 96) {
-          state = -2
-        }
-        else if (codePoint <= 122) {
-          state = 2
-        }
-        else if (codePoint <= 2147483646) {
-          state = -2
-        }
-      }
-      case 1 => {
-        if (codePoint <= 38) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 39) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 47) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 57) {
-          state = 3
-        }
-        else if (codePoint <= 64) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 90) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 94) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 95) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 96) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 122) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 2147483646) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-      }
-      case 2 => {
-        if (codePoint <= 38) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 39) {
-          state = 4
-        }
-        else if (codePoint <= 47) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 57) {
-          state = 5
-        }
-        else if (codePoint <= 64) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 90) {
-          state = 6
-        }
-        else if (codePoint <= 94) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 95) {
-          state = 7
-        }
-        else if (codePoint <= 96) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 122) {
-          state = 8
-        }
-        else if (codePoint <= 2147483646) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-      }
-      case 3 => {
-        if (codePoint <= 38) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 39) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 47) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 57) {}
-        else if (codePoint <= 64) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 90) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 94) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 95) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 96) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 122) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 2147483646) {
-          ((s: String) => scala.Predef.println("number!"))("dd")
-          state = -1
-        }
-      }
-      case 4 => {
-        if (codePoint <= 38) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 39) {}
-        else if (codePoint <= 47) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 57) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 64) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 90) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 94) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 95) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 96) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 122) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 2147483646) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-      }
-      case 5 => {
-        if (codePoint <= 38) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 39) {
-          state = 4
-        }
-        else if (codePoint <= 47) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 57) {}
-        else if (codePoint <= 64) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 90) {
-          state = 6
-        }
-        else if (codePoint <= 94) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 95) {
-          state = 7
-        }
-        else if (codePoint <= 96) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 122) {
-          state = 8
-        }
-        else if (codePoint <= 2147483646) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-      }
-      case 6 => {
-        if (codePoint <= 38) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 39) {
-          state = 4
-        }
-        else if (codePoint <= 47) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 57) {
-          state = 5
-        }
-        else if (codePoint <= 64) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 90) {}
-        else if (codePoint <= 94) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 95) {
-          state = 7
-        }
-        else if (codePoint <= 96) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 122) {
-          state = 8
-        }
-        else if (codePoint <= 2147483646) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-      }
-      case 7 => {
-        if (codePoint <= 38) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 39) {
-          state = 4
-        }
-        else if (codePoint <= 47) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 57) {
-          state = 5
-        }
-        else if (codePoint <= 64) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 90) {
-          state = 6
-        }
-        else if (codePoint <= 94) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 95) {}
-        else if (codePoint <= 96) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 122) {
-          state = 8
-        }
-        else if (codePoint <= 2147483646) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-      }
-      case 8 => {
-        if (codePoint <= 38) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 39) {
-          state = 4
-        }
-        else if (codePoint <= 47) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 57) {
-          state = 5
-        }
-        else if (codePoint <= 64) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 90) {
-          state = 6
-        }
-        else if (codePoint <= 94) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 95) {
-          state = 7
-        }
-        else if (codePoint <= 96) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-        else if (codePoint <= 122) {}
-        else if (codePoint <= 2147483646) {
-          ((s: String) => scala.Predef.println("variable!"))("dd")
-          state = -1
-        }
-      }
-    }
-    if (state >= 0) {
-      offset += 1
-    }
-  }
+  val clazz = toolbox
+    .compile(classDef)
+    .apply()
+    .asInstanceOf[Class[Function[String, Int]]]
 
-  println(offset)
-  println(state)
-
-//  implicit def funcToFunc[T, U](fn: T => U): Func[T, U] = Func(fn)
-
-  val double: Func[Int, Int] = (i: Int) => i
-  println(double.toString)
-  println(double(4))
-//  def refill() = {}
-//  println(rangeMap.get(7))
-//  rangeMap += Range.open(9, 10) -> "2" // Map((3..7) -> 1, [9..10] -> 2)
-//  rangeMap += Range.closed(12, 16) -> "3" // Map((3..7) -> 1, [9..10] -> 2, [12..16] -> 3)
-  //  val toolbox = currentMirror.mkToolBox()
-//
-//  val as    = "2*(2+3)"
-//  val compe = toolbox.eval(toolbox.parse(as))
-//
-//  println(compe.getClass) // prints class java.lang.Integer
-//  println(compe) // prints 10
-
+  val instance = clazz.getConstructor().newInstance()
+  println(instance("foo "))
 }
