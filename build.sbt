@@ -24,6 +24,7 @@ lazy val enso = (project in file("."))
   )
 
 // Sub-Projects
+//lazy val macro = (project in file(""))
 lazy val syntax = (project in file("syntax"))
   .settings(
     mainClass in (Compile, run) := Some("org.enso.syntax.Main"),

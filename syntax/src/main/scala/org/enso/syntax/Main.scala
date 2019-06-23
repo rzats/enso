@@ -3,6 +3,7 @@ package org.enso.syntax
 import java.io.Reader
 import java.io.StringReader
 
+import org.enso.syntax.text.lexer.FunctionWrapper
 import org.enso.syntax.text.lexer.Lexer
 import org.enso.syntax.text.parser.Parser
 import org.enso.syntax.text.parser.BParser
@@ -29,6 +30,9 @@ import java.awt.Desktop
 import java.net.URI
 import java.net.URL
 import java.net.URLEncoder
+
+import scala.reflect.macros.blackbox.Context
+import scala.language.experimental.macros
 
 trait IsoComputeState
 case object NotComputed extends IsoComputeState
@@ -532,7 +536,8 @@ object Main extends App {
 
   implicit def extendChar(i: Char) = new ExtendedChar(i)
 
-  def char(c: Char): Expr = Ran(c, c)
+  def char(c: Char):                 Expr = range(c, c)
+  def range(start: Char, end: Char): Expr = Ran(start, end)
 
   var indent = 0
 
@@ -600,6 +605,16 @@ object Main extends App {
 //
 //  val nfa = recipe.buildAutomata()
 
+  val lowerLetter = range('a', 'z')
+  val upperLetter = range('A', 'Z')
+  val digit       = range('0', '9')
+  val indentChar  = lowerLetter | upperLetter | digit | '_'
+  val identBody   = indentChar.many >> '\''.many
+  val variable    = lowerLetter >> identBody
+  val constructor = upperLetter >> identBody
+
+  val number = digit >> digit.many
+
   val p_test1: Expr = char('x') >> ('a'.many)
   val p_test2: Expr = char('x') >> ('b'.many)
 
@@ -610,7 +625,8 @@ object Main extends App {
   val p_x_ac: Expr = char('x') >> p_ac >> char('y')
 
   val recipe = Recipe(
-    Rule(p_x_ab, "println(\"rule1!\")") :: Rule(p_x_ac, "println(\"rule2!\")") :: Nil
+    Rule(variable, "println(\"variable!\")")
+    :: Rule(number, "println(\"number!\")") :: Nil
   )
 
   val nfa = recipe.buildAutomata()
@@ -666,7 +682,7 @@ object Main extends App {
   println(CodeGen(dfa).generate())
 
   val BUFFERSIZE = 16384
-  val sreader    = new StringReader("xayp")
+  val sreader    = new StringReader(" foo ")
   val buffer     = new Array[Char](BUFFERSIZE)
   val numRead    = sreader.read(buffer, 0, buffer.length)
 
@@ -678,276 +694,365 @@ object Main extends App {
     codePoint = buffer(offset).toInt
     state match {
       case 0 => {
-        if (codePoint <= 96) {
+        if (codePoint <= 38) {
           state = -2
         }
-        else if (codePoint <= 97) {
+        else if (codePoint <= 39) {
           state = -2
         }
-        else if (codePoint <= 98) {
+        else if (codePoint <= 47) {
           state = -2
         }
-        else if (codePoint <= 99) {
-          state = -2
-        }
-        else if (codePoint <= 119) {
-          state = -2
-        }
-        else if (codePoint <= 120) {
+        else if (codePoint <= 57) {
           state = 1
         }
-        else if (codePoint <= 121) {
+        else if (codePoint <= 64) {
           state = -2
+        }
+        else if (codePoint <= 90) {
+          state = -2
+        }
+        else if (codePoint <= 94) {
+          state = -2
+        }
+        else if (codePoint <= 95) {
+          state = -2
+        }
+        else if (codePoint <= 96) {
+          state = -2
+        }
+        else if (codePoint <= 122) {
+          state = 2
         }
         else if (codePoint <= 2147483646) {
           state = -2
         }
       }
       case 1 => {
-        if (codePoint <= 96) {
-          state = -2
+        if (codePoint <= 38) {
+          println("number!")
+          state = -1
         }
-        else if (codePoint <= 97) {
-          state = 2
+        else if (codePoint <= 39) {
+          println("number!")
+          state = -1
         }
-        else if (codePoint <= 98) {
+        else if (codePoint <= 47) {
+          println("number!")
+          state = -1
+        }
+        else if (codePoint <= 57) {
           state = 3
         }
-        else if (codePoint <= 99) {
-          state = 4
+        else if (codePoint <= 64) {
+          println("number!")
+          state = -1
         }
-        else if (codePoint <= 119) {
-          state = -2
+        else if (codePoint <= 90) {
+          println("number!")
+          state = -1
         }
-        else if (codePoint <= 120) {
-          state = -2
+        else if (codePoint <= 94) {
+          println("number!")
+          state = -1
         }
-        else if (codePoint <= 121) {
-          state = 5
+        else if (codePoint <= 95) {
+          println("number!")
+          state = -1
+        }
+        else if (codePoint <= 96) {
+          println("number!")
+          state = -1
+        }
+        else if (codePoint <= 122) {
+          println("number!")
+          state = -1
         }
         else if (codePoint <= 2147483646) {
-          state = -2
+          println("number!")
+          state = -1
         }
       }
       case 2 => {
-        if (codePoint <= 96) {
-          state = -2
+        if (codePoint <= 38) {
+          println("variable!")
+          state = -1
         }
-        else if (codePoint <= 97) {}
-        else if (codePoint <= 98) {
-          state = 3
-        }
-        else if (codePoint <= 99) {
+        else if (codePoint <= 39) {
           state = 4
         }
-        else if (codePoint <= 119) {
-          state = -2
+        else if (codePoint <= 47) {
+          println("variable!")
+          state = -1
         }
-        else if (codePoint <= 120) {
-          state = -2
-        }
-        else if (codePoint <= 121) {
+        else if (codePoint <= 57) {
           state = 5
         }
+        else if (codePoint <= 64) {
+          println("variable!")
+          state = -1
+        }
+        else if (codePoint <= 90) {
+          state = 6
+        }
+        else if (codePoint <= 94) {
+          println("variable!")
+          state = -1
+        }
+        else if (codePoint <= 95) {
+          state = 7
+        }
+        else if (codePoint <= 96) {
+          println("variable!")
+          state = -1
+        }
+        else if (codePoint <= 122) {
+          state = 8
+        }
         else if (codePoint <= 2147483646) {
-          state = -2
+          println("variable!")
+          state = -1
         }
       }
       case 3 => {
-        if (codePoint <= 96) {
-          state = -2
+        if (codePoint <= 38) {
+          println("number!")
+          state = -1
         }
-        else if (codePoint <= 97) {
-          state = 6
+        else if (codePoint <= 39) {
+          println("number!")
+          state = -1
         }
-        else if (codePoint <= 98) {}
-        else if (codePoint <= 99) {
-          state = -2
+        else if (codePoint <= 47) {
+          println("number!")
+          state = -1
         }
-        else if (codePoint <= 119) {
-          state = -2
+        else if (codePoint <= 57) {}
+        else if (codePoint <= 64) {
+          println("number!")
+          state = -1
         }
-        else if (codePoint <= 120) {
-          state = -2
+        else if (codePoint <= 90) {
+          println("number!")
+          state = -1
         }
-        else if (codePoint <= 121) {
-          state = 7
+        else if (codePoint <= 94) {
+          println("number!")
+          state = -1
+        }
+        else if (codePoint <= 95) {
+          println("number!")
+          state = -1
+        }
+        else if (codePoint <= 96) {
+          println("number!")
+          state = -1
+        }
+        else if (codePoint <= 122) {
+          println("number!")
+          state = -1
         }
         else if (codePoint <= 2147483646) {
-          state = -2
+          println("number!")
+          state = -1
         }
       }
       case 4 => {
-        if (codePoint <= 96) {
-          state = -2
+        if (codePoint <= 38) {
+          println("variable!")
+          state = -1
         }
-        else if (codePoint <= 97) {
-          state = 8
+        else if (codePoint <= 39) {}
+        else if (codePoint <= 47) {
+          println("variable!")
+          state = -1
         }
-        else if (codePoint <= 98) {
-          state = -2
+        else if (codePoint <= 57) {
+          println("variable!")
+          state = -1
         }
-        else if (codePoint <= 99) {}
-        else if (codePoint <= 119) {
-          state = -2
+        else if (codePoint <= 64) {
+          println("variable!")
+          state = -1
         }
-        else if (codePoint <= 120) {
-          state = -2
+        else if (codePoint <= 90) {
+          println("variable!")
+          state = -1
         }
-        else if (codePoint <= 121) {
-          state = 9
+        else if (codePoint <= 94) {
+          println("variable!")
+          state = -1
+        }
+        else if (codePoint <= 95) {
+          println("variable!")
+          state = -1
+        }
+        else if (codePoint <= 96) {
+          println("variable!")
+          state = -1
+        }
+        else if (codePoint <= 122) {
+          println("variable!")
+          state = -1
         }
         else if (codePoint <= 2147483646) {
-          state = -2
+          println("variable!")
+          state = -1
         }
       }
       case 5 => {
-        if (codePoint <= 96) {
-          println("rule1!")
+        if (codePoint <= 38) {
+          println("variable!")
           state = -1
         }
-        else if (codePoint <= 97) {
-          println("rule1!")
+        else if (codePoint <= 39) {
+          state = 4
+        }
+        else if (codePoint <= 47) {
+          println("variable!")
           state = -1
         }
-        else if (codePoint <= 98) {
-          println("rule1!")
+        else if (codePoint <= 57) {}
+        else if (codePoint <= 64) {
+          println("variable!")
           state = -1
         }
-        else if (codePoint <= 99) {
-          println("rule1!")
+        else if (codePoint <= 90) {
+          state = 6
+        }
+        else if (codePoint <= 94) {
+          println("variable!")
           state = -1
         }
-        else if (codePoint <= 119) {
-          println("rule1!")
+        else if (codePoint <= 95) {
+          state = 7
+        }
+        else if (codePoint <= 96) {
+          println("variable!")
           state = -1
         }
-        else if (codePoint <= 120) {
-          println("rule1!")
-          state = -1
-        }
-        else if (codePoint <= 121) {
-          println("rule1!")
-          state = -1
+        else if (codePoint <= 122) {
+          state = 8
         }
         else if (codePoint <= 2147483646) {
-          println("rule1!")
+          println("variable!")
           state = -1
         }
       }
       case 6 => {
-        if (codePoint <= 96) {
-          state = -2
+        if (codePoint <= 38) {
+          println("variable!")
+          state = -1
         }
-        else if (codePoint <= 97) {}
-        else if (codePoint <= 98) {
-          state = 3
+        else if (codePoint <= 39) {
+          state = 4
         }
-        else if (codePoint <= 99) {
-          state = -2
+        else if (codePoint <= 47) {
+          println("variable!")
+          state = -1
         }
-        else if (codePoint <= 119) {
-          state = -2
+        else if (codePoint <= 57) {
+          state = 5
         }
-        else if (codePoint <= 120) {
-          state = -2
+        else if (codePoint <= 64) {
+          println("variable!")
+          state = -1
         }
-        else if (codePoint <= 121) {
+        else if (codePoint <= 90) {}
+        else if (codePoint <= 94) {
+          println("variable!")
+          state = -1
+        }
+        else if (codePoint <= 95) {
           state = 7
         }
+        else if (codePoint <= 96) {
+          println("variable!")
+          state = -1
+        }
+        else if (codePoint <= 122) {
+          state = 8
+        }
         else if (codePoint <= 2147483646) {
-          state = -2
+          println("variable!")
+          state = -1
         }
       }
       case 7 => {
-        if (codePoint <= 96) {
-          println("rule1!")
+        if (codePoint <= 38) {
+          println("variable!")
           state = -1
         }
-        else if (codePoint <= 97) {
-          println("rule1!")
+        else if (codePoint <= 39) {
+          state = 4
+        }
+        else if (codePoint <= 47) {
+          println("variable!")
           state = -1
         }
-        else if (codePoint <= 98) {
-          println("rule1!")
+        else if (codePoint <= 57) {
+          state = 5
+        }
+        else if (codePoint <= 64) {
+          println("variable!")
           state = -1
         }
-        else if (codePoint <= 99) {
-          println("rule1!")
+        else if (codePoint <= 90) {
+          state = 6
+        }
+        else if (codePoint <= 94) {
+          println("variable!")
           state = -1
         }
-        else if (codePoint <= 119) {
-          println("rule1!")
+        else if (codePoint <= 95) {}
+        else if (codePoint <= 96) {
+          println("variable!")
           state = -1
         }
-        else if (codePoint <= 120) {
-          println("rule1!")
-          state = -1
-        }
-        else if (codePoint <= 121) {
-          println("rule1!")
-          state = -1
+        else if (codePoint <= 122) {
+          state = 8
         }
         else if (codePoint <= 2147483646) {
-          println("rule1!")
+          println("variable!")
           state = -1
         }
       }
       case 8 => {
-        if (codePoint <= 96) {
-          state = -2
+        if (codePoint <= 38) {
+          println("variable!")
+          state = -1
         }
-        else if (codePoint <= 97) {}
-        else if (codePoint <= 98) {
-          state = -2
-        }
-        else if (codePoint <= 99) {
+        else if (codePoint <= 39) {
           state = 4
         }
-        else if (codePoint <= 119) {
-          state = -2
+        else if (codePoint <= 47) {
+          println("variable!")
+          state = -1
         }
-        else if (codePoint <= 120) {
-          state = -2
+        else if (codePoint <= 57) {
+          state = 5
         }
-        else if (codePoint <= 121) {
-          state = 9
+        else if (codePoint <= 64) {
+          println("variable!")
+          state = -1
         }
+        else if (codePoint <= 90) {
+          state = 6
+        }
+        else if (codePoint <= 94) {
+          println("variable!")
+          state = -1
+        }
+        else if (codePoint <= 95) {
+          state = 7
+        }
+        else if (codePoint <= 96) {
+          println("variable!")
+          state = -1
+        }
+        else if (codePoint <= 122) {}
         else if (codePoint <= 2147483646) {
-          state = -2
-        }
-      }
-      case 9 => {
-        if (codePoint <= 96) {
-          println("rule2!")
-          state = -1
-        }
-        else if (codePoint <= 97) {
-          println("rule2!")
-          state = -1
-        }
-        else if (codePoint <= 98) {
-          println("rule2!")
-          state = -1
-        }
-        else if (codePoint <= 99) {
-          println("rule2!")
-          state = -1
-        }
-        else if (codePoint <= 119) {
-          println("rule2!")
-          state = -1
-        }
-        else if (codePoint <= 120) {
-          println("rule2!")
-          state = -1
-        }
-        else if (codePoint <= 121) {
-          println("rule2!")
-          state = -1
-        }
-        else if (codePoint <= 2147483646) {
-          println("rule2!")
+          println("variable!")
           state = -1
         }
       }
@@ -959,6 +1064,10 @@ object Main extends App {
 
   println(offset)
   println(state)
+
+  val double = FunctionWrapper((i: Int) => i * 2)
+  println(s"double to String is $double")
+  println(double(4))
 
 //  def refill() = {}
 //  println(rangeMap.get(7))
