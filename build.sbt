@@ -1,6 +1,6 @@
 // Global Configuration
 organization := "org.enso"
-scalaVersion := "2.12.8"
+scalaVersion in ThisBuild := "2.12.8"
 
 // Compiler Options
 scalacOptions ++= Seq(
@@ -36,7 +36,8 @@ lazy val syntax = (project in file("syntax"))
       "org.scalatest"     %% "scalatest"     % "3.0.5" % Test,
       "com.lihaoyi"       %% "pprint"        % "0.5.3",
       "org.scala-lang"    % "scala-reflect"  % "2.12.8",
-      "org.scala-lang"    % "scala-compiler" % "2.12.8"
+      "org.scala-lang"    % "scala-compiler" % "2.12.8",
+      "org.feijoas"       %% "mango"         % "0.14"
     ),
     resolvers ++= Seq(
       "Sonatype OSS Snapshots" at
