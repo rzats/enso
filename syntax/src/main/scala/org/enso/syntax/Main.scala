@@ -4,7 +4,7 @@ import java.io.Reader
 import java.io.StringReader
 
 import org.enso.syntax.text.lexer.Lexer
-import org.enso.syntax.text.parser.Parser
+import org.enso.syntax.text.{parser => ppp}
 import org.enso.syntax.text.parser.BParser
 
 //import org.enso.syntax.text.parser.PP
@@ -81,22 +81,8 @@ class Vocabulary {
 
   def size(): Int = divisions.size - 1
 
-  override def toString: String = {
-    val elems   = mutable.ArrayBuffer[String]()
-    val minCode = 32
-    val maxCode = 126
-    divisions.toList.foreach(i => {
-      if (i >= minCode && i <= maxCode) {
-        elems += s"'${i.toChar.toString}'"
-      }
-      else {
-        elems += i.toString
-      }
-    })
-    "Vocabulary(List(" + elems.mkString(",") + "))"
-  }
-
-//  def zipWithIndex(): mutable.Set[(Int, Int)] = divisions.zipWithIndex
+  override def toString: String =
+    "Vocabulary(" + divisions.toList.map(_.toString).mkString(",") + ")"
 
   def forEach[U](f: Range => U): Unit = {
     var lastDiv = 0
@@ -148,17 +134,24 @@ class NFA {
     state(start).isoLinks += end
 
   def visualize(): String = {
+    val gray  = "#AAAAAA"
     var lines = mutable.ArrayBuffer[String]()
     lines += "digraph G {"
+    lines += "node [shape=circle width=0.8]"
     for ((state, source) <- states.zipWithIndex) {
-      lines += s"${source}"
+      if (state.links2.isEmpty) {
+        lines += s"""${source} [color="${gray}" fontcolor="${gray}"]"""
+      } else {
+        lines += s"""${source}"""
+      }
       for ((range, target) <- state.links2.asMapOfRanges()) {
         lines += s"""${source} -> ${target} [label="${range}"]"""
       }
       for (target <- state.isoLinks) {
-        lines += s"""${source} -> ${target} [style="dashed"]"""
+        lines += s"""${source} -> ${target} [style="dashed" color="${gray}"]"""
       }
     }
+
     lines += "}"
     val code    = lines.mkString("\n")
     var webCode = code
@@ -307,8 +300,8 @@ class NFA {
         }
       }
 
-      println(">>>", nfaEndStatePriorityMap)
-      println(">>>", dfaEndStatePriorityMap)
+//      println(">>>", nfaEndStatePriorityMap)
+//      println(">>>", dfaEndStatePriorityMap)
 
       DFA(vocabulary, dfaMatrix, dfaEndStatePriorityMap)
     })
@@ -332,36 +325,34 @@ case class CodeGen(dfa: DFA) {
             case (range, vocIx) => {
               val targetState = dfa.links(state)(vocIx)
               val p1          = dfa.endStatePriorityMap.get(state)
-              val p2          = dfa.endStatePriorityMap.get(targetState)
-              var blocked     = false
-              println(s"** (${state} -> ${targetState})", p1, p2)
-              (p1, p2) match {
-                case (Some((l, _)), Some((r, _))) =>
-                  if (l > r) {
-                    blocked = true
-                  }
-                case _ => {}
-              }
+//              val p2          = dfa.endStatePriorityMap.get(targetState)
+//              var blocked     = false
+//              (p1, p2) match {
+//                case (Some((l, _)), Some((r, _))) =>
+//                  if (l > r) {
+//                    blocked = true
+//                  }
+//                case _ => {}
+//              }
               if (vocIx != 0) {
                 code.add("else ")
               }
               code._ifLTE("codePoint", range.end)(() => {
-                if (blocked) {
-                  code.comment("blocked")
-                  code.assign("state", -1)
-                }
-                else if (state != targetState) {
-                  var targetStatex = targetState
-                  if (targetState == -1) {
-                    p1 match {
-                      case None => { targetStatex = -2 }
-                      case Some((_, c)) => {
-                        code.addLine(c)
-                      }
+//                if (blocked) {
+//                  code.comment("blocked")
+//                  code.assign("state", -1)
+//                } else if (state != targetState) {
+                var targetStatex = targetState
+                if (targetState == -1) {
+                  p1 match {
+                    case None => { targetStatex = -2 }
+                    case Some((_, c)) => {
+                      code.addLine(c)
                     }
                   }
-                  code.assign("state", targetStatex)
                 }
+                code.assign("state", targetStatex)
+//                }
               })
             }
           })
@@ -495,19 +486,19 @@ class CodeBuilder {
 
 }
 
-trait Expr {
-  def |(that: Expr)  = Or(this, that)
-  def >>(that: Expr) = Seq(this, that)
+trait Pattern {
+  def |(that: Pattern)  = Or(this, that)
+  def >>(that: Pattern) = Seq_(this, that)
 
-  def many(): Expr = Many(this)
+  def many(): Pattern = Many(this)
 }
-case class Ran(start: Char, end: Char)    extends Expr
-case class Or(left: Expr, right: Expr)    extends Expr
-case class Seq(first: Expr, second: Expr) extends Expr
-case class Many(body: Expr)               extends Expr
+case class Ran(start: Char, end: Char)           extends Pattern
+case class Or(left: Pattern, right: Pattern)     extends Pattern
+case class Seq_(first: Pattern, second: Pattern) extends Pattern
+case class Many(body: Pattern)                   extends Pattern
 
-case class Rule(expr: Expr, fn: Func[String, Unit])
-case class Recipe(rules: List[Rule]) {
+case class Rule[T](expr: Pattern, fn: Func[String, T])
+case class Parser[T](rules: Seq[Rule[T]]) {
 
   def buildAutomata(): NFA = {
     val nfa       = new NFA
@@ -521,14 +512,14 @@ case class Recipe(rules: List[Rule]) {
     nfa
   }
 
-  def buildRuleAutomata(nfa: NFA, previous: Int, rule: Rule): Int = {
+  def buildRuleAutomata[T](nfa: NFA, previous: Int, rule: Rule[T]): Int = {
     val end = buildExprAutomata(nfa, previous, rule.expr)
     nfa.state(end).end  = true
     nfa.state(end).code = rule.fn.toString + "(matchBuilder.result())"
     end
   }
 
-  def buildExprAutomata(nfa: NFA, previous: Int, expr: Expr): Int = {
+  def buildExprAutomata(nfa: NFA, previous: Int, expr: Pattern): Int = {
     val current = nfa.addState()
     nfa.link(previous, current)
     expr match {
@@ -537,7 +528,7 @@ case class Recipe(rules: List[Rule]) {
         nfa.link(current, state, start, end)
         state
       }
-      case Seq(first, second) => {
+      case Seq_(first, second) => {
         val s1 = buildExprAutomata(nfa, current, first)
         buildExprAutomata(nfa, s1, second)
       }
@@ -565,25 +556,30 @@ case class Recipe(rules: List[Rule]) {
 
 object Main extends App {
 
-  implicit def charToExpr(char: Char): Expr = Ran(char, char)
+  implicit def charToExpr(char: Char): Pattern = Ran(char, char)
+  implicit def stringToExpr(s: String): Pattern =
+    s.tail.foldLeft(char(s.head))(_ >> _)
 
   class ExtendedChar(_this: Char) {
-    def ||(that: Char): Expr = Or(char(_this), char(that))
+    def ||(that: Char): Pattern = Or(char(_this), char(that))
   }
 
   implicit def extendChar(i: Char) = new ExtendedChar(i)
 
-  def char(c: Char):                 Expr = range(c, c)
-  def range(start: Char, end: Char): Expr = Ran(start, end)
+  def char(c: Char):                 Pattern = range(c, c)
+  def range(start: Char, end: Char): Pattern = Ran(start, end)
+
+  def parser[T](rules: Rule[T]*): Parser[T] = Parser(rules)
 
   var indent = 0
 
-  def showMatrix[T](matrix: Array[Array[T]]): String = {
+  def showMatrix(matrix: Array[Array[Int]]): String = {
     var repr = ""
     for (i <- matrix.indices) {
       val row = matrix(i)
       for (j <- row.indices) {
-        val cell = row(j).toString()
+        val icell = row(j)
+        val cell  = if (icell == -1) "." else row(j).toString()
         repr += cell + " " * (3 - cell.length)
       }
       repr += "\n"
@@ -606,8 +602,7 @@ object Main extends App {
       indent += 1
       println(m)
       pprint(r)
-    }
-    else if (m == ")") {
+    } else if (m == ")") {
       indent -= 1
       println(m)
       pprint(r)
@@ -627,7 +622,7 @@ object Main extends App {
   val sparser = new SParser(new StringReader(str))
 
   val bparser = new BParser(new StringReader(str))
-  val parser  = new Parser(new StringReader(str))
+  val parser  = new ppp.Parser(new StringReader(str))
 
   pprint(bparser.parse.toString())
   pprint(parser.parse.toString())
@@ -645,21 +640,13 @@ object Main extends App {
 
   val number = digit >> digit.many
 
-  val p_test1: Expr = char('x') >> ('a'.many)
-  val p_test2: Expr = char('x') >> ('b'.many)
-
-  val p_ab: Expr = ('a' || 'b').many
-  val p_ac: Expr = ('a' || 'c').many
-
-  val p_x_ab: Expr = char('x') >> p_ab >> char('y')
-  val p_x_ac: Expr = char('x') >> p_ac >> char('y')
-
-  val recipe = Recipe(
-    Rule(variable, Func(s => println(s"variable '${s}'")))
-    :: Rule(number, Func(s => println(s"number '${s}'"))) :: Nil
+  val rec: Parser[Unit] = parser(
+    Rule("def", Func(s => println(s"def!!!"))),
+    Rule(variable, Func(s => println(s"variable '${s}'"))),
+    Rule(number, Func(s => println(s"number '${s}'")))
   )
 
-  val nfa = recipe.buildAutomata()
+  val nfa = rec.buildAutomata()
 
   println("--------------------")
   println(nfa.vocabulary)
@@ -668,13 +655,15 @@ object Main extends App {
 
   nfa.computeIsos()
 
+//  nfa.visualize()
+
   val m2 = nfa.computeNFAMatrix2()
   println(showMatrix(m2))
 
   val dfa = nfa.computeDFA()
 
   val xcode = CodeGen(dfa).generate()
-  println(xcode)
+//  println(xcode)
 
   println(Console.RED + "Using debug runtime compilation method.")
   println(Console.RED + "Do not use it on production!")
@@ -689,5 +678,5 @@ object Main extends App {
     .asInstanceOf[Class[Function[String, Int]]]
 
   val instance = clazz.getConstructor().newInstance()
-  println(instance("foo "))
+  println(instance("def "))
 }
