@@ -3,7 +3,6 @@ package org.enso.syntax.text.lexer
 import java.io.Reader
 import java.io.StringReader
 
-import org.enso.syntax.Main.str
 import org.enso.syntax.text.lexer.Lexer
 import org.enso.syntax.text.parser.Parser
 import org.enso.syntax.text.parser.BParser
@@ -46,8 +45,7 @@ class SS(reader: Reader, tokens: Vector[Token]) extends Scanner2(reader) {
   def appendExprSegment(ast2: AST): Unit = {
     if (ast == null) {
       ast = ast2
-    }
-    else {
+    } else {
       ast = AST.app(ast, ast2)
     }
   }
