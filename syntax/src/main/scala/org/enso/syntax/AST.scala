@@ -1,5 +1,7 @@
 package org.enso.syntax
 
+import org.enso.syntax.text.lexer.Number
+
 object AST {
   /////////////////////
   ////// Spanned //////
@@ -19,22 +21,54 @@ object AST {
   case class Grouped(body: AST)             extends Symbol
   case class Invalid(symbol: InvalidSymbol) extends Symbol
 
+  ////// Number //////
+
+  case class Number(base: Int, int: String, frac: String) extends Symbol {
+    final def show(): String = {
+      val _base = if (base == 10) "" else base.toString() + "_"
+      val _frac = if (frac == "") "" else "." + frac
+      _base + int + _frac
+    }
+  }
+
+  object Number {
+
+    final def charToDigit(char: Char): Int = {
+      val i = char.toInt
+      if (i >= 48 && i <= 57) i - 48 /* 0 to 9 */
+      else if (i >= 65 && i <= 90) i - 55 // A to Z
+      else if (i >= 97 && i <= 122) i - 87 // a to z
+      else -1
+    }
+
+    final def stringToDigits(str: String): Vector[Int] = {
+      str.to[Vector].map(charToDigit)
+    }
+
+    final def fromString(base: String, int: String, frac: String): Number = {
+      val base2 = if (base == "") 10 else base.toInt
+      Number(base2, int, frac)
+    }
+  }
+
+  ////// Block //////
+
   case class Block(
     emptyLines: Vector[Int],
     firstLine: AST,
     lines: Vector[Line]
   ) extends Symbol {
 
-    def linesCount(): Int =
+    final def linesCount(): Int =
       emptyLines.length + lines.length + 1
 
-    def linesSpan(): Int =
+    final def linesSpan(): Int =
       emptyLines.sum + lines.foldLeft(firstLine.span)((i, a) => i + a.span)
 
-    def newlinesSpan(): Int =
+    final def newlinesSpan(): Int =
       linesCount()
 
-    def span(): Int =
+    final def span(): Int =
       linesSpan() + newlinesSpan()
 
   }
@@ -45,7 +79,7 @@ object AST {
   case class InvalidBlock(block: AST) extends InvalidSymbol
 
   implicit class _OptionAST_(val self: Option[AST]) extends AnyVal {
-    def span(): Int = self.map(_.span).getOrElse(0)
+    final def span(): Int = self.map(_.span).getOrElse(0)
   }
 
   /////////////////
@@ -56,16 +90,16 @@ object AST {
 
   implicit class _AST_(val self: AST) {
 
-    def show(): String = {
+    final def show(): String = {
       val out = new StringBuilder(self.span)
       show(0, out)
       out.result()
     }
 
-    def show(out: StringBuilder): Unit =
+    final def show(out: StringBuilder): Unit =
       show(0, out)
 
-    def show(indent: Int, out: StringBuilder): Unit = {
+    final def show(indent: Int, out: StringBuilder): Unit = {
       val space = "."
       out ++= space * indent
       self.elem match {
@@ -86,22 +120,23 @@ object AST {
             line.elem.foreach(_.show(ind, out))
             out ++= space * (line.span - line.elem.span)
           }
+        case a: Number => out ++= a.show()
       }
     }
   }
 
   ////// Smart Constructors //////
 
-  def app(fn: AST, offset: Int, arg: AST): AST =
+  final def app(fn: AST, offset: Int, arg: AST): AST =
     Spanned(fn.span + offset + arg.span, App(fn, arg))
 
-  def grouped(beginOff: Int, body: AST, endOff: Int): AST = {
+  final def grouped(beginOff: Int, body: AST, endOff: Int): AST = {
     val parenSpan = 1
     val span      = parenSpan + beginOff + body.span + endOff + parenSpan
     Spanned(span, Grouped(body))
   }
 
-  def block(
+  final def block(
     indent: Int,
     emptyLines: List[Int],
     firstLine: AST,

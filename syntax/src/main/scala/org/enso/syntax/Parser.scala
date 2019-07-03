@@ -167,6 +167,22 @@ class Parser extends Flexer.ParserBase {
     }
   }
 
+  ////// Numbers //////
+
+  var numberPart1: String = ""
+  var numberPart2: String = ""
+  var numberPart3: String = ""
+
+  final def numberReset(): Unit = {
+    numberPart1 = ""
+    numberPart2 = ""
+    numberPart3 = ""
+  }
+
+  final def submitNumber(): Unit = logger.trace {
+    appResult(ast(AST.Number.fromString(numberPart1, numberPart2, numberPart3)))
+  }
+
   ////// Utils //////
 
   final def ast(sym: String => AST.Symbol): AST =
@@ -208,6 +224,9 @@ class Parser extends Flexer.ParserBase {
     val lowerLetter = range('a', 'z')
     val upperLetter = range('A', 'Z')
     val digit       = range('0', '9')
+    val alphanum    = digit | lowerLetter | upperLetter
+
+    val decimal     = digit.many1
     val indentChar  = lowerLetter | upperLetter | digit | '_'
     val identBody   = indentChar.many >> '\''.many
     val variable    = lowerLetter >> identBody
@@ -215,12 +234,13 @@ class Parser extends Flexer.ParserBase {
     val whitespace  = ' '.many1
     val newline     = '\n'
 
-    val kwDef  = "def"
-    val number = digit.many1
+    val kwDef = "def"
 
-    val NORMAL   = defineGroup[Unit]("Normal")
-    val PARENSED = defineGroup[Unit]("Parensed")
-    val NEWLINE  = defineGroup[Unit]("Newline")
+    val NORMAL        = defineGroup[Unit]("Normal")
+    val PARENSED      = defineGroup[Unit]("Parensed")
+    val NEWLINE       = defineGroup[Unit]("Newline")
+    val NUMBER_PHASE2 = defineGroup[Unit]("Number Phase 2")
+    val NUMBER_PHASE3 = defineGroup[Unit]("Number Phase 3")
 
     // format: off
     
@@ -228,9 +248,9 @@ class Parser extends Flexer.ParserBase {
     NORMAL rule whitespace run Func0 {onWhitespace()}
     NORMAL rule kwDef      run Func0 {println("def!!!")}
     NORMAL rule variable   run Func0 {app(AST.Var)}
-    NORMAL rule number     run Func0 {}
     NORMAL rule newline    run Func0 {beginGroup(NEWLINE)}
-    NORMAL rule "("        run Func0 {beginGroup(PARENSED); onGroupBegin()}
+    NORMAL rule "("        run Func0 {onGroupBegin(); beginGroup(PARENSED)}
+    
     NORMAL rule eof        run Func0 {onEOF()}
 
     ////// PARENSED //////
@@ -238,6 +258,38 @@ class Parser extends Flexer.ParserBase {
     PARENSED rule ")" run Func0 {
       onGroupEnd()
       endGroup()
+    }
+
+    ////////////////////////////////
+    // NUMBER (e.g. 16_ff0000.ff) //
+    ////////////////////////////////
+
+    NORMAL rule decimal run Func0 {
+      numberPart2 = currentMatch
+      beginGroup(NUMBER_PHASE2)
+    }
+    
+    NUMBER_PHASE2 rule ("_" >> alphanum.many1) run Func0 {
+      endGroup()
+      numberPart1 = numberPart2
+      numberPart2 = currentMatch.substring(1)
+      beginGroup(NUMBER_PHASE3) 
+    }
+    
+    NUMBER_PHASE2 rule pass run Func0 {
+      endGroup()
+      submitNumber()
+    }
+    
+    NUMBER_PHASE3 rule ("." >> alphanum.many1) run Func0 {
+      endGroup()
+      numberPart3 = currentMatch.substring(1)
+      submitNumber() 
+    }
+    
+    NUMBER_PHASE3 rule pass run Func0 {
+      endGroup()
+      submitNumber()
     }
 
     ////// NEWLINE //////
