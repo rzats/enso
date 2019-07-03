@@ -1,3 +1,4 @@
+import sbt.Keys.scalacOptions
 // Global Configuration
 organization := "org.enso"
 scalaVersion in ThisBuild := "2.12.8"
@@ -26,7 +27,8 @@ lazy val enso = (project in file("."))
 // Sub-Projects
 lazy val macros = (project in file("macro"))
   .settings(
-    version := "0.1"
+    version := "0.1",
+    scalacOptions += "-language:experimental.macros"
   )
   .settings(
     libraryDependencies ++= Seq(
@@ -38,7 +40,8 @@ lazy val macros = (project in file("macro"))
 lazy val syntax = (project in file("syntax"))
   .settings(
     mainClass in (Compile, run) := Some("org.enso.syntax.Main"),
-    version := "0.1"
+    version := "0.1",
+    scalacOptions += "-Xmacro-settings:-logging@org.enso.syntax.Flexer"
   )
   .settings(
     libraryDependencies ++= Seq(

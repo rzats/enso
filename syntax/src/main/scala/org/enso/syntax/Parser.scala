@@ -1,26 +1,34 @@
 package org.enso.syntax
 
 import org.enso.macros.Func0
+import org.enso.syntax.Main.p1
+import org.enso.syntax.Flexer
 
-class Parser extends Flexer {
+class Parser extends Flexer.ParserBase {
   import org.enso.syntax.AST
 
-  implicit def charToExpr(char: Char): Pattern = Ran(char, char)
-  implicit def stringToExpr(s: String): Pattern =
+  implicit final def charToExpr(char: Char): Flexer.Pattern =
+    Flexer.Ran(char, char)
+  implicit final def stringToExpr(s: String): Flexer.Pattern =
     s.tail.foldLeft(char(s.head))(_ >> _)
 
   class ExtendedChar(_this: Char) {
-    def ||(that: Char): Pattern = Or(char(_this), char(that))
+    final def ||(that: Char): Flexer.Pattern =
+      Flexer.Or(char(_this), char(that))
   }
-  implicit def extendChar(i: Char):  ExtendedChar = new ExtendedChar(i)
-  def char(c: Char):                 Pattern      = range(c, c)
-  def range(start: Char, end: Char): Pattern      = Ran(start, end)
-  def range(start: Int, end: Int):   Pattern      = Ran(start, end)
-  val any: Pattern  = range(0, Int.MaxValue)
-  val pass: Pattern = Pass
-  val eof: Pattern  = char('\3')
+  implicit final def extendChar(i: Char): ExtendedChar   = new ExtendedChar(i)
+  final def char(c: Char):                Flexer.Pattern = range(c, c)
+  final def range(start: Char, end: Char): Flexer.Pattern =
+    Flexer.Ran(start, end)
+  final def range(start: Int, end: Int): Flexer.Pattern = Flexer.Ran(start, end)
+  val any: Flexer.Pattern  = range(0, Int.MaxValue)
+  val pass: Flexer.Pattern = Flexer.Pass
+  val eof: Flexer.Pattern  = char('\3')
 
-  def replaceGroupSymbols(s: String, lst: List[Group[Unit]]): String = {
+  final def replaceGroupSymbols(
+    s: String,
+    lst: List[Flexer.Group[Unit]]
+  ): String = {
     var out = s
     for ((grp, ix) <- lst.zipWithIndex) {
       out = out.replaceAll(s"___${ix}___", grp.index.toString)
@@ -33,14 +41,12 @@ class Parser extends Flexer {
   var result: AST         = null
   var astStack: List[AST] = Nil
 
-  def pushAST(): Unit = {
-    logger.log("Push AST")
+  final def pushAST(): Unit = logger.trace {
     astStack +:= result
     result = null
   }
 
-  def popAST(): Unit = {
-    logger.log("Pop AST")
+  final def popAST(): Unit = logger.trace {
     result   = astStack.head
     astStack = astStack.tail
   }
@@ -49,7 +55,7 @@ class Parser extends Flexer {
 
   var lastOffset: Int = 0
 
-  def useLastOffset(): Int = {
+  final def useLastOffset(): Int = logger.trace {
     val offset = lastOffset
     lastOffset = 0
     offset
@@ -59,22 +65,22 @@ class Parser extends Flexer {
 
   var groupOffsetStack: List[Int] = Nil
 
-  def pushGroupOffset(offset: Int): Unit = {
+  final def pushGroupOffset(offset: Int): Unit = logger.trace {
     groupOffsetStack +:= offset
   }
 
-  def popGroupOffset(): Int = {
+  final def popGroupOffset(): Int = logger.trace {
     val offset = groupOffsetStack.head
     groupOffsetStack = groupOffsetStack.tail
     offset
   }
 
-  def onGroupBegin(): Unit = {
+  final def onGroupBegin(): Unit = logger.trace {
     pushAST()
     pushGroupOffset(useLastOffset())
   }
 
-  def onGroupEnd(): Unit = {
+  final def onGroupEnd(): Unit = logger.trace {
     val offset  = popGroupOffset()
     val grouped = AST.grouped(offset, result, useLastOffset())
     popAST()
@@ -86,32 +92,33 @@ class Parser extends Flexer {
   class BlockState(
     var isValid: Boolean,
     var indent: Int,
+    var emptyLines: List[Int],
+    var firstLine: AST,
     var lines: List[AST.Line]
   )
-  var currentBlock: BlockState     = new BlockState(true, 0, Nil)
   var blockStack: List[BlockState] = Nil
+  var emptyLines: List[Int]        = Nil
+  var currentBlock: BlockState     = new BlockState(true, 0, Nil, null, Nil)
 
-  def pushBlock(newIndent: Int): Unit = {
-    logger.log("Push block")
+  final def pushBlock(newIndent: Int): Unit = logger.trace {
     blockStack +:= currentBlock
-    currentBlock = new BlockState(true, newIndent, Nil)
+    currentBlock =
+      new BlockState(true, newIndent, emptyLines.reverse, null, Nil)
+    emptyLines = Nil
   }
 
-  def popBlock(): Unit = {
-    logger.log("Pop block")
+  final def popBlock(): Unit = logger.trace {
     currentBlock = blockStack.head
     blockStack   = blockStack.tail
   }
 
-  def submitBlock(): Unit = {
-    logger.log("Block end")
+  final def submitBlock(): Unit = logger.trace {
     submitLine()
-    val rlines = currentBlock.lines.reverse
     val block = AST.block(
       currentBlock.indent,
-      List(),
-      rlines.head.symbol.get,
-      rlines.tail,
+      currentBlock.emptyLines.reverse,
+      currentBlock.firstLine,
+      currentBlock.lines.reverse,
       currentBlock.isValid
     )
     popAST()
@@ -120,30 +127,36 @@ class Parser extends Flexer {
     logger.endGroup()
   }
 
-  def submitLine(): Unit = {
-    val optResult = Option(result)
-    currentBlock.lines +:= AST.Line(optResult, useLastOffset())
+  final def submitLine(): Unit = logger.trace {
+    if (result != null) {
+      if (currentBlock.firstLine == null) {
+        currentBlock.emptyLines = emptyLines
+        currentBlock.firstLine  = result
+      } else {
+        val optResult = Option(result)
+        emptyLines.foreach(currentBlock.lines +:= AST.Spanned(_, None))
+        currentBlock.lines +:= AST.Spanned(useLastOffset(), optResult)
+      }
+      emptyLines = Nil
+    }
   }
 
-  def onBlockBegin(newIndent: Int): Unit = {
-    logger.log("Block begin")
-    logger.beginGroup()
+  final def onBlockBegin(newIndent: Int): Unit = logger.trace {
     pushAST()
     pushBlock(newIndent)
+    logger.beginGroup()
   }
 
-  def onBlockNewline(): Unit = {
-    logger.log("Block newline")
+  final def onBlockNewline(): Unit = logger.trace {
     submitLine()
     result = null
   }
 
-  def onEmptyLine(): Unit = {
-    logger.log("Empty line")
-
+  final def onEmptyLine(): Unit = logger.trace {
+    emptyLines +:= useLastOffset()
   }
 
-  def onBlockEnd(newIndent: Int): Unit = {
+  final def onBlockEnd(newIndent: Int): Unit = logger.trace {
     while (newIndent < currentBlock.indent) {
       submitBlock()
     }
@@ -156,34 +169,39 @@ class Parser extends Flexer {
 
   ////// Utils //////
 
-  def ast(sym: String => AST.Symbol): AST =
+  final def ast(sym: String => AST.Symbol): AST =
     ast(sym(currentMatch))
 
-  def ast(sym: AST.Symbol): AST =
-    AST(currentMatch.length(), sym)
+  final def ast(sym: AST.Symbol): AST =
+    AST.Spanned(currentMatch.length(), sym)
 
-  def app(sym: String => AST.Symbol): Unit =
+  final def app(sym: String => AST.Symbol): Unit =
     appResult(ast(sym))
 
-  def appResult(t: AST): Unit =
+  final def appResult(t: AST): Unit =
     if (result == null) {
       result = t
     } else {
       result = AST.app(result, useLastOffset(), t)
     }
 
-  def onWhitespace(): Unit =
-    lastOffset += currentMatch.length
+  final def onWhitespace(): Unit =
+    onWhitespace(0)
+
+  final def onWhitespace(shift: Int): Unit = logger.trace {
+    val diff = currentMatch.length + shift
+    lastOffset += diff
+    logger.log(s"lastOffset + $diff = $lastOffset")
+  }
 
   ////// Cleaning //////
 
-  def onEOF(): Unit = {
-    logger.log("EOF")
+  final def onEOF(): Unit = logger.trace {
     onBlockEnd(0)
     submitBlock()
   }
 
-  def description() = {
+  final def description(): Unit = {
 
     ///////////////////////////////////////////
 
@@ -223,22 +241,26 @@ class Parser extends Flexer {
     }
 
     ////// NEWLINE //////
+    NEWLINE rule ((whitespace | pass) >> newline) run Func0 {
+      onWhitespace(-1)
+      onEmptyLine()
+    }
+    
     NEWLINE rule (whitespace | pass) run Func0 {
       onWhitespace()
-      if (result == null) {
-        onEmptyLine()
-      } else if (lastOffset == currentBlock.indent) {
+      if (lastOffset == currentBlock.indent) {
         onBlockNewline()
       } else if (lastOffset > currentBlock.indent) {
-        onBlockBegin(lastOffset)
+        onBlockBegin(useLastOffset())
       } else {
-        onBlockEnd(lastOffset)
+        onBlockEnd(useLastOffset())
       }
       endGroup()
     }
     // format: on
+  }
 
+  final def initialize(): Unit =
     onBlockBegin(0)
 
-  }
 }

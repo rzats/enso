@@ -55,7 +55,7 @@ object Main extends App {
   //////////////////////////////////////////////////////////////
 
   val p1 = new Parser
-  val p2 = p1.debugRun("foo\n\n  bar")
+  val p2 = p1.debugRun("foo\n bar\n baz")
   pprint(p2.result)
   println(p2.result.show)
 
