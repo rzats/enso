@@ -61,7 +61,6 @@ lazy val syntax = (project in file("syntax"))
       "https://oss.sonatype.org/content/repositories/releases"
     )
   )
-  .settings(SbtJFlexPlugin.jflexSettings)
   .dependsOn(macros)
   .configs(Test)
   .settings(

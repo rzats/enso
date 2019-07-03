@@ -1,7 +1,5 @@
 package org.enso.syntax
 
-import org.enso.syntax.text.lexer.Number
-
 object AST {
   /////////////////////
   ////// Spanned //////
