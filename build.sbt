@@ -5,6 +5,8 @@ scalaVersion in ThisBuild := "2.12.8"
 
 // Compiler Options
 scalacOptions ++= Seq(
+  "-verbose",
+  "-Ymacro-debug-lite",
   "-deprecation",
   "-feature",
   "-unchecked",
@@ -25,7 +27,7 @@ lazy val enso = (project in file("."))
   )
 
 // Sub-Projects
-lazy val macros = (project in file("macro"))
+lazy val logger = (project in file("lib/logger"))
   .settings(
     version := "0.1",
     scalacOptions += "-language:experimental.macros"
@@ -33,11 +35,46 @@ lazy val macros = (project in file("macro"))
   .settings(
     libraryDependencies ++= Seq(
       "org.scala-lang" % "scala-reflect"  % "2.12.8",
-      "org.scala-lang" % "scala-compiler" % "2.12.8"
+      "org.scala-lang" % "scala-compiler" % "2.12.8",
     )
   )
 
-lazy val syntax = (project in file("syntax"))
+lazy val flexer = (project in file("lib/flexer"))
+  .settings(
+    version := "0.1",
+    scalacOptions += "-language:experimental.macros"
+  )
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.scala-lang" % "scala-reflect"  % "2.12.8",
+      "org.scala-lang" % "scala-compiler" % "2.12.8",
+      "org.feijoas"    %% "mango"         % "0.14"
+    )
+  )
+  .dependsOn(logger) //depends logger macro
+
+lazy val parser = (project in file("syntax/parser"))
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.typelevel"      %% "cats-core"     % "1.6.0",
+      "com.lihaoyi"        %% "pprint"        % "0.5.3",
+      "org.scala-lang"     % "scala-reflect"  % "2.12.8",
+      "org.scala-lang"     % "scala-compiler" % "2.12.8",
+      "org.feijoas"        %% "mango"         % "0.14",
+      "org.apache.commons" % "commons-text"   % "1.6",
+      "org.scalameta"      %% "scalameta"     % "4.2.0"
+    ),
+    resolvers ++= Seq(
+      "Sonatype OSS Snapshots" at
+        "https://oss.sonatype.org/content/repositories/snapshots",
+      "Sonatype OSS Releases" at
+        "https://oss.sonatype.org/content/repositories/releases"
+    )
+  )
+  .dependsOn(logger)
+  .dependsOn(flexer)
+
+lazy val syntax = (project in file("syntax/runner"))
   .settings(
     mainClass in (Compile, run) := Some("org.enso.syntax.Main"),
     version := "0.1",
@@ -62,7 +99,9 @@ lazy val syntax = (project in file("syntax"))
       "https://oss.sonatype.org/content/repositories/releases"
     )
   )
-  .dependsOn(macros)
+  .dependsOn(parser)
+  .dependsOn(logger)
+  .dependsOn(flexer)
   .configs(Test)
   .settings(
     testFrameworks += new TestFramework("org.scalameter.ScalaMeterFramework"),
