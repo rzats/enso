@@ -4,7 +4,7 @@ import org.enso.macros.Func0
 import org.enso.syntax.Main.p1
 import org.enso.syntax.Flexer
 
-class Parser extends Flexer.ParserBase {
+class Parser extends Flexer.ParserBase[AST] {
   import org.enso.syntax.AST
 
   implicit final def charToExpr(char: Char): Flexer.Pattern =
@@ -38,7 +38,7 @@ class Parser extends Flexer.ParserBase {
 
   ////////////////////////////////////
 
-  var result: AST         = null
+  var result: AST         = _
   var astStack: List[AST] = Nil
 
   final def pushAST(): Unit = logger.trace {
@@ -82,9 +82,9 @@ class Parser extends Flexer.ParserBase {
 
   final def onGroupEnd(): Unit = logger.trace {
     val offset  = popGroupOffset()
-    val grouped = AST.grouped(offset, result, useLastOffset())
+    val grouped = AST.Group(offset, result, useLastOffset())
     popAST()
-    appResult(grouped)
+    app(grouped)
   }
 
   ////// Indent Management //////
@@ -123,7 +123,7 @@ class Parser extends Flexer.ParserBase {
     )
     popAST()
     popBlock()
-    appResult(block)
+    app(block)
     logger.endGroup()
   }
 
@@ -134,8 +134,8 @@ class Parser extends Flexer.ParserBase {
         currentBlock.firstLine  = result
       } else {
         val optResult = Option(result)
-        emptyLines.foreach(currentBlock.lines +:= AST.Spanned(_, None))
-        currentBlock.lines +:= AST.Spanned(useLastOffset(), optResult)
+        emptyLines.foreach(currentBlock.lines +:= AST.Line(_, None))
+        currentBlock.lines +:= AST.Line(useLastOffset(), optResult)
       }
       emptyLines = Nil
     }
@@ -180,21 +180,21 @@ class Parser extends Flexer.ParserBase {
   }
 
   final def submitNumber(): Unit = logger.trace {
-    appResult(ast(AST.Number.fromString(numberPart1, numberPart2, numberPart3)))
+    app(AST.Number(numberPart1, numberPart2, numberPart3))
+  }
+
+  ////// String //////
+
+  def submitEmptyText(): Unit = {
+    app(AST.Text(Vector()))
   }
 
   ////// Utils //////
 
-  final def ast(sym: String => AST.Symbol): AST =
-    ast(sym(currentMatch))
+  final def app(fn: String => AST): Unit =
+    app(fn(currentMatch))
 
-  final def ast(sym: AST.Symbol): AST =
-    AST.Spanned(currentMatch.length(), sym)
-
-  final def app(sym: String => AST.Symbol): Unit =
-    appResult(ast(sym))
-
-  final def appResult(t: AST): Unit =
+  final def app(t: AST): Unit =
     if (result == null) {
       result = t
     } else {
@@ -215,6 +215,7 @@ class Parser extends Flexer.ParserBase {
   final def onEOF(): Unit = logger.trace {
     onBlockEnd(0)
     submitBlock()
+    result = AST.Module(result.asInstanceOf[AST.Block])
   }
 
   final def description(): Unit = {
@@ -260,6 +261,8 @@ class Parser extends Flexer.ParserBase {
       endGroup()
     }
 
+    // format: on
+
     ////////////////////////////////
     // NUMBER (e.g. 16_ff0000.ff) //
     ////////////////////////////////
@@ -268,28 +271,42 @@ class Parser extends Flexer.ParserBase {
       numberPart2 = currentMatch
       beginGroup(NUMBER_PHASE2)
     }
-    
+
     NUMBER_PHASE2 rule ("_" >> alphanum.many1) run Func0 {
       endGroup()
       numberPart1 = numberPart2
       numberPart2 = currentMatch.substring(1)
-      beginGroup(NUMBER_PHASE3) 
+      beginGroup(NUMBER_PHASE3)
     }
-    
+
     NUMBER_PHASE2 rule pass run Func0 {
       endGroup()
       submitNumber()
     }
-    
+
     NUMBER_PHASE3 rule ("." >> alphanum.many1) run Func0 {
       endGroup()
       numberPart3 = currentMatch.substring(1)
-      submitNumber() 
+      submitNumber()
     }
-    
+
     NUMBER_PHASE3 rule pass run Func0 {
       endGroup()
       submitNumber()
+    }
+
+    ////////////
+    // String //
+    ////////////
+
+    NORMAL rule "'".many1 run Func0 {
+      val size = currentMatch.length
+      if (size == 2) submitEmptyText()
+//      else {
+//        pushQuoteSize(size)
+//        textBegin()
+//        beginGroup(STRING)
+//      }
     }
 
     ////// NEWLINE //////
@@ -297,7 +314,7 @@ class Parser extends Flexer.ParserBase {
       onWhitespace(-1)
       onEmptyLine()
     }
-    
+
     NEWLINE rule (whitespace | pass) run Func0 {
       onWhitespace()
       if (lastOffset == currentBlock.indent) {
@@ -309,7 +326,6 @@ class Parser extends Flexer.ParserBase {
       }
       endGroup()
     }
-    // format: on
   }
 
   final def initialize(): Unit =

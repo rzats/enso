@@ -447,7 +447,25 @@ object Flexer {
     }
   }
 
-  abstract class ParserBase extends Function[String, Int] {
+//  object ParserBase {
+
+  trait Result[T] {
+    def map[S](fn: T => S): Result[S]
+  }
+
+  final case class Success[T](value: T) extends Result[T] {
+    def map[S](fn: T => S) = Success(fn(value))
+  }
+  final case class Partial[T](value: T, offset: Int) extends Result[T] {
+    def map[S](fn: T => S) = Partial(fn(value), offset)
+  }
+  final case class Failure[T](value: T, offset: Int) extends Result[T] {
+    def map[S](fn: T => S) = Failure(fn(value), offset)
+  }
+//  }
+
+  abstract class ParserBase[T] {
+//    import ParserBase._
 
     import java.io.Reader
     import java.io.StringReader
@@ -471,7 +489,9 @@ object Flexer {
 
     val logger = new Logger()
 
-    override def apply(input: String): Int = {
+    var result: T
+
+    def run(input: String): Result[T] = {
       initialize()
       sreader = new StringReader(input)
       val numRead = sreader.read(buffer, 0, buffer.length)
@@ -481,7 +501,10 @@ object Flexer {
       while (r == -1) {
         r = step()
       }
-      r
+
+      if (offset >= bufferLen) Success(result)
+      else if (r == -2) Failure(result, offset)
+      else Partial(result, offset)
     }
 
     // Group management
@@ -567,7 +590,17 @@ object Flexer {
       code.replace(s"$clsName.", "")
     }
 
-    def debugRun(input: String): this.type = {
+    def debugRun(input: String): Result[T] = {
+      val instance = debugInstance()
+      instance.run(input)
+    }
+
+    def debugInstance(): this.type = {
+      val cons = debugCompiledClass()
+      cons.newInstance()
+    }
+
+    def debugCompiledClass() = {
       println(Console.RED + "Using debug runtime compilation method.")
       println(Console.RED + "Do not use it on production!")
       println(Console.RESET)
@@ -581,9 +614,7 @@ object Flexer {
         .apply()
         .asInstanceOf[Class[this.type]]
 
-      val instance = clazz.getConstructor().newInstance()
-      instance(input)
-      instance
+      clazz.getConstructor()
     }
   }
 
