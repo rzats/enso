@@ -316,7 +316,7 @@ object Flexer {
     def genBranches(branches: List[Branch]): Unit = {
       @tailrec def go(bss: List[Branch], first: Boolean): Unit =
         bss match {
-          case Nil =>
+          case Nil => code.add("else -2")
           case b :: bs => {
             if (!first) code.add("else ")
             code._ifLTE("codePoint", b.rangeEnd) {
@@ -327,7 +327,7 @@ object Flexer {
                   case Some(c) => code.addLine(c)
                 }
               }
-              code.assign("state", targetStatex)
+              code.add(targetStatex.toString())
             }
             go(bs, first = false)
           }
@@ -336,6 +336,7 @@ object Flexer {
     }
 
     def generateStateMatch(): Unit = {
+      code.add("state = ")
       code._match("state") {
         for (state <- dfa.links.indices) {
           code._case(state) {
@@ -641,8 +642,7 @@ object Flexer {
     }
   }
 
-  //case class Group[T](index: Int, rules: Seq[Rule[T]]) {
-  class Group[T](val index: Int) {
+  class Group[T](val groupIx: Int) {
     val rules = ArrayBuffer[Rule[T]]()
 
     def rule(r: Rule[T]): Rule[T] = {
@@ -656,11 +656,16 @@ object Flexer {
       rules.appendAll(that.rules)
     }
 
+    def ruleName(ruleIx: Int): String =
+      s"group${groupIx}_rule$ruleIx()"
+
     def buildAutomata(): NFA = {
-      val nfa       = new NFA
-      val start     = nfa.addState()
-      val endpoints = rules.map(rule => buildRuleAutomata(nfa, start, rule))
-      val end       = nfa.addState()
+      val nfa   = new NFA
+      val start = nfa.addState()
+      val endpoints = rules.zipWithIndex.map {
+        case (rule, ix) => buildRuleAutomata(nfa, start, ix, rule)
+      }
+      val end = nfa.addState()
       nfa.state(end).end = true
       for (endpoint <- endpoints) {
         nfa.link(endpoint, end)
@@ -668,12 +673,18 @@ object Flexer {
       nfa
     }
 
-    def buildRuleAutomata[T](nfa: NFA, previous: Int, rule: Rule[T]): Int = {
-      val end = buildExprAutomata(nfa, previous, rule.expr)
-      nfa.state(end).end = true
-      nfa
-        .state(end)
-        .code = "{currentMatch = matchBuilder.result(); " + rule.fn.toString + "}" // + "(currentMatch)}"
+    def buildRuleAutomata(
+      nfa: NFA,
+      previous: Int,
+      ruleIx: Int,
+      rule: Rule[_]
+    ): Int = {
+      val end           = buildExprAutomata(nfa, previous, rule.expr)
+      val resultCompute = "currentMatch = matchBuilder.result()"
+      val ruleEval      = ruleName(ruleIx)
+      val code          = s"{$resultCompute; $ruleEval}"
+      nfa.state(end).end  = true
+      nfa.state(end).code = code
       end
     }
 
@@ -717,8 +728,15 @@ object Flexer {
       val nfa = buildAutomata()
       nfa.computeIsos()
       val dfa  = nfa.computeDFA()
-      var code = CodeGen(dfa).generate(index)
-      code += s"\n  groups($index) = runGroup$index"
+      var code = CodeGen(dfa).generate(groupIx)
+      code += s"\n  groups($groupIx) = runGroup$groupIx"
+
+      rules.zipWithIndex.foreach {
+        case (rule, ruleIx) => {
+          code += s"\n def ${ruleName(ruleIx)}() = {\n"
+          code += rule.fn.toString + "\n}"
+        }
+      }
       code
     }
   }

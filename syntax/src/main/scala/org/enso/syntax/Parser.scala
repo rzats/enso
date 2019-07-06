@@ -49,7 +49,7 @@ class Parser extends Flexer.ParserBase[AST] {
   ): String = {
     var out = s
     for ((grp, ix) <- lst.zipWithIndex) {
-      out = out.replaceAll(s"___${ix}___", grp.index.toString)
+      out = out.replaceAll(s"___${ix}___", grp.groupIx.toString)
     }
     out
   }
