@@ -1,4 +1,6 @@
 package org.enso.syntax
+import scala.meta._
+import scala.annotation._
 
 object Main extends App {
 
@@ -54,9 +56,13 @@ object Main extends App {
 
   //////////////////////////////////////////////////////////////
 
-  val p1 = new Parser
-  val p2 = p1.debugRun("name")
+  val p1   = new Parser
+  val code = p1.specialize()
+  val p2   = p1.debugRun("name")
   pprint(p2)
+  println("CODE LEN:", code.length) //136500
+
+  //  println(tree1)
 //  println(p2.result.show())
 
 }

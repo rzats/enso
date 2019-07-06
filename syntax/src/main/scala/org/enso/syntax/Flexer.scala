@@ -13,6 +13,7 @@ import java.net.URI
 import java.net.URLEncoder
 import org.enso.macros.Func0
 import org.enso.Logger
+import scala.annotation.tailrec
 
 object Flexer {
 
@@ -78,7 +79,7 @@ object Flexer {
   // NFA //
   /////////
 
-  class NFA {
+  final class NFA {
     val logger                             = new Logger()
     val states: mutable.ArrayBuffer[State] = new mutable.ArrayBuffer()
     val isoMap: mutable.Map[Set[Int], Int] = mutable.Map()
@@ -254,7 +255,7 @@ object Flexer {
           }
         }
 
-        val dfaEndStatePriorityMap = mutable.Map[Int, (Int, String)]()
+        val dfaEndStatePriorityMap = mutable.Map[Int, StateDesc]()
         for ((isos, dfaIx) <- dfaIsoKeys.zipWithIndex) {
           var priority = -1
           var code     = ""
@@ -270,7 +271,7 @@ object Flexer {
             }
           })
           if (priority >= 0) {
-            dfaEndStatePriorityMap += dfaIx -> (priority, code)
+            dfaEndStatePriorityMap += dfaIx -> StateDesc(priority, code)
           }
         }
 
@@ -282,79 +283,98 @@ object Flexer {
     }
   }
 
-  case class DFA(
+  final case class StateDesc(priority: Int, code: String)
+
+  final case class DFA(
     vocabulary: Vocabulary,
     links: Array[Array[Int]],
-    endStatePriorityMap: mutable.Map[Int, (Int, String)]
+    endStatePriorityMap: mutable.Map[Int, StateDesc]
   ) {}
 
-  case class CodeGen(dfa: DFA) {
+  final case class CodeGen(dfa: DFA) {
+
+    case class Branch(rangeEnd: Int, target: BranchTarget)
+    case class BranchTarget(state: Int, code: Option[String])
+
     var code = new CodeBuilder()
 
+    def cleanBranches(revInput: List[Branch]): List[Branch] = {
+      @tailrec def go(rIn: List[Branch], out: List[Branch]): List[Branch] =
+        rIn match {
+          case Nil => out
+          case i :: is =>
+            out match {
+              case Nil => go(is, i :: Nil)
+              case o :: os =>
+                if (o.target == i.target) go(is, out)
+                else go(is, i :: out)
+            }
+        }
+      go(revInput, Nil)
+    }
+
+    def genBranches(branches: List[Branch]): Unit = {
+      @tailrec def go(bss: List[Branch], first: Boolean): Unit =
+        bss match {
+          case Nil =>
+          case b :: bs => {
+            if (!first) code.add("else ")
+            code._ifLTE("codePoint", b.rangeEnd) {
+              var targetStatex = b.target.state
+              if (b.target.state == -1) {
+                b.target.code match {
+                  case None    => targetStatex = -2
+                  case Some(c) => code.addLine(c)
+                }
+              }
+              code.assign("state", targetStatex)
+            }
+            go(bs, first = false)
+          }
+        }
+      go(branches, first = true)
+    }
+
     def generateStateMatch(): Unit = {
-      code._match("state")(() => {
+      code._match("state") {
         for (state <- dfa.links.indices) {
-          code._case(state)(() => {
+          code._case(state) {
+
+            var revBranches: List[Branch] = Nil
             dfa.vocabulary.forEachIxed({
               case (range, vocIx) => {
-                val targetState = dfa.links(state)(vocIx)
-                val p1          = dfa.endStatePriorityMap.get(state)
-                //              val p2          = dfa.endStatePriorityMap.get(targetState)
-                //              var blocked     = false
-                //              (p1, p2) match {
-                //                case (Some((l, _)), Some((r, _))) =>
-                //                  if (l > r) {
-                //                    blocked = true
-                //                  }
-                //                case _ => {}
-                //              }
-                if (vocIx != 0) {
-                  code.add("else ")
-                }
-                code._ifLTE("codePoint", range.end)(() => {
-                  //                if (blocked) {
-                  //                  code.comment("blocked")
-                  //                  code.assign("state", -1)
-                  //                } else if (state != targetState) {
-                  var targetStatex = targetState
-                  if (targetState == -1) {
-                    p1 match {
-                      case None => {
-                        targetStatex = -2
-                      }
-                      case Some((_, c)) => {
-                        code.addLine(c)
-                      }
-                    }
-                  }
-                  code.assign("state", targetStatex)
-                  //                }
-                })
+                val targetState  = dfa.links(state)(vocIx)
+                val p1           = dfa.endStatePriorityMap.get(state)
+                val branchTarget = BranchTarget(targetState, p1.map(_.code))
+                revBranches ::= Branch(range.end, branchTarget)
               }
             })
-          })
+
+            val branches = cleanBranches(revBranches)
+            genBranches(branches)
+          }
         }
-      })
+      }
     }
 
     def generate(i: Int): String = {
       code
         .add(s"def runGroup${i}(): Int = ")
-        .block(() => {
+        .block {
           code
             .addLine("var state: Int = 0")
             .addLine("matchBuilder.setLength(0)")
             .add("while(state >= 0)")
-            .block(() => {
+            .block {
               code.addLine("codePoint = currentChar.toInt")
               generateStateMatch()
-              code._if("state >= 0")(() => {
+              code._if("state >= 0") {
                 code.addLine("matchBuilder.append(currentChar)")
                 code.addLine("currentChar = getNextChar")
-              })
-            })
+              }
+            }
           code.addLine("state")
-        })
+        }
       code.build()
     }
   }
@@ -383,31 +403,31 @@ object Flexer {
     def comment(s: String): CodeBuilder =
       addLine(s"// ${s}")
 
-    def _match[T](s: Any)(f: () => T): CodeBuilder =
+    def _match[T](s: Any)(f: => T): CodeBuilder =
       add(s"${s} match").block(f)
 
-    def _case[T](s: Any)(f: () => T): CodeBuilder =
+    def _case[T](s: Any)(f: => T): CodeBuilder =
       add(s"case ${s} =>").block(f)
 
-    def _if[T](s: String)(f: () => T): CodeBuilder =
+    def _if[T](s: String)(f: => T): CodeBuilder =
       add(s"if (${s})").block(f)
 
-    def _else_if[T](s: String)(f: () => T): CodeBuilder =
+    def _else_if[T](s: String)(f: => T): CodeBuilder =
       add("else ")._if(s)(f)
 
-    def _ifLTE[T](left: Any, right: Any)(f: () => T): CodeBuilder =
+    def _ifLTE[T](left: Any, right: Any)(f: => T): CodeBuilder =
       _if(s"${left} <= ${right}")(f)
 
-    def _else_ifLTE[T](left: Any, right: Any)(f: () => T): CodeBuilder =
+    def _else_ifLTE[T](left: Any, right: Any)(f: => T): CodeBuilder =
       add("else ")._ifLTE(left, right)(f)
 
     def assign(left: Any, right: Any): Unit =
       addLine(s"${left} = ${right}")
 
-    def block[T](f: () => T): CodeBuilder = {
+    def block[T](f: => T): CodeBuilder = {
       addLine(" {")
       indentation += 1
-      f()
+      f
       submitLine()
       indentation -= 1
       addLine("}")
@@ -430,7 +450,8 @@ object Flexer {
     def many1(): Pattern = this >> many
   }
 
-  case object Pass extends Pattern
+  case object None_ extends Pattern
+  case object Pass  extends Pattern
 
   case class Ran(start: Int, end: Int) extends Pattern
 
@@ -479,8 +500,9 @@ object Flexer {
 
     var offset: Int       = -1
     var codePoint: Int    = 0
-    var currentChar: Char = '\0'
-    val eofChar: Char     = '\3' // ETX
+    val eofChar: Char     = '\0'
+    val etxChar: Char     = '\3'
+    var currentChar: Char = etxChar
 
     var matchBuilder = new StringBuilder(64)
     var currentMatch = ""
@@ -492,6 +514,7 @@ object Flexer {
     var result: T
 
     def run(input: String): Result[T] = {
+      description() // Register group names etc.
       initialize()
       sreader = new StringReader(input)
       val numRead = sreader.read(buffer, 0, buffer.length)
@@ -517,7 +540,7 @@ object Flexer {
       throw new Exception("Should never be used without desugaring.")
 
     def beginGroup(g: Int): Unit = {
-      logger.log(s"Begin ${groupLabel(g)}")
+      println(s"Begin ${groupLabel(g)}")
       groupStack :+= group
       group = g
     }
@@ -526,7 +549,7 @@ object Flexer {
       val oldGroup = group
       group      = groupStack.head
       groupStack = groupStack.tail
-      logger.log(s"End ${groupLabel(oldGroup)}, back to ${groupLabel(group)}")
+      println(s"End ${groupLabel(oldGroup)}, back to ${groupLabel(group)}")
     }
 
     def step(): Int = {
@@ -570,7 +593,7 @@ object Flexer {
       offset += 1
       val nextChar = if (offset >= bufferLen) {
         if (offset == bufferLen) eofChar
-        else '\0'
+        else etxChar
       } else buffer(offset)
       logger.log(s"Next char '${escapeChar(nextChar)}'")
       nextChar
@@ -658,7 +681,8 @@ object Flexer {
       val current = nfa.addState()
       nfa.link(previous, current)
       expr match {
-        case Pass => current
+        case None_ => nfa.addState()
+        case Pass  => current
         case Ran(start, end) => {
           val state = nfa.addState()
           nfa.link(current, state, start, end)

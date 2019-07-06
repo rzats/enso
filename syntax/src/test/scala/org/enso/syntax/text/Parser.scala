@@ -33,42 +33,54 @@ class LexerSpec extends FlatSpec with Matchers {
   }
 
   def module(input: String, result: AST): Unit =
-    it should escape(input) in { assertModule(input, result) }
+    it should parseTitle(input) in { assertModule(input, result) }
 
   def expr(input: String, result: AST): Unit =
-    it should escape(input) in { assertExpr(input, result) }
+    it should parseTitle(input) in { assertExpr(input, result) }
+
+  case object test {
+    def expr(input: String): ParseTest = ParseTest(input)
+  }
+
+  case class ParseTest(input: String) {
+
+    def as(result: AST): Unit =
+      it should parseTitle(input) in { assertExpr(input, result) }
+  }
 
 //  def unexpectedSuffix(input: String): Symbol = {
 //    Invalid(UnexpectedSuffix(input))
 //  }
 
-  def escape(raw: String): String = {
-    import scala.reflect.runtime.universe._
-    Literal(Constant(raw)).toString
-  }
+  def escape(str: String): String =
+    str.replace("\n", "\\n")
 
+  def parseTitle(str: String): String =
+    "parse " + escape(str)
+
+  // format: off
   /////////////////
   // Identifiers //
   /////////////////
 
-  expr("_", Wildcard)
-//  expr("Name", AST.Cons("Name"))
-  expr("name", Var("name"))
-//  expr("name'"  , Var("name'") )
-//  expr("name''" , Var("name''"))
-//  expr("name'a" , Var("name'")  :: unexpectedSuffix("a"))
-//  expr("name_"  , Var("name_") )
-//  expr("name_'" , Var("name_'"))
-//  expr("name'_" , Var("name'")  :: unexpectedSuffix("_"))
-//  expr("name`"  , Var("name")   :: Unmatched("`"))
-//
-//
-//
-//  ///////////////
-//  // Operators //
-//  ///////////////
-//
-//  expr("="    , Operator("=")  )
+
+  test expr "_"      as Wildcard
+  test expr "Name"   as Cons("Name")
+  test expr "name"   as Var("name")
+  test expr "name'"  as Var("name'")
+  test expr "name''" as Var("name''")
+  test expr "name'a" as InvalidSuffix(Var("name'"),"a")
+  test expr "name_"  as Var("name_")
+  test expr "name_'" as Var("name_'")
+  test expr "name'_" as InvalidSuffix(Var("name'"),"_")
+  test expr "name`"  as App(5,Var("name"),Unrecognized("`"))
+
+  
+  ///////////////
+  // Operators //
+  ///////////////
+
+  test expr "="   as Operator("=")
 //  expr("=="   , Operator("==") )
 //  expr("==="  , Operator("==")  :: unexpectedSuffix("="))
 //  expr(":"    , Operator(":")  )

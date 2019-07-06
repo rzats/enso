@@ -102,9 +102,6 @@ object Func0 {
     c.Expr[Func0[R]](
       q"new Func0($fn, replaceGroupSymbols(${fnCode}, ${grpList}))"
     )
-//    c.Expr[Func0[R]](
-//      q"new Func0($fn, ${fnCode})"
-//    )
   }
 }
 

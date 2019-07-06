@@ -55,61 +55,62 @@ object AST {
   ////// AST //////
   /////////////////
 
-  trait AST extends Symbol
+  trait AST        extends Symbol
+  trait InvalidAST extends AST
 
-  implicit final class _OptionAST_(val self: Option[AST]) extends Symbol {
-
-    override def span: Int =
-      self.map(_.span).getOrElse(0)
-
-    override def show(out: CodeBuilder): Unit =
-      self.foreach(_.show(out))
+  final case class Invalid(symbol: InvalidAST) extends AST {
+    override def span:                   Int  = symbol.span
+    override def show(out: CodeBuilder): Unit = symbol.show(out)
   }
 
-  ////// Var //////
+  implicit final class _OptionAST_(val self: Option[AST]) extends Symbol {
+    override def span:                   Int  = self.map(_.span).getOrElse(0)
+    override def show(out: CodeBuilder): Unit = self.foreach(_.show(out))
+  }
 
-  final case object Wildcard extends AST {
+  /////// Unrecognized //////
+
+  final case class Unrecognized(str: String) extends InvalidAST {
+    override def span:                   Int  = str.length
+    override def show(out: CodeBuilder): Unit = out ++= str
+  }
+
+  ////// Identifiers //////
+
+  trait Identifier extends AST
+
+  final case object Wildcard extends Identifier {
     override def span:                   Int  = 1
     override def show(out: CodeBuilder): Unit = out += '_'
   }
 
-  ////// Var //////
-
-  final case class Var(name: String) extends AST {
-
-    override def span: Int =
-      name.length
-
-    override def show(out: CodeBuilder): Unit =
-      out ++= name
+  final case class Var(name: String) extends Identifier {
+    override def span:                   Int  = name.length
+    override def show(out: CodeBuilder): Unit = out ++= name
   }
 
-  ////// Cons //////
-
-  final case class Cons(name: String) extends AST {
-
-    override def span: Int =
-      name.length
-
-    override def show(out: CodeBuilder): Unit =
-      out ++= name
+  final case class Cons(name: String) extends Identifier {
+    override def span:                   Int  = name.length
+    override def show(out: CodeBuilder): Unit = out ++= name
   }
 
-  ////// Operator //////
-
-  final case class Operator(name: String) extends AST {
-
-    override def span: Int =
-      name.length
-
-    override def show(out: CodeBuilder): Unit =
-      out ++= name
+  final case class Operator(name: String) extends Identifier {
+    override def span:                   Int  = name.length
+    override def show(out: CodeBuilder): Unit = out ++= name
   }
 
-  ////// App //////
+  final case class InvalidSuffix(elem: Identifier, suffix: String)
+      extends InvalidAST {
+    override def span: Int = elem.span + suffix.length
+    override def show(out: CodeBuilder): Unit = {
+      elem.show(out)
+      out ++= suffix
+    }
+  }
+
+  ////// Operations //////
 
   final case class App(span: Int, func: AST, arg: AST) extends AST {
-
     override def show(out: CodeBuilder): Unit = {
       func.show(out)
       out ++= " " * (span - func.span - arg.span)
@@ -117,13 +118,8 @@ object AST {
     }
   }
 
-  ////// Group //////
-
   final case class Group(leftOff: Int, body: AST, rightOff: Int) extends AST {
-
-    override def span: Int =
-      leftOff + body.span + rightOff
-
+    override def span: Int = leftOff + body.span + rightOff
     override def show(out: CodeBuilder): Unit = {
       out ++= " " * leftOff
       body.show(out)
@@ -131,35 +127,10 @@ object AST {
     }
   }
 
-  ////// Invalid //////
-
-  trait InvalidAST extends AST
-
-  final case class Invalid(symbol: InvalidAST) extends AST {
-
-    override def span: Int =
-      symbol.span
-
-    override def show(out: CodeBuilder): Unit =
-      symbol.show(out)
-  }
-
-  final case class InvalidBlock(block: Block) extends InvalidAST {
-
-    override def span: Int =
-      block.span
-
-    override def show(out: CodeBuilder): Unit =
-      block.show(out)
-  }
-
   ////// Number //////
 
   final case class Number(base: String, int: String, frac: String) extends AST {
-
-    override def span: Int =
-      base.length + int.length + frac.length
-
+    override def span: Int = base.length + int.length + frac.length
     override def show(out: CodeBuilder): Unit = {
       if (base != "10") {
         out ++= base.toString()
@@ -171,7 +142,6 @@ object AST {
         out ++= frac
       }
     }
-
   }
 
   ////// Text //////
@@ -243,6 +213,11 @@ object AST {
     }
   }
 
+  final case class InvalidBlock(block: Block) extends InvalidAST {
+    override def span:                   Int  = block.span
+    override def show(out: CodeBuilder): Unit = block.show(out)
+  }
+
   ////// Unit //////
 
   final case class Module(block: Block) extends AST {
@@ -264,12 +239,13 @@ object AST {
     indent: Int,
     emptyLines: List[Int],
     firstLine: AST,
-    lines: List[Line],
-    valid: Boolean
-  ): AST = {
+    lines: List[Line]
+//    valid: Boolean
+  ): Block = {
     val vEmptyLines = emptyLines.to[Vector]
     val vLines      = lines.to[Vector]
-    val block       = Block(indent, vEmptyLines, firstLine, vLines)
-    if (valid) block else Invalid(InvalidBlock(block))
+    Block(indent, vEmptyLines, firstLine, vLines)
+//    val block       = Block(indent, vEmptyLines, firstLine, vLines)
+//    if (valid) block else Invalid(InvalidBlock(block))
   }
 }

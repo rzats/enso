@@ -52,7 +52,8 @@ lazy val syntax = (project in file("syntax"))
       "org.scala-lang"     % "scala-reflect"  % "2.12.8",
       "org.scala-lang"     % "scala-compiler" % "2.12.8",
       "org.feijoas"        %% "mango"         % "0.14",
-      "org.apache.commons" % "commons-text"   % "1.6"
+      "org.apache.commons" % "commons-text"   % "1.6",
+      "org.scalameta"      %% "scalameta"     % "4.2.0"
     ),
     resolvers ++= Seq(
       "Sonatype OSS Snapshots" at

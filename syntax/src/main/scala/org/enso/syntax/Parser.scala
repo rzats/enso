@@ -1,7 +1,6 @@
 package org.enso.syntax
 
 import org.enso.macros.Func0
-import org.enso.syntax.Main.p1
 import org.enso.syntax.Flexer
 
 class Parser extends Flexer.ParserBase[AST] {
@@ -21,9 +20,28 @@ class Parser extends Flexer.ParserBase[AST] {
   final def range(start: Char, end: Char): Flexer.Pattern =
     Flexer.Ran(start, end)
   final def range(start: Int, end: Int): Flexer.Pattern = Flexer.Ran(start, end)
-  val any: Flexer.Pattern  = range(0, Int.MaxValue)
+  val any: Flexer.Pattern  = range(5, Int.MaxValue) // FIXME 5 -> 0
   val pass: Flexer.Pattern = Flexer.Pass
-  val eof: Flexer.Pattern  = char('\3')
+  val eof: Flexer.Pattern  = char('\0')
+  val none: Flexer.Pattern = Flexer.None_
+
+  def anyOf(alts: Seq[Flexer.Pattern]): Flexer.Pattern = {
+    alts.fold(none)(_ | _)
+//    alts.tail.fold(alts.head)(_ | _)
+  }
+
+  def noneOf(chars: String): Flexer.Pattern = {
+    val pointCodes  = chars.map(_.toInt).sorted
+    val startPoints = 5 +: pointCodes.map(_ + 1) // FIXME 5 -> 0
+    val endPoints   = pointCodes.map(_ - 1) :+ Int.MaxValue
+    val ranges      = startPoints.zip(endPoints)
+    val validRanges = ranges.filter { case (s, e) => e >= s }
+    val patterns    = validRanges.map { case (s, e) => range(s, e) }
+    anyOf(patterns)
+  }
+
+  def not(char: Char): Flexer.Pattern =
+    noneOf(char.toString)
 
   final def replaceGroupSymbols(
     s: String,
@@ -87,7 +105,7 @@ class Parser extends Flexer.ParserBase[AST] {
     app(grouped)
   }
 
-  ////// Indent Management //////
+  ////// Block Management //////
 
   class BlockState(
     var isValid: Boolean,
@@ -112,18 +130,32 @@ class Parser extends Flexer.ParserBase[AST] {
     blockStack   = blockStack.tail
   }
 
-  final def submitBlock(): Unit = logger.trace {
+  final def buildBlock(): AST.Block = logger.trace {
     submitLine()
-    val block = AST.block(
+    AST.block(
       currentBlock.indent,
       currentBlock.emptyLines.reverse,
       currentBlock.firstLine,
-      currentBlock.lines.reverse,
-      currentBlock.isValid
+      currentBlock.lines.reverse
     )
+  }
+
+  final def submitBlock(): Unit = logger.trace {
+    val block = buildBlock()
+    val block2 =
+      if (currentBlock.isValid) block
+      else AST.Invalid(AST.InvalidBlock(block))
+
     popAST()
     popBlock()
-    app(block)
+    app(block2)
+    logger.endGroup()
+  }
+
+  final def submitModule(): Unit = logger.trace {
+    val block  = buildBlock()
+    val module = AST.Module(block)
+    result = module
     logger.endGroup()
   }
 
@@ -167,13 +199,40 @@ class Parser extends Flexer.ParserBase[AST] {
     }
   }
 
+  ////// Identifiers //////
+
+  var identBody: AST.Identifier = null
+
+  def onIdent(cons: String => AST.Identifier): Unit = logger.trace {
+    onIdent(cons(currentMatch))
+  }
+
+  def onIdent(ast: AST.Identifier): Unit = logger.trace {
+    identBody = ast
+  }
+
+  def submitIdent(): Unit = logger.trace {
+    app(identBody)
+    identBody = null
+  }
+
+  def onIdentErrSfx(): Unit = logger.trace {
+    val ast = AST.InvalidSuffix(identBody, currentMatch)
+    app(ast)
+    identBody = null
+  }
+
+  def finalizeIdent(): Unit = logger.trace {
+    if (identBody != null) submitIdent()
+  }
+
   ////// Numbers //////
 
   var numberPart1: String = ""
   var numberPart2: String = ""
   var numberPart3: String = ""
 
-  final def numberReset(): Unit = {
+  final def numberReset(): Unit = logger.trace {
     numberPart1 = ""
     numberPart2 = ""
     numberPart3 = ""
@@ -213,9 +272,9 @@ class Parser extends Flexer.ParserBase[AST] {
   ////// Cleaning //////
 
   final def onEOF(): Unit = logger.trace {
+    finalizeIdent()
     onBlockEnd(0)
-    submitBlock()
-    result = AST.Module(result.asInstanceOf[AST.Block])
+    submitModule()
   }
 
   final def description(): Unit = {
@@ -227,17 +286,24 @@ class Parser extends Flexer.ParserBase[AST] {
     val digit       = range('0', '9')
     val alphanum    = digit | lowerLetter | upperLetter
 
-    val decimal     = digit.many1
-    val indentChar  = lowerLetter | upperLetter | digit | '_'
-    val identBody   = indentChar.many >> '\''.many
-    val variable    = lowerLetter >> identBody
-    val constructor = upperLetter >> identBody
-    val whitespace  = ' '.many1
-    val newline     = '\n'
+    val decimal         = digit.many1
+    val indentChar      = lowerLetter | upperLetter | digit | '_'
+    val identBody       = indentChar.many >> '\''.many
+    val variable        = lowerLetter >> identBody
+    val constructor     = upperLetter >> identBody
+    val whitespace      = ' '.many1
+    val newline         = '\n'
+    val identBreaker    = "^`!@#$%^&*()-=+[]{}|;:<>,./ \t\r\n\\"
+    val operatorChar    = "!$%&*+-/<>?^~|:\\"
+    val operatorErrSfx  = operatorChar | "=" | "," | "."
+    val identErrSfx     = noneOf(identBreaker).many1
+    val specialOperator = "=" | "==" | ">=" | "<=" | "/="
+    val operator        = specialOperator | operatorChar.many1
 
     val kwDef = "def"
 
     val NORMAL        = defineGroup[Unit]("Normal")
+    val IDENT         = defineGroup[Unit]("Identifier")
     val PARENSED      = defineGroup[Unit]("Parensed")
     val NEWLINE       = defineGroup[Unit]("Newline")
     val NUMBER_PHASE2 = defineGroup[Unit]("Number Phase 2")
@@ -246,13 +312,22 @@ class Parser extends Flexer.ParserBase[AST] {
     // format: off
     
     ////// NORMAL //////
-    NORMAL rule whitespace run Func0 {onWhitespace()}
-    NORMAL rule kwDef      run Func0 {println("def!!!")}
-    NORMAL rule variable   run Func0 {app(AST.Var)}
-    NORMAL rule newline    run Func0 {beginGroup(NEWLINE)}
-    NORMAL rule "("        run Func0 {onGroupBegin(); beginGroup(PARENSED)}
+    NORMAL rule whitespace  run Func0 {onWhitespace()}
+    NORMAL rule kwDef       run Func0 {println("def!!!")}
+    NORMAL rule variable    run Func0 {onIdent(AST.Var); beginGroup(IDENT)}
+    NORMAL rule constructor run Func0 {onIdent(AST.Cons); beginGroup(IDENT)}
+    NORMAL rule "_"         run Func0 {onIdent(AST.Wildcard); beginGroup(IDENT)}
+    NORMAL rule newline     run Func0 {beginGroup(NEWLINE)}
+    NORMAL rule "("         run Func0 {onGroupBegin(); beginGroup(PARENSED)}
+    NORMAL rule eof         run Func0 {onEOF()}
+    NORMAL rule operator    run Func0 {app(AST.Operator)}
+    NORMAL rule any         run Func0 {app(AST.Unrecognized)}
     
-    NORMAL rule eof        run Func0 {onEOF()}
+    
+    ////// IDENTIFIER //////
+    IDENT rule identErrSfx run Func0 {onIdentErrSfx();endGroup();}
+    IDENT rule pass        run Func0 {submitIdent();endGroup();}
+    
 
     ////// PARENSED //////
     PARENSED.cloneRulesFrom(NORMAL)
