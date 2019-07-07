@@ -12,10 +12,6 @@ class LexerSpec extends FlatSpec with Matchers {
   def parse(input: String) =
     parserCls.newInstance().run(input)
 
-//  def lex_(input: String): List[Symbol] = {
-//    lex(input).map(tok => tok.symbol)
-//  }
-
   def assertModule(input: String, result: AST): Assertion =
     assert(parse(input) == Flexer.Success(result))
 
@@ -81,20 +77,20 @@ class LexerSpec extends FlatSpec with Matchers {
   ///////////////
 
   test expr "="   as Operator("=")
-//  expr("=="   , Operator("==") )
-//  expr("==="  , Operator("==")  :: unexpectedSuffix("="))
-//  expr(":"    , Operator(":")  )
-//  expr(","    , Operator(",")  )
-//  expr("."    , Operator(".")  )
-//  expr(".."   , Operator("..") )
-//  expr("..."  , Operator("..."))
-//  expr("...." , Operator("...") :: unexpectedSuffix("."))
-//  expr(">="   , Operator(">=") )
-//  expr("<="   , Operator("<=") )
-//  expr("/="   , Operator("/=") )
-//  expr("+="   , Modifier("+=") )
-//  expr("-="   , Modifier("-=") )
-//  expr("-=-"  , Modifier("-=")  :: unexpectedSuffix("-"))
+  test expr "=="   as Operator("==")
+  test expr "==="  as Operator("==") // :: unexpectedSuffix("="))
+  test expr ":"    as Operator(":") 
+  test expr ","    as Operator(",") 
+  test expr "."    as Operator(".") 
+  test expr ".."   as Operator("..")
+  test expr "..."  as Operator("...")
+  test expr "...." as Operator("...")// :: unexpectedSuffix("."))
+  test expr ">="   as Operator(">=")
+  test expr "<="   as Operator("<=")
+  test expr "/="   as Operator("/=")
+//  test expr "+="   as Modifier("+=")
+//  test expr "-="   as Modifier("-=")
+//  test expr "-=-"  as Modifier("-=") // :: unexpectedSuffix("-"))
 //
 //
 //

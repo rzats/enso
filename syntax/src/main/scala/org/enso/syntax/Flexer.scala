@@ -11,7 +11,7 @@ import org.feijoas.mango.common.collect.mutable.RangeMap
 import java.awt.Desktop
 import java.net.URI
 import java.net.URLEncoder
-import org.enso.macros.Func0
+import org.enso.macros.Funcx
 import org.enso.Logger
 import scala.annotation.tailrec
 
@@ -462,9 +462,9 @@ object Flexer {
 
   case class Many(body: Pattern) extends Pattern
 
-  class Rule[T](val expr: Pattern, var fn: Func0[T]) {
+  class Rule(val expr: Pattern, var fn: Funcx[_]) {
 
-    def run(f: Func0[T]): Unit = {
+    def run(f: Funcx[_]): Unit = {
       fn = f
     }
   }
@@ -515,7 +515,6 @@ object Flexer {
     var result: T
 
     def run(input: String): Result[T] = {
-      description() // Register group names etc.
       initialize()
       sreader = new StringReader(input)
       val numRead = sreader.read(buffer, 0, buffer.length)
@@ -537,8 +536,8 @@ object Flexer {
     val groupLabelMap: mutable.Map[Int, String] = mutable.Map()
     var group: Int                              = 0
 
-    def beginGroup(group: Group[_]): Unit =
-      throw new Exception("Should never be used without desugaring.")
+    def beginGroup(group: Group): Unit =
+      beginGroup(group.groupIx)
 
     def beginGroup(g: Int): Unit = {
       println(s"Begin ${groupLabel(g)}")
@@ -557,14 +556,13 @@ object Flexer {
       groups(group)()
     }
 
-    def description(): Unit
     def initialize(): Unit
 
-    var groupsx = new ArrayBuffer[Group[_]]()
+    var groupsx = new ArrayBuffer[Group]()
 
-    def defineGroup[T](label: String = "unnamed"): Group[T] = {
+    def defineGroup(label: String = "unnamed"): Group = {
       val groupIndex = groupsx.length
-      val group      = new Group[T](groupIndex)
+      val group      = new Group(groupIndex)
       groupsx.append(group)
       groupLabelMap += (groupIndex -> label)
       group
@@ -601,8 +599,6 @@ object Flexer {
     }
 
     def specialize(): String = {
-      description()
-
       val clsPath = this.getClass.getName.split("\\.")
       val clsName = clsPath.last
       val pkgName = clsPath.dropRight(1).mkString(".")
@@ -642,27 +638,36 @@ object Flexer {
     }
   }
 
-  class Group[T](val groupIx: Int) {
-    val rules = ArrayBuffer[Rule[T]]()
+  class Group(val groupIx: Int) {
+    var parent: Group = null
+    val rules         = ArrayBuffer[Rule]()
 
-    def rule(r: Rule[T]): Rule[T] = {
+    def rule(r: Rule): Rule = {
       rules.append(r)
       r
     }
 
-    def rule(expr: Pattern): Rule[T] = rule(new Rule[T](expr, null))
+    def rule(expr: Pattern): Rule = rule(new Rule(expr, null))
 
-    def cloneRulesFrom(that: Group[T]): Unit = {
+    def setParent(p: Group): Unit =
+      parent = p
+
+    def cloneRulesFrom(that: Group): Unit = {
       rules.appendAll(that.rules)
     }
 
     def ruleName(ruleIx: Int): String =
       s"group${groupIx}_rule$ruleIx()"
 
+    def allRules: Vector[Rule] = {
+      val myRules = rules.to[Vector]
+      if (parent != null) myRules ++ parent.allRules else myRules
+    }
+
     def buildAutomata(): NFA = {
       val nfa   = new NFA
       val start = nfa.addState()
-      val endpoints = rules.zipWithIndex.map {
+      val endpoints = allRules.zipWithIndex.map {
         case (rule, ix) => buildRuleAutomata(nfa, start, ix, rule)
       }
       val end = nfa.addState()
@@ -677,7 +682,7 @@ object Flexer {
       nfa: NFA,
       previous: Int,
       ruleIx: Int,
-      rule: Rule[_]
+      rule: Rule
     ): Int = {
       val end           = buildExprAutomata(nfa, previous, rule.expr)
       val resultCompute = "currentMatch = matchBuilder.result()"
@@ -731,7 +736,7 @@ object Flexer {
       var code = CodeGen(dfa).generate(groupIx)
       code += s"\n  groups($groupIx) = runGroup$groupIx"
 
-      rules.zipWithIndex.foreach {
+      allRules.zipWithIndex.foreach {
         case (rule, ruleIx) => {
           code += s"\n def ${ruleName(ruleIx)}() = {\n"
           code += rule.fn.toString + "\n}"

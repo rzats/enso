@@ -1,7 +1,9 @@
 package org.enso.syntax
 
-import org.enso.macros.Func0
+import org.enso.macros.Funcx
 import org.enso.syntax.Flexer
+import org.enso.syntax.Flexer.Pattern
+import org.enso.syntax.Flexer.Group
 
 class Parser extends Flexer.ParserBase[AST] {
   import org.enso.syntax.AST
@@ -25,12 +27,12 @@ class Parser extends Flexer.ParserBase[AST] {
   val eof: Flexer.Pattern  = char('\0')
   val none: Flexer.Pattern = Flexer.None_
 
-  def anyOf(alts: Seq[Flexer.Pattern]): Flexer.Pattern = {
+  final def anyOf(alts: Seq[Flexer.Pattern]): Flexer.Pattern = {
     alts.fold(none)(_ | _)
 //    alts.tail.fold(alts.head)(_ | _)
   }
 
-  def noneOf(chars: String): Flexer.Pattern = {
+  final def noneOf(chars: String): Flexer.Pattern = {
     val pointCodes  = chars.map(_.toInt).sorted
     val startPoints = 5 +: pointCodes.map(_ + 1) // FIXME 5 -> 0
     val endPoints   = pointCodes.map(_ - 1) :+ Int.MaxValue
@@ -40,12 +42,12 @@ class Parser extends Flexer.ParserBase[AST] {
     anyOf(patterns)
   }
 
-  def not(char: Char): Flexer.Pattern =
+  final def not(char: Char): Flexer.Pattern =
     noneOf(char.toString)
 
   final def replaceGroupSymbols(
     s: String,
-    lst: List[Flexer.Group[Unit]]
+    lst: List[Flexer.Group]
   ): String = {
     var out = s
     for ((grp, ix) <- lst.zipWithIndex) {
@@ -54,7 +56,13 @@ class Parser extends Flexer.ParserBase[AST] {
     out
   }
 
-  ////////////////////////////////////
+  ////// Cleaning //////
+
+  final override def initialize(): Unit = onBlockBegin(0)
+
+  //////////////
+  /// Result ///
+  //////////////
 
   var result: AST         = _
   var astStack: List[AST] = Nil
@@ -69,7 +77,32 @@ class Parser extends Flexer.ParserBase[AST] {
     astStack = astStack.tail
   }
 
-  ////// Offset Management //////
+  final def app(fn: String => AST): Unit =
+    app(fn(currentMatch))
+
+  final def app(t: AST): Unit =
+    if (result == null) {
+      result = t
+    } else {
+      result = AST.app(result, useLastOffset(), t)
+    }
+
+  /////////////////////////////////
+  /// Basic Char Classification ///
+  /////////////////////////////////
+
+  val NORMAL = defineGroup("Normal")
+
+  val lowerLetter: Pattern = range('a', 'z')
+  val upperLetter: Pattern = range('A', 'Z')
+  val digit: Pattern       = range('0', '9')
+  val alphaNum: Pattern    = digit | lowerLetter | upperLetter
+  val whitespace: Pattern  = ' '.many1
+  val newline: Pattern     = '\n'
+
+  //////////////
+  /// Offset ///
+  //////////////
 
   var lastOffset: Int = 0
 
@@ -79,7 +112,162 @@ class Parser extends Flexer.ParserBase[AST] {
     offset
   }
 
-  ////// Group Management //////
+  final def onWhitespace(): Unit = onWhitespace(0)
+  final def onWhitespace(shift: Int): Unit = logger.trace {
+    val diff = currentMatch.length + shift
+    lastOffset += diff
+    logger.log(s"lastOffset + $diff = $lastOffset")
+  }
+
+  //////////////////
+  /// IDENTIFIER ///
+  //////////////////
+
+  val indentChar: Pattern  = alphaNum | '_'
+  val identBody_ : Pattern = indentChar.many >> '\''.many
+  val variable: Pattern    = lowerLetter >> identBody_
+  val constructor: Pattern = upperLetter >> identBody_
+  val identBreaker: String = "^`!@#$%^&*()-=+[]{}|;:<>,./ \t\r\n\\"
+  val identErrSfx: Pattern = noneOf(identBreaker).many1
+
+  var identBody: AST.Identifier = _
+
+  final def onIdent(cons: String => AST.Identifier): Unit = logger.trace {
+    onIdent(cons(currentMatch))
+  }
+
+  final def onIdent(ast: AST.Identifier): Unit = logger.trace {
+    identBody = ast
+    beginGroup(IDENT_SFX_CHECK)
+  }
+
+  final def submitIdent(): Unit = logger.trace {
+    app(identBody)
+    identBody = null
+  }
+
+  final def onIdentErrSfx(): Unit = logger.trace {
+    val ast = AST.InvalidSuffix(identBody, currentMatch)
+    app(ast)
+    identBody = null
+    endGroup()
+  }
+
+  final def onNoIdentErrSfx(): Unit = logger.trace {
+    submitIdent()
+    endGroup();
+  }
+
+  final def finalizeIdent(): Unit = logger.trace {
+    if (identBody != null) submitIdent()
+  }
+
+  val IDENT_SFX_CHECK = defineGroup("Identifier Suffix Check")
+
+  // format: off
+  NORMAL          rule variable    run Funcx { onIdent(AST.Var) }
+  NORMAL          rule constructor run Funcx { onIdent(AST.Cons) }
+  NORMAL          rule "_"         run Funcx { onIdent(AST.Wildcard) }
+  IDENT_SFX_CHECK rule identErrSfx run Funcx { onIdentErrSfx() }
+  IDENT_SFX_CHECK rule pass        run Funcx { onNoIdentErrSfx() }
+  // format: on
+
+  ////////////////
+  /// Operator ///
+  ////////////////
+
+  val operatorChar: Pattern    = "!$%&*+-/<>?^~|:\\"
+  val operatorErrSfx: Pattern  = operatorChar | "=" | "," | "."
+  val eqOperators: Pattern     = "=" | "=="
+  val compOperators: Pattern   = ">=" | "<=" | "/="
+  val dotOperators: Pattern    = "." | ".." | "..."
+  val specialOperator: Pattern = eqOperators | compOperators | dotOperators
+  val operator: Pattern        = specialOperator | operatorChar.many1
+
+  val OPERATOR_SFX_CHECK = defineGroup("Operator Suffix Check")
+
+  NORMAL rule operator run Funcx { app(AST.Operator) }
+
+  //////////////////////////////////
+  /// NUMBER (e.g. 16_ff0000.ff) ///
+  //////////////////////////////////
+
+  val decimal: Pattern = digit.many1
+
+  var numberPart1: String = ""
+  var numberPart2: String = ""
+  var numberPart3: String = ""
+
+  final def numberReset(): Unit = logger.trace {
+    numberPart1 = ""
+    numberPart2 = ""
+    numberPart3 = ""
+  }
+
+  final def submitNumber(): Unit = logger.trace {
+    app(AST.Number(numberPart1, numberPart2, numberPart3))
+  }
+
+  final def onDecimal(): Unit = logger.trace {
+    numberPart2 = currentMatch
+    beginGroup(NUMBER_PHASE2)
+  }
+
+  final def onExplicitBase(): Unit = logger.trace {
+    endGroup()
+    numberPart1 = numberPart2
+    numberPart2 = currentMatch.substring(1)
+    beginGroup(NUMBER_PHASE3)
+  }
+
+  final def onNoExplicitBase(): Unit = logger.trace {
+    endGroup()
+    submitNumber()
+  }
+
+  final def onFractional(): Unit = logger.trace {
+    endGroup()
+    numberPart3 = currentMatch.substring(1)
+    submitNumber()
+  }
+
+  final def onNoFractional(): Unit = logger.trace {
+    endGroup()
+    submitNumber()
+  }
+
+  val NUMBER_PHASE2: Group = defineGroup("Number Phase 2")
+  val NUMBER_PHASE3: Group = defineGroup("Number Phase 3")
+
+  // format: off
+  NORMAL        rule decimal                 run Funcx { onDecimal() }
+  NUMBER_PHASE2 rule ("_" >> alphaNum.many1) run Funcx { onExplicitBase() }
+  NUMBER_PHASE2 rule pass                    run Funcx { onNoExplicitBase() }
+  NUMBER_PHASE3 rule ("." >> alphaNum.many1) run Funcx { onFractional() }
+  NUMBER_PHASE3 rule pass                    run Funcx { onNoFractional() }
+  // format: on
+
+  //////////////
+  /// String ///
+  //////////////
+
+  final def submitEmptyText(): Unit = {
+    app(AST.Text(Vector()))
+  }
+
+  NORMAL rule "'".many1 run Funcx {
+    val size = currentMatch.length
+    if (size == 2) submitEmptyText()
+//      else {
+//        pushQuoteSize(size)
+//        textBegin()
+//        beginGroup(STRING)
+//      }
+  }
+
+  //////////////
+  /// Groups ///
+  //////////////
 
   var groupOffsetStack: List[Int] = Nil
 
@@ -105,7 +293,18 @@ class Parser extends Flexer.ParserBase[AST] {
     app(grouped)
   }
 
-  ////// Block Management //////
+  val PARENSED = defineGroup("Parensed")
+  PARENSED.setParent(NORMAL)
+
+  NORMAL rule "(" run Funcx { onGroupBegin(); beginGroup(PARENSED) }
+  PARENSED rule ")" run Funcx {
+    onGroupEnd()
+    endGroup()
+  }
+
+  //////////////
+  /// Blocks ///
+  //////////////
 
   class BlockState(
     var isValid: Boolean,
@@ -185,7 +384,20 @@ class Parser extends Flexer.ParserBase[AST] {
   }
 
   final def onEmptyLine(): Unit = logger.trace {
+    onWhitespace(-1)
     emptyLines +:= useLastOffset()
+  }
+
+  final def onIndent(): Unit = logger.trace {
+    onWhitespace()
+    if (lastOffset == currentBlock.indent) {
+      onBlockNewline()
+    } else if (lastOffset > currentBlock.indent) {
+      onBlockBegin(useLastOffset())
+    } else {
+      onBlockEnd(useLastOffset())
+    }
+    endGroup()
   }
 
   final def onBlockEnd(newIndent: Int): Unit = logger.trace {
@@ -199,77 +411,17 @@ class Parser extends Flexer.ParserBase[AST] {
     }
   }
 
-  ////// Identifiers //////
+  val NEWLINE = defineGroup("Newline")
 
-  var identBody: AST.Identifier = null
+  // format: off
+  NORMAL  rule newline                        run Funcx { beginGroup(NEWLINE) }
+  NEWLINE rule ((whitespace|pass) >> newline) run Funcx { onEmptyLine() }
+  NEWLINE rule  (whitespace|pass)             run Funcx { onIndent() }
+  // format: on
 
-  def onIdent(cons: String => AST.Identifier): Unit = logger.trace {
-    onIdent(cons(currentMatch))
-  }
-
-  def onIdent(ast: AST.Identifier): Unit = logger.trace {
-    identBody = ast
-  }
-
-  def submitIdent(): Unit = logger.trace {
-    app(identBody)
-    identBody = null
-  }
-
-  def onIdentErrSfx(): Unit = logger.trace {
-    val ast = AST.InvalidSuffix(identBody, currentMatch)
-    app(ast)
-    identBody = null
-  }
-
-  def finalizeIdent(): Unit = logger.trace {
-    if (identBody != null) submitIdent()
-  }
-
-  ////// Numbers //////
-
-  var numberPart1: String = ""
-  var numberPart2: String = ""
-  var numberPart3: String = ""
-
-  final def numberReset(): Unit = logger.trace {
-    numberPart1 = ""
-    numberPart2 = ""
-    numberPart3 = ""
-  }
-
-  final def submitNumber(): Unit = logger.trace {
-    app(AST.Number(numberPart1, numberPart2, numberPart3))
-  }
-
-  ////// String //////
-
-  def submitEmptyText(): Unit = {
-    app(AST.Text(Vector()))
-  }
-
-  ////// Utils //////
-
-  final def app(fn: String => AST): Unit =
-    app(fn(currentMatch))
-
-  final def app(t: AST): Unit =
-    if (result == null) {
-      result = t
-    } else {
-      result = AST.app(result, useLastOffset(), t)
-    }
-
-  final def onWhitespace(): Unit =
-    onWhitespace(0)
-
-  final def onWhitespace(shift: Int): Unit = logger.trace {
-    val diff = currentMatch.length + shift
-    lastOffset += diff
-    logger.log(s"lastOffset + $diff = $lastOffset")
-  }
-
-  ////// Cleaning //////
+  ////////////////
+  /// Defaults ///
+  ////////////////
 
   final def onEOF(): Unit = logger.trace {
     finalizeIdent()
@@ -277,133 +429,8 @@ class Parser extends Flexer.ParserBase[AST] {
     submitModule()
   }
 
-  final def description(): Unit = {
-
-    ///////////////////////////////////////////
-
-    val lowerLetter = range('a', 'z')
-    val upperLetter = range('A', 'Z')
-    val digit       = range('0', '9')
-    val alphanum    = digit | lowerLetter | upperLetter
-
-    val decimal         = digit.many1
-    val indentChar      = lowerLetter | upperLetter | digit | '_'
-    val identBody       = indentChar.many >> '\''.many
-    val variable        = lowerLetter >> identBody
-    val constructor     = upperLetter >> identBody
-    val whitespace      = ' '.many1
-    val newline         = '\n'
-    val identBreaker    = "^`!@#$%^&*()-=+[]{}|;:<>,./ \t\r\n\\"
-    val operatorChar    = "!$%&*+-/<>?^~|:\\"
-    val operatorErrSfx  = operatorChar | "=" | "," | "."
-    val identErrSfx     = noneOf(identBreaker).many1
-    val specialOperator = "=" | "==" | ">=" | "<=" | "/="
-    val operator        = specialOperator | operatorChar.many1
-
-    val kwDef = "def"
-
-    val NORMAL        = defineGroup[Unit]("Normal")
-    val IDENT         = defineGroup[Unit]("Identifier")
-    val PARENSED      = defineGroup[Unit]("Parensed")
-    val NEWLINE       = defineGroup[Unit]("Newline")
-    val NUMBER_PHASE2 = defineGroup[Unit]("Number Phase 2")
-    val NUMBER_PHASE3 = defineGroup[Unit]("Number Phase 3")
-
-    // format: off
-    
-    ////// NORMAL //////
-    NORMAL rule whitespace  run Func0 {onWhitespace()}
-    NORMAL rule kwDef       run Func0 {println("def!!!")}
-    NORMAL rule variable    run Func0 {onIdent(AST.Var); beginGroup(IDENT)}
-    NORMAL rule constructor run Func0 {onIdent(AST.Cons); beginGroup(IDENT)}
-    NORMAL rule "_"         run Func0 {onIdent(AST.Wildcard); beginGroup(IDENT)}
-    NORMAL rule newline     run Func0 {beginGroup(NEWLINE)}
-    NORMAL rule "("         run Func0 {onGroupBegin(); beginGroup(PARENSED)}
-    NORMAL rule eof         run Func0 {onEOF()}
-    NORMAL rule operator    run Func0 {app(AST.Operator)}
-    NORMAL rule any         run Func0 {app(AST.Unrecognized)}
-    
-    
-    ////// IDENTIFIER //////
-    IDENT rule identErrSfx run Func0 {onIdentErrSfx();endGroup();}
-    IDENT rule pass        run Func0 {submitIdent();endGroup();}
-    
-
-    ////// PARENSED //////
-    PARENSED.cloneRulesFrom(NORMAL)
-    PARENSED rule ")" run Func0 {
-      onGroupEnd()
-      endGroup()
-    }
-
-    // format: on
-
-    ////////////////////////////////
-    // NUMBER (e.g. 16_ff0000.ff) //
-    ////////////////////////////////
-
-    NORMAL rule decimal run Func0 {
-      numberPart2 = currentMatch
-      beginGroup(NUMBER_PHASE2)
-    }
-
-    NUMBER_PHASE2 rule ("_" >> alphanum.many1) run Func0 {
-      endGroup()
-      numberPart1 = numberPart2
-      numberPart2 = currentMatch.substring(1)
-      beginGroup(NUMBER_PHASE3)
-    }
-
-    NUMBER_PHASE2 rule pass run Func0 {
-      endGroup()
-      submitNumber()
-    }
-
-    NUMBER_PHASE3 rule ("." >> alphanum.many1) run Func0 {
-      endGroup()
-      numberPart3 = currentMatch.substring(1)
-      submitNumber()
-    }
-
-    NUMBER_PHASE3 rule pass run Func0 {
-      endGroup()
-      submitNumber()
-    }
-
-    ////////////
-    // String //
-    ////////////
-
-    NORMAL rule "'".many1 run Func0 {
-      val size = currentMatch.length
-      if (size == 2) submitEmptyText()
-//      else {
-//        pushQuoteSize(size)
-//        textBegin()
-//        beginGroup(STRING)
-//      }
-    }
-
-    ////// NEWLINE //////
-    NEWLINE rule ((whitespace | pass) >> newline) run Func0 {
-      onWhitespace(-1)
-      onEmptyLine()
-    }
-
-    NEWLINE rule (whitespace | pass) run Func0 {
-      onWhitespace()
-      if (lastOffset == currentBlock.indent) {
-        onBlockNewline()
-      } else if (lastOffset > currentBlock.indent) {
-        onBlockBegin(useLastOffset())
-      } else {
-        onBlockEnd(useLastOffset())
-      }
-      endGroup()
-    }
-  }
-
-  final def initialize(): Unit =
-    onBlockBegin(0)
+  NORMAL rule whitespace run Funcx { onWhitespace() }
+  NORMAL rule eof run Funcx { onEOF() }
+  NORMAL rule any run Funcx { app(AST.Unrecognized) }
 
 }

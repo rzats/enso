@@ -64,7 +64,7 @@ object Func0 {
     c: Context
   )(fn: c.Tree): c.Expr[Func0[R]] = {
     import c.universe._
-    var names    = List[String]()
+    var grpRefs  = List[c.Tree]()
     var namesNum = 0
     object transformer extends Transformer {
       override def transform(tree: Tree): Tree = {
@@ -73,7 +73,7 @@ object Func0 {
             if (name.toString == "beginGroup") {
               val gname = args.head.toString()
               val id    = namesNum
-              names = gname :: names
+              grpRefs = args.head :: grpRefs
               namesNum += 1
               Apply(
                 Select(qual, name),
@@ -86,26 +86,31 @@ object Func0 {
       }
     }
 
-    val tree2 = transformer.transform(fn)
-    names = names.reverse
-
-    var lst = Select(
-      Select(
-        Select(Ident(TermName("scala")), TermName("collection")),
-        TermName("immutable")
-      ),
-      TermName("List")
-    )
-
-    val grpList = Apply(lst, names.map(s => Ident(TermName(s))))
-    val fnCode  = show(tree2)
+    grpRefs = grpRefs.reverse
+    val tree2  = transformer.transform(fn)
+    val fnCode = show(tree2)
     c.Expr[Func0[R]](
-      q"new Func0($fn, replaceGroupSymbols(${fnCode}, ${grpList}))"
+      q"new Func0($fn, replaceGroupSymbols(${fnCode}, ${grpRefs}))"
     )
   }
 }
 
 class Func0[R](fn: => R, description: String) extends Function0[R] {
+//  val description = ""
+  def apply():           R      = fn
+  override def toString: String = description
+}
+
+object Funcx {
+  implicit def apply[R](fn: => R): Funcx[R] = macro apply_impl[R]
+
+  def apply_impl[R: c.WeakTypeTag](c: Context)(fn: c.Tree): c.Expr[Funcx[R]] = {
+    import c.universe._
+    c.Expr[Funcx[R]](q"new Funcx($fn, ${show(fn)})")
+  }
+}
+
+class Funcx[R](fn: => R, description: String) extends Function0[R] {
   def apply():           R      = fn
   override def toString: String = description
 }
