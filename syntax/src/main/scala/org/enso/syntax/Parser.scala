@@ -8,31 +8,34 @@ import org.enso.syntax.Flexer.Group
 class Parser extends Flexer.ParserBase[AST] {
   import org.enso.syntax.AST
 
-  implicit final def charToExpr(char: Char): Flexer.Pattern =
+  implicit final def charToExpr(char: Char): Pattern =
     Flexer.Ran(char, char)
-  implicit final def stringToExpr(s: String): Flexer.Pattern =
+  implicit final def stringToExpr(s: String): Pattern =
     s.tail.foldLeft(char(s.head))(_ >> _)
 
   class ExtendedChar(_this: Char) {
-    final def ||(that: Char): Flexer.Pattern =
+    final def ||(that: Char): Pattern =
       Flexer.Or(char(_this), char(that))
   }
-  implicit final def extendChar(i: Char): ExtendedChar   = new ExtendedChar(i)
-  final def char(c: Char):                Flexer.Pattern = range(c, c)
-  final def range(start: Char, end: Char): Flexer.Pattern =
+  implicit final def extendChar(i: Char): ExtendedChar = new ExtendedChar(i)
+  final def char(c: Char):                Pattern      = range(c, c)
+  final def range(start: Char, end: Char): Pattern =
     Flexer.Ran(start, end)
-  final def range(start: Int, end: Int): Flexer.Pattern = Flexer.Ran(start, end)
-  val any: Flexer.Pattern  = range(5, Int.MaxValue) // FIXME 5 -> 0
-  val pass: Flexer.Pattern = Flexer.Pass
-  val eof: Flexer.Pattern  = char('\0')
-  val none: Flexer.Pattern = Flexer.None_
+  final def range(start: Int, end: Int): Pattern = Flexer.Ran(start, end)
+  val any: Pattern  = range(5, Int.MaxValue) // FIXME 5 -> 0
+  val pass: Pattern = Flexer.Pass
+  val eof: Pattern  = char('\0')
+  val none: Pattern = Flexer.None_
 
-  final def anyOf(alts: Seq[Flexer.Pattern]): Flexer.Pattern = {
+  final def anyOf(chars: String): Pattern =
+    anyOf(chars.map(char))
+
+  final def anyOf(alts: Seq[Pattern]): Pattern = {
     alts.fold(none)(_ | _)
 //    alts.tail.fold(alts.head)(_ | _)
   }
 
-  final def noneOf(chars: String): Flexer.Pattern = {
+  final def noneOf(chars: String): Pattern = {
     val pointCodes  = chars.map(_.toInt).sorted
     val startPoints = 5 +: pointCodes.map(_ + 1) // FIXME 5 -> 0
     val endPoints   = pointCodes.map(_ - 1) :+ Int.MaxValue
@@ -42,7 +45,7 @@ class Parser extends Flexer.ParserBase[AST] {
     anyOf(patterns)
   }
 
-  final def not(char: Char): Flexer.Pattern =
+  final def not(char: Char): Pattern =
     noneOf(char.toString)
 
   final def replaceGroupSymbols(
@@ -123,13 +126,6 @@ class Parser extends Flexer.ParserBase[AST] {
   /// IDENTIFIER ///
   //////////////////
 
-  val indentChar: Pattern  = alphaNum | '_'
-  val identBody_ : Pattern = indentChar.many >> '\''.many
-  val variable: Pattern    = lowerLetter >> identBody_
-  val constructor: Pattern = upperLetter >> identBody_
-  val identBreaker: String = "^`!@#$%^&*()-=+[]{}|;:<>,./ \t\r\n\\"
-  val identErrSfx: Pattern = noneOf(identBreaker).many1
-
   var identBody: AST.Identifier = _
 
   final def onIdent(cons: String => AST.Identifier): Unit = logger.trace {
@@ -162,6 +158,13 @@ class Parser extends Flexer.ParserBase[AST] {
     if (identBody != null) submitIdent()
   }
 
+  val indentChar: Pattern  = alphaNum | '_'
+  val identBody_ : Pattern = indentChar.many >> '\''.many
+  val variable: Pattern    = lowerLetter >> identBody_
+  val constructor: Pattern = upperLetter >> identBody_
+  val identBreaker: String = "^`!@#$%^&*()-=+[]{}|;:<>,./ \t\r\n\\"
+  val identErrSfx: Pattern = noneOf(identBreaker).many1
+
   val IDENT_SFX_CHECK = defineGroup("Identifier Suffix Check")
 
   // format: off
@@ -176,23 +179,51 @@ class Parser extends Flexer.ParserBase[AST] {
   /// Operator ///
   ////////////////
 
-  val operatorChar: Pattern    = "!$%&*+-/<>?^~|:\\"
-  val operatorErrSfx: Pattern  = operatorChar | "=" | "," | "."
-  val eqOperators: Pattern     = "=" | "=="
-  val compOperators: Pattern   = ">=" | "<=" | "/="
+  final def onOp(cons: String => AST.Identifier): Unit = logger.trace {
+    onOp(cons(currentMatch))
+  }
+
+  final def onNoModOp(cons: String => AST.Identifier): Unit = logger.trace {
+    onNoModOp(cons(currentMatch))
+  }
+
+  final def onOp(ast: AST.Identifier): Unit = logger.trace {
+    identBody = ast
+    beginGroup(OPERATOR_MOD_CHECK)
+  }
+
+  final def onNoModOp(ast: AST.Identifier): Unit = logger.trace {
+    identBody = ast
+    beginGroup(OPERATOR_SFX_CHECK)
+  }
+
+  final def onModifier(): Unit = logger.trace {
+    identBody = AST.Modifier(identBody.asInstanceOf[AST.Operator].name)
+  }
+
+  val operatorChar: Pattern    = anyOf("!$%&*+-/<>?^~|:\\")
+  val operatorErrChar: Pattern = operatorChar | "=" | "," | "."
+  val operatorErrSfx: Pattern  = operatorErrChar.many1
+  val eqOperators: Pattern     = "=" | "==" | ">=" | "<=" | "/="
   val dotOperators: Pattern    = "." | ".." | "..."
-  val specialOperator: Pattern = eqOperators | compOperators | dotOperators
-  val operator: Pattern        = specialOperator | operatorChar.many1
+  val operator: Pattern        = operatorChar.many1
+  val noModOperator: Pattern   = eqOperators | dotOperators | ","
 
   val OPERATOR_SFX_CHECK = defineGroup("Operator Suffix Check")
+  val OPERATOR_MOD_CHECK = defineGroup("Operator Modifier Check")
+  OPERATOR_MOD_CHECK.setParent(OPERATOR_SFX_CHECK)
 
-  NORMAL rule operator run Funcx { app(AST.Operator) }
+  // format: off
+  NORMAL             rule operator       run Funcx { onOp(AST.Operator) }
+  NORMAL             rule noModOperator  run Funcx { onNoModOp(AST.Operator) }
+  OPERATOR_MOD_CHECK rule "="            run Funcx { onModifier() }
+  OPERATOR_SFX_CHECK rule operatorErrSfx run Funcx { onIdentErrSfx() }
+  OPERATOR_SFX_CHECK rule pass           run Funcx { onNoIdentErrSfx() }
+  // format: on
 
   //////////////////////////////////
   /// NUMBER (e.g. 16_ff0000.ff) ///
   //////////////////////////////////
-
-  val decimal: Pattern = digit.many1
 
   var numberPart1: String = ""
   var numberPart2: String = ""
@@ -235,6 +266,8 @@ class Parser extends Flexer.ParserBase[AST] {
     endGroup()
     submitNumber()
   }
+
+  val decimal: Pattern = digit.many1
 
   val NUMBER_PHASE2: Group = defineGroup("Number Phase 2")
   val NUMBER_PHASE3: Group = defineGroup("Number Phase 3")

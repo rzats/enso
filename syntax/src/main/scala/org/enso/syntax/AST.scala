@@ -99,6 +99,14 @@ object AST {
     override def show(out: CodeBuilder): Unit = out ++= name
   }
 
+  final case class Modifier(name: String) extends Identifier {
+    override def span: Int = name.length + 1
+    override def show(out: CodeBuilder): Unit = {
+      out ++= name
+      out += '='
+    }
+  }
+
   final case class InvalidSuffix(elem: Identifier, suffix: String)
       extends InvalidAST {
     override def span: Int = elem.span + suffix.length
@@ -220,12 +228,18 @@ object AST {
 
   ////// Unit //////
 
-  final case class Module(block: Block) extends AST {
-    override def span: Int =
-      block.span
-
-    override def show(): String =
-      block.show().drop(1)
+  final case class Module(lines: List[Line]) extends AST {
+    override def span: Int = lines.foldLeft(0) { case (s, l) => s + l.span }
+    override def show(out: CodeBuilder): Unit = lines match {
+      case Nil =>
+      case l :: ls => {
+        l.show(out)
+        ls.foreach { ll =>
+          out += '\n'
+          ll.show(out)
+        }
+      }
+    }
   }
 
   ////////////////////////////////

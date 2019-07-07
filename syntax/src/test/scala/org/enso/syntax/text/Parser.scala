@@ -12,8 +12,18 @@ class LexerSpec extends FlatSpec with Matchers {
   def parse(input: String) =
     parserCls.newInstance().run(input)
 
-  def assertModule(input: String, result: AST): Assertion =
-    assert(parse(input) == Flexer.Success(result))
+  def assertModule(input: String, result: AST): Assertion = {
+    val tt = parse(input)
+    tt match {
+      case Flexer.Success(value) =>
+        assert(value == result)
+        assert(value.show() == input)
+      case a: Flexer.Partial[_] =>
+        fail(s"Parsing failed, consumed ${a.offset} chars")
+      case a: Flexer.Failure[_] =>
+        fail(s"Parsing failed, consumed ${a.offset} chars")
+    }
+  }
 
   def assertExpr(input: String, result: AST): Assertion = {
     val tt = parse(input)
@@ -35,13 +45,14 @@ class LexerSpec extends FlatSpec with Matchers {
     it should parseTitle(input) in { assertExpr(input, result) }
 
   case object test {
-    def expr(input: String): ParseTest = ParseTest(input)
+    def expr(input: String):   ParseTest = ParseTest(input, assertExpr)
+    def module(input: String): ParseTest = ParseTest(input, assertModule)
   }
 
-  case class ParseTest(input: String) {
+  case class ParseTest(input: String, tester: (String, AST) => Assertion) {
 
     def as(result: AST): Unit =
-      it should parseTitle(input) in { assertExpr(input, result) }
+      it should parseTitle(input) in { tester(input, result) }
   }
 
 //  def unexpectedSuffix(input: String): Symbol = {
@@ -55,6 +66,7 @@ class LexerSpec extends FlatSpec with Matchers {
     "parse " + escape(str)
 
   // format: off
+  
   /////////////////
   // Identifiers //
   /////////////////
@@ -76,39 +88,41 @@ class LexerSpec extends FlatSpec with Matchers {
   // Operators //
   ///////////////
 
-  test expr "="   as Operator("=")
+  test expr "++"   as Operator("++")
+  test expr "="    as Operator("=")
   test expr "=="   as Operator("==")
-  test expr "==="  as Operator("==") // :: unexpectedSuffix("="))
-  test expr ":"    as Operator(":") 
-  test expr ","    as Operator(",") 
-  test expr "."    as Operator(".") 
+  test expr ":"    as Operator(":")
+  test expr ","    as Operator(",")
+  test expr "."    as Operator(".")
   test expr ".."   as Operator("..")
   test expr "..."  as Operator("...")
-  test expr "...." as Operator("...")// :: unexpectedSuffix("."))
   test expr ">="   as Operator(">=")
   test expr "<="   as Operator("<=")
   test expr "/="   as Operator("/=")
-//  test expr "+="   as Modifier("+=")
-//  test expr "-="   as Modifier("-=")
-//  test expr "-=-"  as Modifier("-=") // :: unexpectedSuffix("-"))
-//
-//
-//
-//  ////////////
-//  // Layout //
-//  ////////////
-//
-//  expr(""     , Nil)
-//  expr("\n"   , EOL        )
-//  expr("\n\n" , EOL :: EOL )
-//  expr("\r"   , EOL        )
-//  expr("\r\n" , EOL        )
-//  expr("\n\r" , EOL         :: EOL)
-//  expr("(a)"  , GroupBegin  :: Var("a") :: GroupEnd )
-//  expr("[a]"  , ListBegin   :: Var("a") :: ListEnd  )
-//  expr("{a}"  , RecordBegin :: Var("a") :: RecordEnd)
-//
-//
+  test expr "+="   as Modifier("+")
+  test expr "-="   as Modifier("-")
+  test expr "==="  as InvalidSuffix(Operator("==")  , "=")
+  test expr "...." as InvalidSuffix(Operator("...") , ".")
+  test expr ">=="  as InvalidSuffix(Operator(">=")  , "=")
+  test expr "+=="  as InvalidSuffix(Operator("+")   , "==")
+
+
+
+  ////////////
+  // Layout //
+  ////////////
+
+  test module ""     as Wildcard
+//  test expr "\n"   as EOL
+//  test expr "\n\n" as EOL :: EOL
+//  test expr "\r"   as EOL
+//  test expr "\r\n" as EOL
+//  test expr "\n\r" as EOL         :: EOL
+//  test expr "(a)"  as GroupBegin  :: Var("a") :: GroupEnd
+//  test expr "[a]"  as ListBegin   :: Var("a") :: ListEnd
+//  test expr "{a}"  as RecordBegin :: Var("a") :: RecordEnd
+
+
 //
 //  /////////////
 //  // Numbers //
