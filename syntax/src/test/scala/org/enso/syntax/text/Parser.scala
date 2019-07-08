@@ -29,6 +29,7 @@ class LexerSpec extends FlatSpec with Matchers {
     val tt = parse(input)
     tt match {
       case Flexer.Success(value) => {
+        if (value == null) fail("Parser returned null")
         val module = value.asInstanceOf[Module]
         module.lines match {
           case Nil =>
@@ -117,7 +118,6 @@ class LexerSpec extends FlatSpec with Matchers {
   test expr "+=="  as InvalidSuffix(Operator("+")   , "==")
 
 
-
   ////////////
   // Layout //
   ////////////
@@ -143,6 +143,7 @@ class LexerSpec extends FlatSpec with Matchers {
   test expr "07"       as Number.int("07")
   test expr "10_7"     as Number.basedInt("10", "7")
   test expr "16_ff"    as Number.basedInt("16", "ff")
+  test expr "16_"      as Number.basedInt("16", "ff")
 //  test expr "7.5"      as Number(10,7::Nil,Nil) :: Operator(".") :: Number(10,5::Nil,Nil))
 //  test expr "7_12"     as Number(7,1::2::Nil,Nil))
 //  test expr "7_12.34"  as Number(7,1::2::Nil,3::4::Nil))

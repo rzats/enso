@@ -320,14 +320,14 @@ object Flexer {
           case b :: bs => {
             if (!first) code.add("else ")
             code._ifLTE("codePoint", b.rangeEnd) {
-              var targetStatex = b.target.state
+              var targetState = b.target.state
               if (b.target.state == -1) {
                 b.target.code match {
-                  case None    => targetStatex = -2
+                  case None    => targetState = -2
                   case Some(c) => code.addLine(c)
                 }
               }
-              code.add(targetStatex.toString())
+              code.add(targetState.toString())
             }
             go(bs, first = false)
           }
