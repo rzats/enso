@@ -487,8 +487,6 @@ object Flexer {
 //  }
 
   abstract class ParserBase[T] {
-//    import ParserBase._
-
     import java.io.Reader
     import java.io.StringReader
     import scala.collection.mutable.StringBuilder
@@ -518,7 +516,8 @@ object Flexer {
       initialize()
       sreader = new StringReader(input)
       val numRead = sreader.read(buffer, 0, buffer.length)
-      bufferLen   = numRead
+      bufferLen = numRead
+      if (numRead == -1) bufferLen = 0
       currentChar = getNextChar
       var r = -1
       while (r == -1) {

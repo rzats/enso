@@ -61,7 +61,9 @@ class Parser extends Flexer.ParserBase[AST] {
 
   ////// Cleaning //////
 
-  final override def initialize(): Unit = onBlockBegin(0)
+  final override def initialize(): Unit = {
+    onBlockBegin(0)
+  }
 
   //////////////
   /// Result ///
@@ -236,7 +238,9 @@ class Parser extends Flexer.ParserBase[AST] {
   }
 
   final def submitNumber(): Unit = logger.trace {
-    app(AST.Number(numberPart1, numberPart2, numberPart3))
+    val base = if (numberPart1 == "") None else Some(numberPart1)
+    val frac = if (numberPart3 == "") None else Some(numberPart3)
+    app(AST.Number(base, numberPart2, frac))
   }
 
   final def onDecimal(): Unit = logger.trace {
@@ -343,7 +347,7 @@ class Parser extends Flexer.ParserBase[AST] {
     var isValid: Boolean,
     var indent: Int,
     var emptyLines: List[Int],
-    var firstLine: AST,
+    var firstLine: AST.RequiredLine,
     var lines: List[AST.Line]
   )
   var blockStack: List[BlockState] = Nil
@@ -385,8 +389,14 @@ class Parser extends Flexer.ParserBase[AST] {
   }
 
   final def submitModule(): Unit = logger.trace {
-    val block  = buildBlock()
-    val module = AST.Module(block)
+    submitLine()
+    val el  = currentBlock.emptyLines.reverse.map(AST.Line.empty)
+    val el2 = emptyLines.reverse.map(AST.Line.empty)
+    val firstLines =
+      if (currentBlock.firstLine == null) el
+      else currentBlock.firstLine.to[AST.Line] :: el
+    val lines  = firstLines ++ currentBlock.lines.reverse ++ el2
+    val module = AST.Module(lines.head, lines.tail)
     result = module
     logger.endGroup()
   }
@@ -395,14 +405,21 @@ class Parser extends Flexer.ParserBase[AST] {
     if (result != null) {
       if (currentBlock.firstLine == null) {
         currentBlock.emptyLines = emptyLines
-        currentBlock.firstLine  = result
+        currentBlock.firstLine  = AST.RequiredLine(useLastOffset(), result)
       } else {
         val optResult = Option(result)
         emptyLines.foreach(currentBlock.lines +:= AST.Line(_, None))
         currentBlock.lines +:= AST.Line(useLastOffset(), optResult)
       }
       emptyLines = Nil
+    } else {
+      pushEmptyLine()
     }
+    result = null
+  }
+
+  def pushEmptyLine(): Unit = logger.trace {
+    emptyLines +:= useLastOffset()
   }
 
   final def onBlockBegin(newIndent: Int): Unit = logger.trace {
@@ -411,26 +428,32 @@ class Parser extends Flexer.ParserBase[AST] {
     logger.beginGroup()
   }
 
-  final def onBlockNewline(): Unit = logger.trace {
-    submitLine()
-    result = null
-  }
-
   final def onEmptyLine(): Unit = logger.trace {
     onWhitespace(-1)
-    emptyLines +:= useLastOffset()
+    pushEmptyLine()
   }
 
-  final def onIndent(): Unit = logger.trace {
+  final def onEOFLine(): Unit = logger.trace {
+    endGroup()
+    onWhitespace(-1)
+    onEOF()
+  }
+
+  final def onNewLine(): Unit = logger.trace {
+    submitLine()
+    beginGroup(NEWLINE)
+  }
+
+  final def onBlockNewline(): Unit = logger.trace {
+    endGroup()
     onWhitespace()
     if (lastOffset == currentBlock.indent) {
-      onBlockNewline()
+      submitLine()
     } else if (lastOffset > currentBlock.indent) {
       onBlockBegin(useLastOffset())
     } else {
       onBlockEnd(useLastOffset())
     }
-    endGroup()
   }
 
   final def onBlockEnd(newIndent: Int): Unit = logger.trace {
@@ -447,9 +470,10 @@ class Parser extends Flexer.ParserBase[AST] {
   val NEWLINE = defineGroup("Newline")
 
   // format: off
-  NORMAL  rule newline                        run Funcx { beginGroup(NEWLINE) }
+  NORMAL  rule newline                        run Funcx { onNewLine() }
   NEWLINE rule ((whitespace|pass) >> newline) run Funcx { onEmptyLine() }
-  NEWLINE rule  (whitespace|pass)             run Funcx { onIndent() }
+  NEWLINE rule ((whitespace|pass) >> eof)     run Funcx { onEOFLine() }
+  NEWLINE rule  (whitespace|pass)             run Funcx { onBlockNewline() }
   // format: on
 
   ////////////////

@@ -28,9 +28,20 @@ class LexerSpec extends FlatSpec with Matchers {
   def assertExpr(input: String, result: AST): Assertion = {
     val tt = parse(input)
     tt match {
-      case Flexer.Success(value) =>
-        assert(value.asInstanceOf[Module].block.firstLine == result)
-        assert(value.show() == input)
+      case Flexer.Success(value) => {
+        val module = value.asInstanceOf[Module]
+        module.lines match {
+          case Nil =>
+            module.firstLine.elem match {
+              case None => fail("Empty expression")
+              case Some(e) => {
+                assert(e == result)
+                assert(value.show() == input)
+              }
+            }
+          case _ => fail("Multi-line block")
+        }
+      }
       case a: Flexer.Partial[_] =>
         fail(s"Parsing failed, consumed ${a.offset} chars")
       case a: Flexer.Failure[_] =>
@@ -62,8 +73,7 @@ class LexerSpec extends FlatSpec with Matchers {
   def escape(str: String): String =
     str.replace("\n", "\\n")
 
-  def parseTitle(str: String): String =
-    "parse " + escape(str)
+  def parseTitle(str: String): String = s"parse `${escape(str)}`"
 
   // format: off
   
@@ -112,27 +122,31 @@ class LexerSpec extends FlatSpec with Matchers {
   // Layout //
   ////////////
 
-  test module ""     as Wildcard
-//  test expr "\n"   as EOL
-//  test expr "\n\n" as EOL :: EOL
-//  test expr "\r"   as EOL
-//  test expr "\r\n" as EOL
-//  test expr "\n\r" as EOL         :: EOL
-//  test expr "(a)"  as GroupBegin  :: Var("a") :: GroupEnd
-//  test expr "[a]"  as ListBegin   :: Var("a") :: ListEnd
-//  test expr "{a}"  as RecordBegin :: Var("a") :: RecordEnd
+  test module ""      as Module.oneLiner(Line.empty(0))
+  test module "\n"    as Module(Line.empty(0), Line.empty(0) :: Nil)
+  test module "  \n " as Module(Line.empty(2), Line.empty(1) :: Nil)
+  test module "\n\n"  as Module(Line.empty(0), List.fill(2)(Line.empty(0)))
+//  test module "\r"   as EOL
+//  test module "\r\n" as EOL
+//  test module "\n\r" as EOL         :: EOL
+//  test module "(a)"  as GroupBegin  :: Var("a") :: GroupEnd
+//  test module "[a]"  as ListBegin   :: Var("a") :: ListEnd
+//  test module "{a}"  as RecordBegin :: Var("a") :: RecordEnd
 
 
-//
-//  /////////////
-//  // Numbers //
-//  /////////////
-//
-//  expr("7"          , Number(10,7::Nil,Nil))
-//  expr("7.5"        , Number(10,7::Nil,Nil) :: Operator(".") :: Number(10,5::Nil,Nil))
-//  expr("7_12"       , Number(7,1::2::Nil,Nil))
-//  expr("7_12.34"    , Number(7,1::2::Nil,3::4::Nil))
-//  expr("16_9acdf"   , Number(16,9::10::12::13::15::Nil,Nil))
+
+  /////////////
+  // Numbers //
+  /////////////
+
+  test expr "7"        as Number.int("7")
+  test expr "07"       as Number.int("07")
+  test expr "10_7"     as Number.basedInt("10", "7")
+  test expr "16_ff"    as Number.basedInt("16", "ff")
+//  test expr "7.5"      as Number(10,7::Nil,Nil) :: Operator(".") :: Number(10,5::Nil,Nil))
+//  test expr "7_12"     as Number(7,1::2::Nil,Nil))
+//  test expr "7_12.34"  as Number(7,1::2::Nil,3::4::Nil))
+//  test expr "16_9acdf" as Number(16,9::10::12::13::15::Nil,Nil))
 //
 //
 //

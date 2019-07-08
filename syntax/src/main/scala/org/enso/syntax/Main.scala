@@ -58,7 +58,7 @@ object Main extends App {
 
   val p1   = new Parser
   val code = p1.specialize()
-  val p2   = p1.debugRun("name")
+  val p2   = p1.debugRun("   \n  \n \n ")
   pprint(p2)
   println("CODE LEN:", code.length) //136500
 

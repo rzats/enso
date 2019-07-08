@@ -2,6 +2,10 @@ package org.enso.syntax
 
 object AST {
 
+  trait Convertible[-Source, +Target] {
+    def convert(source: Source): Target
+  }
+
   final class CodeBuilder {
     val stringBuilder: StringBuilder = new StringBuilder()
     var indent: Int                  = 0
@@ -49,6 +53,9 @@ object AST {
       show(out)
       out.result()
     }
+
+    def to[A](implicit converter: Convertible[this.type, A]): A =
+      converter.convert(this)
   }
 
   /////////////////
@@ -137,19 +144,29 @@ object AST {
 
   ////// Number //////
 
-  final case class Number(base: String, int: String, frac: String) extends AST {
-    override def span: Int = base.length + int.length + frac.length
-    override def show(out: CodeBuilder): Unit = {
-      if (base != "10") {
-        out ++= base.toString()
-        out += '_'
-      }
-      out ++= int
-      if (frac != "") {
-        out += '.'
-        out ++= frac
-      }
+  final case class Number(
+    base: Option[String],
+    int: String,
+    frac: Option[String]
+  ) extends AST {
+    override def span: Int = {
+      val baseSpan = base.map(_.length + 1).getOrElse(0)
+      val intSpan  = int.length
+      val fracSpan = frac.map(_.length + 1).getOrElse(0)
+      baseSpan + intSpan + fracSpan
     }
+    override def show(out: CodeBuilder): Unit = {
+      val pfx = base.map(_ + "_").getOrElse("")
+      val sfx = frac.map("." + _).getOrElse("")
+      out ++= pfx + int + sfx
+    }
+  }
+
+  object Number {
+    def int(int: String): Number = Number(None, int, None)
+
+    def basedInt(base: String, int: String): Number =
+      Number(Some(base), int, None)
   }
 
   ////// Text //////
@@ -181,7 +198,7 @@ object AST {
   final case class Block(
     indent: Int,
     emptyLines: Vector[Int],
-    firstLine: AST,
+    firstLine: RequiredLine,
     lines: Vector[Line]
   ) extends AST {
 
@@ -214,11 +231,21 @@ object AST {
     }
   }
 
+  final case class RequiredLine(span: Int, elem: AST) extends Symbol {}
+
   final case class Line(span: Int, elem: Option[AST]) extends Symbol {
     override def show(out: CodeBuilder): Unit = {
       elem.show(out)
       out ++= " " * (span - elem.span)
     }
+  }
+
+  object Line {
+    def empty(span: Int) = Line(span, None)
+  }
+
+  implicit object RequiredLine_to_Line extends Convertible[RequiredLine, Line] {
+    def convert(src: RequiredLine): Line = Line(src.span, Some(src.elem))
   }
 
   final case class InvalidBlock(block: Block) extends InvalidAST {
@@ -228,18 +255,20 @@ object AST {
 
   ////// Unit //////
 
-  final case class Module(lines: List[Line]) extends AST {
-    override def span: Int = lines.foldLeft(0) { case (s, l) => s + l.span }
-    override def show(out: CodeBuilder): Unit = lines match {
-      case Nil =>
-      case l :: ls => {
-        l.show(out)
-        ls.foreach { ll =>
-          out += '\n'
-          ll.show(out)
-        }
+  final case class Module(firstLine: Line, lines: List[Line]) extends AST {
+    override def span: Int =
+      lines.foldLeft(firstLine.span) { case (s, l) => s + l.span }
+    override def show(out: CodeBuilder): Unit = {
+      firstLine.show(out)
+      lines.foreach { line =>
+        out += '\n'
+        line.show(out)
       }
     }
+  }
+
+  object Module {
+    def oneLiner(line: Line): Module = Module(line, List())
   }
 
   ////////////////////////////////
@@ -252,7 +281,7 @@ object AST {
   def block(
     indent: Int,
     emptyLines: List[Int],
-    firstLine: AST,
+    firstLine: RequiredLine,
     lines: List[Line]
 //    valid: Boolean
   ): Block = {
@@ -262,4 +291,5 @@ object AST {
 //    val block       = Block(indent, vEmptyLines, firstLine, vLines)
 //    if (valid) block else Invalid(InvalidBlock(block))
   }
+
 }
