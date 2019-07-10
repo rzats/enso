@@ -472,11 +472,12 @@ object Flexer {
 //  object ParserBase {
 
   trait Result[T] {
+    val offset: Int
     def map[S](fn: T => S): Result[S]
   }
 
-  final case class Success[T](value: T) extends Result[T] {
-    def map[S](fn: T => S) = Success(fn(value))
+  final case class Success[T](value: T, offset: Int) extends Result[T] {
+    def map[S](fn: T => S) = Success(fn(value), offset)
   }
   final case class Partial[T](value: T, offset: Int) extends Result[T] {
     def map[S](fn: T => S) = Partial(fn(value), offset)
@@ -484,6 +485,10 @@ object Flexer {
   final case class Failure[T](value: T, offset: Int) extends Result[T] {
     def map[S](fn: T => S) = Failure(fn(value), offset)
   }
+  final case class InternalFailure[T](offset: Int) extends Result[T] {
+    def map[S](fn: T => S) = InternalFailure(offset)
+  }
+
 //  }
 
   abstract class ParserBase[T] {
@@ -510,7 +515,7 @@ object Flexer {
 
     val logger = new Logger()
 
-    var result: T
+    def getResult(): Option[T]
 
     def run(input: String): Result[T] = {
       initialize()
@@ -524,9 +529,13 @@ object Flexer {
         r = step()
       }
 
-      if (offset >= bufferLen) Success(result)
-      else if (r == -2) Failure(result, offset)
-      else Partial(result, offset)
+      getResult() match {
+        case None => InternalFailure(offset)
+        case Some(result) =>
+          if (offset >= bufferLen) Success(result, offset)
+          else if (r == -2) Failure(result, offset)
+          else Partial(result, offset)
+      }
     }
 
     // Group management

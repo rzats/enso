@@ -15,21 +15,17 @@ class LexerSpec extends FlatSpec with Matchers {
   def assertModule(input: String, result: AST): Assertion = {
     val tt = parse(input)
     tt match {
-      case Flexer.Success(value) =>
+      case Flexer.Success(value, offset) =>
         assert(value == result)
         assert(value.show() == input)
-      case a: Flexer.Partial[_] =>
-        fail(s"Parsing failed, consumed ${a.offset} chars")
-      case a: Flexer.Failure[_] =>
-        fail(s"Parsing failed, consumed ${a.offset} chars")
+      case _ => fail(s"Parsing failed, consumed ${tt.offset} chars")
     }
   }
 
   def assertExpr(input: String, result: AST): Assertion = {
     val tt = parse(input)
     tt match {
-      case Flexer.Success(value) => {
-        if (value == null) fail("Parser returned null")
+      case Flexer.Success(value, offset) => {
         val module = value.asInstanceOf[Module]
         module.lines match {
           case Nil =>
@@ -43,10 +39,7 @@ class LexerSpec extends FlatSpec with Matchers {
           case _ => fail("Multi-line block")
         }
       }
-      case a: Flexer.Partial[_] =>
-        fail(s"Parsing failed, consumed ${a.offset} chars")
-      case a: Flexer.Failure[_] =>
-        fail(s"Parsing failed, consumed ${a.offset} chars")
+      case _ => fail(s"Parsing failed, consumed ${tt.offset} chars")
     }
   }
 

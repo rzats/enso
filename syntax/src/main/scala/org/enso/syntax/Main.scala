@@ -61,7 +61,7 @@ object Main extends App {
   val p2   = p1.debugRun(")(  ")
   pprint(p2)
   p2 match {
-    case Flexer.Success(v) =>
+    case Flexer.Success(v, _) =>
       println(v.span)
   }
   println("CODE LEN:", code.length) //136500

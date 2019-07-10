@@ -59,6 +59,11 @@ class Parser extends Flexer.ParserBase[AST] {
     out
   }
 
+  final def withSome[T, S](opt: Option[T])(f: T => S): S = opt match {
+    case None    => throw new Error("Internal Error")
+    case Some(a) => f(a)
+  }
+
   ////// Cleaning //////
 
   final override def initialize(): Unit = {
@@ -69,12 +74,14 @@ class Parser extends Flexer.ParserBase[AST] {
   /// Result ///
   //////////////
 
-  var result: AST         = _
-  var astStack: List[AST] = Nil
+  override def getResult() = result
+
+  var result: Option[AST]         = None
+  var astStack: List[Option[AST]] = Nil
 
   final def pushAST(): Unit = logger.trace {
     astStack +:= result
-    result = null
+    result = None
   }
 
   final def popAST(): Unit = logger.trace {
@@ -86,11 +93,10 @@ class Parser extends Flexer.ParserBase[AST] {
     app(fn(currentMatch))
 
   final def app(t: AST): Unit =
-    if (result == null) {
-      result = t
-    } else {
-      result = AST.App(result, useLastOffset(), t)
-    }
+    result = Some(result match {
+      case None    => t
+      case Some(r) => AST.App(r, useLastOffset(), t)
+    })
 
   /////////////////////////////////
   /// Basic Char Classification ///
@@ -140,27 +146,31 @@ class Parser extends Flexer.ParserBase[AST] {
   /// IDENTIFIER ///
   //////////////////
 
-  var identBody: AST.Identifier = _
+  var identBody: Option[AST.Identifier] = None
 
   final def onIdent(cons: String => AST.Identifier): Unit = logger.trace {
     onIdent(cons(currentMatch))
   }
 
   final def onIdent(ast: AST.Identifier): Unit = logger.trace {
-    identBody = ast
+    identBody = Some(ast)
     beginGroup(IDENT_SFX_CHECK)
   }
 
   final def submitIdent(): Unit = logger.trace {
-    app(identBody)
-    identBody = null
+    withSome(identBody) { body =>
+      app(body)
+      identBody = None
+    }
   }
 
   final def onIdentErrSfx(): Unit = logger.trace {
-    val ast = AST.Identifier.InvalidSuffix(identBody, currentMatch)
-    app(ast)
-    identBody = null
-    endGroup()
+    withSome(identBody) { body =>
+      val ast = AST.Identifier.InvalidSuffix(body, currentMatch)
+      app(ast)
+      identBody = None
+      endGroup()
+    }
   }
 
   final def onNoIdentErrSfx(): Unit = logger.trace {
@@ -169,7 +179,7 @@ class Parser extends Flexer.ParserBase[AST] {
   }
 
   final def finalizeIdent(): Unit = logger.trace {
-    if (identBody != null) submitIdent()
+    if (identBody != None) submitIdent()
   }
 
   val indentChar: Pattern  = alphaNum | '_'
@@ -202,17 +212,19 @@ class Parser extends Flexer.ParserBase[AST] {
   }
 
   final def onOp(ast: AST.Identifier): Unit = logger.trace {
-    identBody = ast
+    identBody = Some(ast)
     beginGroup(OPERATOR_MOD_CHECK)
   }
 
   final def onNoModOp(ast: AST.Identifier): Unit = logger.trace {
-    identBody = ast
+    identBody = Some(ast)
     beginGroup(OPERATOR_SFX_CHECK)
   }
 
   final def onModifier(): Unit = logger.trace {
-    identBody = AST.Modifier(identBody.asInstanceOf[AST.Operator].name)
+    withSome(identBody) { body =>
+      identBody = Some(AST.Modifier(body.asInstanceOf[AST.Operator].name))
+    }
   }
 
   val operatorChar: Pattern    = anyOf("!$%&*+-/<>?^~|:\\")
@@ -350,7 +362,7 @@ class Parser extends Flexer.ParserBase[AST] {
   final def onGroupEnd(): Unit = logger.trace {
     val leftOffset  = popGroupLeftOffset()
     val rightOffset = useLastOffset()
-    val group       = AST.Group(leftOffset, Option(result), rightOffset)
+    val group       = AST.Group(leftOffset, result, rightOffset)
     popLastOffset()
     popAST()
     app(group)
@@ -361,11 +373,12 @@ class Parser extends Flexer.ParserBase[AST] {
     val leftOffset  = popGroupLeftOffset()
     var rightOffset = useLastOffset()
 
-    val group = if (result == null) {
-      rightOffset += leftOffset
-      AST.Group.Unclosed()
-    } else {
-      AST.Group.Unclosed(leftOffset, Option(result))
+    val group = result match {
+      case Some(_) =>
+        AST.Group.Unclosed(leftOffset, result)
+      case None =>
+        rightOffset += leftOffset
+        AST.Group.Unclosed()
     }
     popLastOffset()
     popAST()
@@ -397,17 +410,17 @@ class Parser extends Flexer.ParserBase[AST] {
     var isValid: Boolean,
     var indent: Int,
     var emptyLines: List[Int],
-    var firstLine: AST.Line.Required,
+    var firstLine: Option[AST.Line.Required],
     var lines: List[AST.Line]
   )
   var blockStack: List[BlockState] = Nil
   var emptyLines: List[Int]        = Nil
-  var currentBlock: BlockState     = new BlockState(true, 0, Nil, null, Nil)
+  var currentBlock: BlockState     = new BlockState(true, 0, Nil, None, Nil)
 
   final def pushBlock(newIndent: Int): Unit = logger.trace {
     blockStack +:= currentBlock
     currentBlock =
-      new BlockState(true, newIndent, emptyLines.reverse, null, Nil)
+      new BlockState(true, newIndent, emptyLines.reverse, None, Nil)
     emptyLines = Nil
   }
 
@@ -418,12 +431,14 @@ class Parser extends Flexer.ParserBase[AST] {
 
   final def buildBlock(): AST.Block = logger.trace {
     submitLine()
-    AST.Block(
-      currentBlock.indent,
-      currentBlock.emptyLines.reverse,
-      currentBlock.firstLine,
-      currentBlock.lines.reverse
-    )
+    withSome(currentBlock.firstLine) { firstLine =>
+      AST.Block(
+        currentBlock.indent,
+        currentBlock.emptyLines.reverse,
+        firstLine,
+        currentBlock.lines.reverse
+      )
+    }
   }
 
   final def submitBlock(): Unit = logger.trace {
@@ -442,30 +457,32 @@ class Parser extends Flexer.ParserBase[AST] {
     submitLine()
     val el  = currentBlock.emptyLines.reverse.map(AST.Line.empty)
     val el2 = emptyLines.reverse.map(AST.Line.empty)
-    val firstLines =
-      if (currentBlock.firstLine == null) el
-      else currentBlock.firstLine.to[AST.Line] :: el
+    val firstLines = currentBlock.firstLine match {
+      case None            => el
+      case Some(firstLine) => firstLine.to[AST.Line] :: el
+    }
     val lines  = firstLines ++ currentBlock.lines.reverse ++ el2
     val module = AST.Module(lines.head, lines.tail)
-    result = module
+    result = Some(module)
     logger.endGroup()
   }
 
   final def submitLine(): Unit = logger.trace {
-    if (result != null) {
-      if (currentBlock.firstLine == null) {
-        currentBlock.emptyLines = emptyLines
-        currentBlock.firstLine  = AST.Line.Required(result, useLastOffset())
-      } else {
-        val optResult = Option(result)
-        emptyLines.foreach(currentBlock.lines +:= AST.Line(None, _))
-        currentBlock.lines +:= AST.Line(optResult, useLastOffset())
-      }
-      emptyLines = Nil
-    } else {
-      pushEmptyLine()
+    result match {
+      case None => pushEmptyLine()
+      case Some(r) =>
+        currentBlock.firstLine match {
+          case None =>
+            val line = AST.Line.Required(r, useLastOffset())
+            currentBlock.emptyLines = emptyLines
+            currentBlock.firstLine  = Some(line)
+          case Some(_) =>
+            emptyLines.foreach(currentBlock.lines +:= AST.Line(None, _))
+            currentBlock.lines +:= AST.Line(result, useLastOffset())
+        }
+        emptyLines = Nil
     }
-    result = null
+    result = None
   }
 
   def pushEmptyLine(): Unit = logger.trace {
