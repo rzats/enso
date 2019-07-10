@@ -184,12 +184,18 @@ object AST {
 
   ////// Text //////
 
-  final case class Text(segments: List[Text.Segment]) extends AST {
+  final case class Text(quoteNum: Text.QuoteSize, segments: List[Text.Segment])
+      extends AST {
     val span            = 2 + segments.map(_.span).sum
     def show(out: Code) = out += '\'' += segments += '\''
   }
   object Text {
-    def apply(): Text = new Text(Nil)
+    trait QuoteSize
+    case object SingleQuote extends QuoteSize
+    case object TripleQuote extends QuoteSize
+
+    def apply():             Text = new Text(SingleQuote, Nil)
+    def apply(q: QuoteSize): Text = new Text(q, Nil)
 
     trait Segment extends Symbol
     object Segment {

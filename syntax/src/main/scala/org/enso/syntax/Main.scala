@@ -58,7 +58,7 @@ object Main extends App {
 
   val p1   = new Parser
   val code = p1.specialize()
-  val p2   = p1.debugRun(")(  ")
+  val p2   = p1.debugRun("'foo'")
   pprint(p2)
   p2 match {
     case Flexer.Success(v, _) =>

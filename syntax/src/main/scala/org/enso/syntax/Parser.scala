@@ -1,6 +1,7 @@
 package org.enso.syntax
 
 import org.enso.macros.Funcx
+import org.enso.syntax.AST.Text.QuoteSize
 import org.enso.syntax.Flexer
 import org.enso.syntax.Flexer.Pattern
 import org.enso.syntax.Flexer.Group
@@ -253,18 +254,15 @@ class Parser extends Flexer.ParserBase[AST] {
 
   var numberPart1: String = ""
   var numberPart2: String = ""
-//  var numberPart3: String = ""
 
   final def numberReset(): Unit = logger.trace {
     numberPart1 = ""
     numberPart2 = ""
-//    numberPart3 = ""
   }
 
   final def submitNumber(): Unit = logger.trace {
     val base = if (numberPart1 == "") None else Some(numberPart1)
-//    val frac = if (numberPart3 == "") None else Some(numberPart3)
-    app(AST.Number(base, numberPart2)) //, frac))
+    app(AST.Number(base, numberPart2))
     numberReset()
   }
 
@@ -283,7 +281,6 @@ class Parser extends Flexer.ParserBase[AST] {
     endGroup()
     numberPart1 = numberPart2
     numberPart2 = currentMatch.substring(1)
-//    beginGroup(NUMBER_PHASE3)
     submitNumber()
   }
 
@@ -292,48 +289,56 @@ class Parser extends Flexer.ParserBase[AST] {
     submitNumber()
   }
 
-//  final def onFractional(): Unit = logger.trace {
-//    endGroup()
-//    numberPart3 = currentMatch.substring(1)
-//    submitNumber()
-//  }
-//
-//  final def onNoFractional(): Unit = logger.trace {
-//    endGroup()
-//    submitNumber()
-//  }
-
   val decimal: Pattern = digit.many1
 
   val NUMBER_PHASE2: Group = defineGroup("Number Phase 2")
-//  val NUMBER_PHASE3: Group = defineGroup("Number Phase 3")
 
   // format: off
   NORMAL        rule decimal                 run Funcx { onDecimal() }
   NUMBER_PHASE2 rule ("_" >> alphaNum.many1) run Funcx { onExplicitBase() }
   NUMBER_PHASE2 rule ("_")                   run Funcx { onDanglingBase() }
   NUMBER_PHASE2 rule pass                    run Funcx { onNoExplicitBase() }
-//  NUMBER_PHASE3 rule ("." >> alphaNum.many1) run Funcx { onFractional() }
-//  NUMBER_PHASE3 rule pass                    run Funcx { onNoFractional() }
   // format: on
 
   //////////////
-  /// String ///
+  /// Text ///
   //////////////
 
-  final def submitEmptyText(): Unit = {
-    app(AST.Text())
+  case class TextState(
+    quoteSize: QuoteSize,
+    var segments: List[AST.Text.Segment]
+  )
+  var textStateStack: List[TextState] = Nil
+
+  final def currentText = textStateStack.head
+
+  final def pushTextState(quoteSize: QuoteSize): Unit = logger.trace {
+    textStateStack +:= TextState(quoteSize, Nil)
   }
 
-  NORMAL rule "'".many1 run Funcx {
-    val size = currentMatch.length
-    if (size == 2) submitEmptyText()
-//      else {
-//        pushQuoteSize(size)
-//        textBegin()
-//        beginGroup(STRING)
-//      }
+  final def submitEmptyText(quoteNum: QuoteSize): Unit = logger.trace {
+    app(AST.Text(quoteNum))
   }
+
+  final def onTextBegin(quoteSize: QuoteSize): Unit = {
+    pushTextState(quoteSize)
+    beginGroup(TEXT)
+  }
+
+  final def onTextSegment(): Unit = logger.trace {
+    currentText.segments +:= AST.Text.Segment.Plain(currentMatch)
+  }
+
+  val stringSegmentChar = noneOf("'`\n\\")
+  val stringSegment     = stringSegmentChar.many1
+
+  val TEXT: Group = defineGroup("Number Phase 2")
+
+  // format: off
+  NORMAL rule "'"           run Funcx { onTextBegin(AST.Text.SingleQuote) }
+  NORMAL rule "'''"         run Funcx { onTextBegin(AST.Text.TripleQuote) }
+  TEXT   rule stringSegment run Funcx { onTextSegment() }
+  // format: on
 
   //////////////
   /// Groups ///
