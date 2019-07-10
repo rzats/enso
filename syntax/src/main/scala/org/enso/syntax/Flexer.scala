@@ -540,7 +540,7 @@ object Flexer {
 
     def beginGroup(g: Int): Unit = {
       println(s"Begin ${groupLabel(g)}")
-      groupStack :+= group
+      groupStack +:= group
       group = g
     }
 
@@ -593,8 +593,14 @@ object Flexer {
         if (offset == bufferLen) eofChar
         else etxChar
       } else buffer(offset)
-      logger.log(s"Next char '${escapeChar(nextChar)}'")
+      println(s"Next char '${escapeChar(nextChar)}'")
       nextChar
+    }
+
+    final def rewind(): Unit = logger.trace {
+      println(s"REWIND ${currentMatch.length}")
+      offset -= currentMatch.length + 1
+      currentChar = getNextChar
     }
 
     def specialize(): String = {

@@ -85,14 +85,14 @@ class LexerSpec extends FlatSpec with Matchers {
 
   test expr "_"      as Wildcard
   test expr "Name"   as Cons("Name")
-  test expr "name"   as Var("name")
-  test expr "name'"  as Var("name'")
-  test expr "name''" as Var("name''")
-  test expr "name'a" as InvalidSuffix(Var("name'"),"a")
-  test expr "name_"  as Var("name_")
-  test expr "name_'" as Var("name_'")
-  test expr "name'_" as InvalidSuffix(Var("name'"),"_")
-  test expr "name`"  as App(5,Var("name"),Unrecognized("`"))
+  test expr "name"   as "name"
+  test expr "name'"  as "name'"
+  test expr "name''" as "name''"
+  test expr "name'a" as Identifier.InvalidSuffix("name'","a")
+  test expr "name_"  as "name_"
+  test expr "name_'" as "name_'"
+  test expr "name'_" as Identifier.InvalidSuffix("name'","_")
+  test expr "name`"  as App("name",0,Unrecognized("`"))
 
   
   ///////////////
@@ -112,12 +112,28 @@ class LexerSpec extends FlatSpec with Matchers {
   test expr "/="   as Operator("/=")
   test expr "+="   as Modifier("+")
   test expr "-="   as Modifier("-")
-  test expr "==="  as InvalidSuffix(Operator("==")  , "=")
-  test expr "...." as InvalidSuffix(Operator("...") , ".")
-  test expr ">=="  as InvalidSuffix(Operator(">=")  , "=")
-  test expr "+=="  as InvalidSuffix(Operator("+")   , "==")
+  test expr "==="  as Identifier.InvalidSuffix(Operator("==")  , "=")
+  test expr "...." as Identifier.InvalidSuffix(Operator("...") , ".")
+  test expr ">=="  as Identifier.InvalidSuffix(Operator(">=")  , "=")
+  test expr "+=="  as Identifier.InvalidSuffix(Operator("+")   , "==")
 
 
+  /////////////////
+  // Expressions //
+  /////////////////
+
+  test expr "a b"       as ("a" $ "b")
+  test expr "a + b"     as ("a" $ Operator("+") $ "b")
+  test expr "()"        as Group()
+  test expr "(())"      as Group(Group())
+  test expr "(()"       as Group.Unclosed(Group())
+  test expr "(("        as Group.Unclosed(Group.Unclosed())
+  test expr "( "        as Group.Unclosed()
+  test expr ")"         as Group.UnmatchedClose
+  test expr ")("        as App(Group.UnmatchedClose,0,Group.Unclosed())
+  test expr "a ( b c )" as ("a" $ Group(1,"b" $ "c",1))
+  test expr "(a (b c))" as Group("a" $ Group("b" $ "c"))
+  
   ////////////
   // Layout //
   ////////////
@@ -126,9 +142,6 @@ class LexerSpec extends FlatSpec with Matchers {
   test module "\n"    as Module(Line.empty(0), Line.empty(0) :: Nil)
   test module "  \n " as Module(Line.empty(2), Line.empty(1) :: Nil)
   test module "\n\n"  as Module(Line.empty(0), List.fill(2)(Line.empty(0)))
-//  test module "\r"   as EOL
-//  test module "\r\n" as EOL
-//  test module "\n\r" as EOL         :: EOL
 //  test module "(a)"  as GroupBegin  :: Var("a") :: GroupEnd
 //  test module "[a]"  as ListBegin   :: Var("a") :: ListEnd
 //  test module "{a}"  as RecordBegin :: Var("a") :: RecordEnd
@@ -139,16 +152,12 @@ class LexerSpec extends FlatSpec with Matchers {
   // Numbers //
   /////////////
 
-  test expr "7"        as Number.int("7")
-  test expr "07"       as Number.int("07")
-  test expr "10_7"     as Number.basedInt("10", "7")
-  test expr "16_ff"    as Number.basedInt("16", "ff")
-  test expr "16_"      as Number.basedInt("16", "ff")
-//  test expr "7.5"      as Number(10,7::Nil,Nil) :: Operator(".") :: Number(10,5::Nil,Nil))
-//  test expr "7_12"     as Number(7,1::2::Nil,Nil))
-//  test expr "7_12.34"  as Number(7,1::2::Nil,3::4::Nil))
-//  test expr "16_9acdf" as Number(16,9::10::12::13::15::Nil,Nil))
-//
+  test expr "7"        as 7
+  test expr "07"       as Number("07")
+  test expr "10_7"     as Number(10, 7)
+  test expr "16_ff"    as Number(16, "ff")
+  test expr "16_"      as Number.DanglingBase("16")
+  test expr "7.5"      as App(App(7,0,Operator(".")),0,5)
 //
 //
 //  //////////

@@ -2,24 +2,41 @@ package org.enso.syntax
 
 object AST {
 
+  ///////////////////
+  /// Abstraction ///
+  ///////////////////
+
   trait Convertible[-Source, +Target] {
     def convert(source: Source): Target
   }
 
-  final class CodeBuilder {
+  trait Showable {
+    def show(out: Code): Unit
+    def show(): String = (Code() += this).result()
+  }
+
+  trait Spanned {
+    val span: Int
+  }
+
+  ////////////////////
+  /// Code Builder ///
+  ////////////////////
+
+  final case class Code() {
+    type This = this.type
+
     val stringBuilder: StringBuilder = new StringBuilder()
     var indent: Int                  = 0
 
-    def +=(char: Char): Unit =
-      stringBuilder += char
+    def +=(char: Char):       This = { stringBuilder += char; this }
+    def +=(str: String):      This = { stringBuilder ++= str; this }
+    def +=(a: Showable):      This = { a.show(this); this }
+    def +=(a: Seq[Showable]): This = { a.foreach(this += _); this }
+    def +=(off: Int):         This = { stringBuilder ++= " " * off; this }
 
-    def ++=(str: String): Unit =
-      stringBuilder ++= str
-
-    def newline(): Unit = {
-      stringBuilder += '\n'
-      stringBuilder ++= " " * indent
-    }
+    def newline(): Unit =
+      this += '\n' += indent
 
     def result(): String =
       stringBuilder.result()
@@ -37,259 +54,226 @@ object AST {
 
   }
 
-  ////////////////////
-  ////// Symbol //////
-  ////////////////////
+  //////////////
+  /// Symbol ///
+  //////////////
 
-  trait Symbol {
-    def span: Int
-
-    def show(out: CodeBuilder): Unit = {
-      out ++= show()
-    }
-
-    def show(): String = {
-      val out = new CodeBuilder
-      show(out)
-      out.result()
-    }
-
+  trait Symbol extends Spanned with Showable {
     def to[A](implicit converter: Convertible[this.type, A]): A =
       converter.convert(this)
   }
 
-  /////////////////
-  ////// AST //////
-  /////////////////
+  ///////////
+  /// AST ///
+  ///////////
 
-  trait AST        extends Symbol
-  trait InvalidAST extends AST
-
-  final case class Invalid(symbol: InvalidAST) extends AST {
-    override def span:                   Int  = symbol.span
-    override def show(out: CodeBuilder): Unit = symbol.show(out)
+  trait AST extends Symbol {
+    def $(arg: AST) = App(this, arg)
   }
 
+  trait InvalidAST extends AST
+
   implicit final class _OptionAST_(val self: Option[AST]) extends Symbol {
-    override def span:                   Int  = self.map(_.span).getOrElse(0)
-    override def show(out: CodeBuilder): Unit = self.foreach(_.show(out))
+    val span            = self.map(_.span).getOrElse(0)
+    def show(out: Code) = self.foreach(out += _)
   }
 
   /////// Unrecognized //////
 
   final case class Unrecognized(str: String) extends InvalidAST {
-    override def span:                   Int  = str.length
-    override def show(out: CodeBuilder): Unit = out ++= str
+    val span            = str.length
+    def show(out: Code) = out += str
   }
 
   ////// Identifiers //////
 
-  trait Identifier extends AST
-
-  final case object Wildcard extends Identifier {
-    override def span:                   Int  = 1
-    override def show(out: CodeBuilder): Unit = out += '_'
+  abstract class Identifier(name: String) extends AST {
+    val span            = name.length
+    def show(out: Code) = out += name
   }
 
-  final case class Var(name: String) extends Identifier {
-    override def span:                   Int  = name.length
-    override def show(out: CodeBuilder): Unit = out ++= name
-  }
-
-  final case class Cons(name: String) extends Identifier {
-    override def span:                   Int  = name.length
-    override def show(out: CodeBuilder): Unit = out ++= name
-  }
-
-  final case class Operator(name: String) extends Identifier {
-    override def span:                   Int  = name.length
-    override def show(out: CodeBuilder): Unit = out ++= name
-  }
-
-  final case class Modifier(name: String) extends Identifier {
-    override def span: Int = name.length + 1
-    override def show(out: CodeBuilder): Unit = {
-      out ++= name
-      out += '='
+  object Identifier {
+    final case class InvalidSuffix(elem: Identifier, suffix: String)
+        extends InvalidAST {
+      val span            = elem.span + suffix.length
+      def show(out: Code) = out += elem += suffix
     }
   }
 
-  final case class InvalidSuffix(elem: Identifier, suffix: String)
-      extends InvalidAST {
-    override def span: Int = elem.span + suffix.length
-    override def show(out: CodeBuilder): Unit = {
-      elem.show(out)
-      out ++= suffix
-    }
+  final case object Wildcard extends Identifier("_") {
+    override val span = 1
   }
 
-  ////// Operations //////
-
-  final case class App(span: Int, func: AST, arg: AST) extends AST {
-    override def show(out: CodeBuilder): Unit = {
-      func.show(out)
-      out ++= " " * (span - func.span - arg.span)
-      arg.show(out)
-    }
+  final case class Var(name: String)      extends Identifier(name)
+  final case class Cons(name: String)     extends Identifier(name)
+  final case class Operator(name: String) extends Identifier(name)
+  final case class Modifier(name: String) extends Identifier(name) {
+    override val span            = name.length + 1
+    override def show(out: Code) = out += name += '='
   }
 
-  final case class Group(leftOff: Int, body: AST, rightOff: Int) extends AST {
-    override def span: Int = leftOff + body.span + rightOff
-    override def show(out: CodeBuilder): Unit = {
-      out ++= " " * leftOff
-      body.show(out)
-      out ++= " " * rightOff
+  implicit def StringToVar(str: String): Var = Var(str)
+
+  ////// App //////
+
+  final case class App(func: AST, off: Int, arg: AST) extends AST {
+    val span            = func.span + off + arg.span
+    def show(out: Code) = out += func += off += arg
+  }
+  object App {
+    def apply(func: AST, arg: AST): App = new App(func, 1, arg)
+  }
+
+  ////// Group //////
+
+  final case class Group(leftOff: Int, body: Option[AST], rightOff: Int)
+      extends AST {
+    val span            = leftOff + body.span + rightOff + 2
+    def show(out: Code) = out += '(' += leftOff += body += rightOff += ')'
+  }
+
+  object Group {
+    def apply():                       Group = Group(0, None, 0)
+    def apply(l: Int):                 Group = Group(l, None, 0)
+    def apply(b: AST):                 Group = Group(0, Some(b), 0)
+    def apply(l: Int, b: AST):         Group = Group(l, Some(b), 0)
+    def apply(b: AST, r: Int):         Group = Group(0, Some(b), r)
+    def apply(l: Int, b: AST, r: Int): Group = Group(l, Some(b), r)
+
+    final case object UnmatchedClose extends InvalidAST {
+      val span            = 1
+      def show(out: Code) = out += ')'
     }
+
+    final case class Unclosed(leftOff: Int, body: Option[AST])
+        extends InvalidAST {
+      val span            = leftOff + body.span
+      def show(out: Code) = out += '(' += leftOff += body
+    }
+
+    object Unclosed {
+      def apply():               Unclosed = Unclosed(0, None)
+      def apply(b: AST):         Unclosed = Unclosed(0, Some(b))
+      def apply(l: Int, b: AST): Unclosed = Unclosed(l, Some(b))
+    }
+
   }
 
   ////// Number //////
 
-  final case class Number(
-    base: Option[String],
-    int: String,
-    frac: Option[String]
-  ) extends AST {
-    override def span: Int = {
-      val baseSpan = base.map(_.length + 1).getOrElse(0)
-      val intSpan  = int.length
-      val fracSpan = frac.map(_.length + 1).getOrElse(0)
-      baseSpan + intSpan + fracSpan
-    }
-    override def show(out: CodeBuilder): Unit = {
-      val pfx = base.map(_ + "_").getOrElse("")
-      val sfx = frac.map("." + _).getOrElse("")
-      out ++= pfx + int + sfx
-    }
+  final case class Number(base: Option[String], int: String) extends AST {
+    val span            = base.map(_.length + 1).getOrElse(0) + int.length
+    def show(out: Code) = out += base.map(_ + "_").getOrElse("") + int
   }
 
   object Number {
-    def int(int: String): Number = Number(None, int, None)
+    def apply(i: Int):               Number = Number(i.toString)
+    def apply(i: String):            Number = Number(None, i)
+    def apply(b: String, i: String): Number = Number(Some(b), i)
+    def apply(b: Int, i: String):    Number = Number(b.toString, i)
+    def apply(b: String, i: Int):    Number = Number(b, i.toString)
+    def apply(b: Int, i: Int):       Number = Number(b.toString, i.toString)
 
-    def basedInt(base: String, int: String): Number =
-      Number(Some(base), int, None)
-  }
-
-  ////// Text //////
-
-  final case class Text(segments: Vector[TextSegment]) extends AST {
-
-    override def span: Int =
-      2 + segments.foldLeft(0)((i, s) => i + s.span)
-
-    override def show(out: CodeBuilder): Unit = {
-      out += '\''
-      segments.foreach(_.show(out))
-      out += '\''
+    final case class DanglingBase(base: String) extends InvalidAST {
+      val span            = base.length + 1
+      def show(out: Code) = out += base += '_'
     }
   }
 
-  trait TextSegment extends Symbol
+  implicit def IntToNumber(int: Int): Number = Number(int)
 
-  final case class PlainTextSegment(value: String) extends TextSegment {
-    override def span: Int =
-      value.length
+  ////// Text //////
 
-    override def show(out: CodeBuilder): Unit =
-      out ++= value
+  final case class Text(segments: List[Text.Segment]) extends AST {
+    val span            = 2 + segments.map(_.span).sum
+    def show(out: Code) = out += '\'' += segments += '\''
+  }
+  object Text {
+    def apply(): Text = new Text(Nil)
+
+    trait Segment extends Symbol
+    object Segment {
+      final case class Plain(value: String) extends Segment {
+        val span            = value.length
+        def show(out: Code) = out += value
+      }
+    }
   }
 
   ////// Block //////
 
   final case class Block(
     indent: Int,
-    emptyLines: Vector[Int],
-    firstLine: RequiredLine,
-    lines: Vector[Line]
+    emptyLines: List[Int],
+    firstLine: Line.Required,
+    lines: List[Line]
   ) extends AST {
 
     def linesCount: Int =
       emptyLines.length + lines.length + 1
 
     def linesSpan: Int =
-      emptyLines.sum + lines.foldLeft(firstLine.span)((i, a) => i + a.span)
+      emptyLines.sum + firstLine.span + lines.map(_.span).sum
 
-    override def span: Int = {
+    val span: Int = {
       val newlinesSpan = linesCount
       val indentSpan   = linesCount * indent
       linesSpan + newlinesSpan + indentSpan
     }
 
-    override def show(out: CodeBuilder): Unit = {
-      val globalIndent    = indent + out.indent
-      val globalIndentStr = " " * globalIndent
+    def show(out: Code): Unit = {
+      val globalIndent = indent + out.indent
       out.withIndent(globalIndent) {
         out += '\n'
-        emptyLines.foreach(i => out ++= globalIndentStr + " " * i + "\n")
-        out ++= globalIndentStr
-        firstLine.show(out)
+        emptyLines.foreach(i => out += globalIndent += i + "\n")
+        out += globalIndent
+        out += firstLine
         lines.foreach { line =>
           out += '\n'
-          out ++= globalIndentStr
-          line.show(out)
+          out += globalIndent
+          out += line
         }
       }
     }
   }
 
-  final case class RequiredLine(span: Int, elem: AST) extends Symbol {}
-
-  final case class Line(span: Int, elem: Option[AST]) extends Symbol {
-    override def show(out: CodeBuilder): Unit = {
-      elem.show(out)
-      out ++= " " * (span - elem.span)
+  object Block {
+    final case class InvalidIndentation(block: Block) extends InvalidAST {
+      val span            = block.span
+      def show(out: Code) = block.show(out)
     }
   }
 
+  final case class Line(elem: Option[AST], offset: Int) extends Symbol {
+    val span            = elem.span + offset
+    def show(out: Code) = out += elem += offset
+  }
+
   object Line {
-    def empty(span: Int) = Line(span, None)
-  }
+    def empty(offset: Int) = Line(None, offset)
 
-  implicit object RequiredLine_to_Line extends Convertible[RequiredLine, Line] {
-    def convert(src: RequiredLine): Line = Line(src.span, Some(src.elem))
-  }
+    final case class Required(elem: AST, offset: Int) extends Symbol {
+      val span            = elem.span + offset
+      def show(out: Code) = out += elem += offset
+    }
 
-  final case class InvalidBlock(block: Block) extends InvalidAST {
-    override def span:                   Int  = block.span
-    override def show(out: CodeBuilder): Unit = block.show(out)
+    implicit object Required_to_Optional extends Convertible[Required, Line] {
+      def convert(src: Required): Line = Line(Some(src.elem), src.offset)
+    }
   }
 
   ////// Unit //////
 
   final case class Module(firstLine: Line, lines: List[Line]) extends AST {
-    override def span: Int =
-      lines.foldLeft(firstLine.span) { case (s, l) => s + l.span }
-    override def show(out: CodeBuilder): Unit = {
-      firstLine.show(out)
-      lines.foreach { line =>
-        out += '\n'
-        line.show(out)
-      }
+    val span = firstLine.span + lines.map(_.span).sum
+    def show(out: Code) = {
+      out += firstLine
+      lines.foreach(out += '\n' += _)
     }
   }
 
   object Module {
     def oneLiner(line: Line): Module = Module(line, List())
-  }
-
-  ////////////////////////////////
-  ////// Smart Constructors //////
-  ////////////////////////////////
-
-  def app(fn: AST, offset: Int, arg: AST): AST =
-    App(fn.span + offset + arg.span, fn, arg)
-
-  def block(
-    indent: Int,
-    emptyLines: List[Int],
-    firstLine: RequiredLine,
-    lines: List[Line]
-//    valid: Boolean
-  ): Block = {
-    val vEmptyLines = emptyLines.to[Vector]
-    val vLines      = lines.to[Vector]
-    Block(indent, vEmptyLines, firstLine, vLines)
-//    val block       = Block(indent, vEmptyLines, firstLine, vLines)
-//    if (valid) block else Invalid(InvalidBlock(block))
   }
 
 }

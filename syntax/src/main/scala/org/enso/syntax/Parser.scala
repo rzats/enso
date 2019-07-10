@@ -89,7 +89,7 @@ class Parser extends Flexer.ParserBase[AST] {
     if (result == null) {
       result = t
     } else {
-      result = AST.app(result, useLastOffset(), t)
+      result = AST.App(result, useLastOffset(), t)
     }
 
   /////////////////////////////////
@@ -102,6 +102,7 @@ class Parser extends Flexer.ParserBase[AST] {
   val upperLetter: Pattern = range('A', 'Z')
   val digit: Pattern       = range('0', '9')
   val alphaNum: Pattern    = digit | lowerLetter | upperLetter
+  val whitespace0: Pattern = ' '.many
   val whitespace: Pattern  = ' '.many1
   val newline: Pattern     = '\n'
 
@@ -109,7 +110,18 @@ class Parser extends Flexer.ParserBase[AST] {
   /// Offset ///
   //////////////
 
-  var lastOffset: Int = 0
+  var lastOffset: Int            = 0
+  var lastOffsetStack: List[Int] = Nil
+
+  final def pushLastOffset(): Unit = logger.trace {
+    lastOffsetStack +:= lastOffset
+    lastOffset = 0
+  }
+
+  final def popLastOffset(): Unit = logger.trace {
+    lastOffset      = lastOffsetStack.head
+    lastOffsetStack = lastOffsetStack.tail
+  }
 
   final def useLastOffset(): Int = logger.trace {
     val offset = lastOffset
@@ -145,7 +157,7 @@ class Parser extends Flexer.ParserBase[AST] {
   }
 
   final def onIdentErrSfx(): Unit = logger.trace {
-    val ast = AST.InvalidSuffix(identBody, currentMatch)
+    val ast = AST.Identifier.InvalidSuffix(identBody, currentMatch)
     app(ast)
     identBody = null
     endGroup()
@@ -229,18 +241,25 @@ class Parser extends Flexer.ParserBase[AST] {
 
   var numberPart1: String = ""
   var numberPart2: String = ""
-  var numberPart3: String = ""
+//  var numberPart3: String = ""
 
   final def numberReset(): Unit = logger.trace {
     numberPart1 = ""
     numberPart2 = ""
-    numberPart3 = ""
+//    numberPart3 = ""
   }
 
   final def submitNumber(): Unit = logger.trace {
     val base = if (numberPart1 == "") None else Some(numberPart1)
-    val frac = if (numberPart3 == "") None else Some(numberPart3)
-    app(AST.Number(base, numberPart2, frac))
+//    val frac = if (numberPart3 == "") None else Some(numberPart3)
+    app(AST.Number(base, numberPart2)) //, frac))
+    numberReset()
+  }
+
+  final def onDanglingBase(): Unit = logger.trace {
+    endGroup()
+    app(AST.Number.DanglingBase(numberPart2))
+    numberReset()
   }
 
   final def onDecimal(): Unit = logger.trace {
@@ -252,7 +271,8 @@ class Parser extends Flexer.ParserBase[AST] {
     endGroup()
     numberPart1 = numberPart2
     numberPart2 = currentMatch.substring(1)
-    beginGroup(NUMBER_PHASE3)
+//    beginGroup(NUMBER_PHASE3)
+    submitNumber()
   }
 
   final def onNoExplicitBase(): Unit = logger.trace {
@@ -260,28 +280,29 @@ class Parser extends Flexer.ParserBase[AST] {
     submitNumber()
   }
 
-  final def onFractional(): Unit = logger.trace {
-    endGroup()
-    numberPart3 = currentMatch.substring(1)
-    submitNumber()
-  }
-
-  final def onNoFractional(): Unit = logger.trace {
-    endGroup()
-    submitNumber()
-  }
+//  final def onFractional(): Unit = logger.trace {
+//    endGroup()
+//    numberPart3 = currentMatch.substring(1)
+//    submitNumber()
+//  }
+//
+//  final def onNoFractional(): Unit = logger.trace {
+//    endGroup()
+//    submitNumber()
+//  }
 
   val decimal: Pattern = digit.many1
 
   val NUMBER_PHASE2: Group = defineGroup("Number Phase 2")
-  val NUMBER_PHASE3: Group = defineGroup("Number Phase 3")
+//  val NUMBER_PHASE3: Group = defineGroup("Number Phase 3")
 
   // format: off
   NORMAL        rule decimal                 run Funcx { onDecimal() }
   NUMBER_PHASE2 rule ("_" >> alphaNum.many1) run Funcx { onExplicitBase() }
+  NUMBER_PHASE2 rule ("_")                   run Funcx { onDanglingBase() }
   NUMBER_PHASE2 rule pass                    run Funcx { onNoExplicitBase() }
-  NUMBER_PHASE3 rule ("." >> alphaNum.many1) run Funcx { onFractional() }
-  NUMBER_PHASE3 rule pass                    run Funcx { onNoFractional() }
+//  NUMBER_PHASE3 rule ("." >> alphaNum.many1) run Funcx { onFractional() }
+//  NUMBER_PHASE3 rule pass                    run Funcx { onNoFractional() }
   // format: on
 
   //////////////
@@ -289,7 +310,7 @@ class Parser extends Flexer.ParserBase[AST] {
   //////////////
 
   final def submitEmptyText(): Unit = {
-    app(AST.Text(Vector()))
+    app(AST.Text())
   }
 
   NORMAL rule "'".many1 run Funcx {
@@ -306,38 +327,67 @@ class Parser extends Flexer.ParserBase[AST] {
   /// Groups ///
   //////////////
 
-  var groupOffsetStack: List[Int] = Nil
+  var groupLeftOffsetStack: List[Int] = Nil
 
-  final def pushGroupOffset(offset: Int): Unit = logger.trace {
-    groupOffsetStack +:= offset
+  final def pushGroupLeftOffset(offset: Int): Unit = logger.trace {
+    groupLeftOffsetStack +:= offset
   }
 
-  final def popGroupOffset(): Int = logger.trace {
-    val offset = groupOffsetStack.head
-    groupOffsetStack = groupOffsetStack.tail
+  final def popGroupLeftOffset(): Int = logger.trace {
+    val offset = groupLeftOffsetStack.head
+    groupLeftOffsetStack = groupLeftOffsetStack.tail
     offset
   }
 
   final def onGroupBegin(): Unit = logger.trace {
+    val leftOffset = currentMatch.length - 1
+    pushGroupLeftOffset(leftOffset)
     pushAST()
-    pushGroupOffset(useLastOffset())
+    pushLastOffset()
+    beginGroup(PARENSED)
   }
 
   final def onGroupEnd(): Unit = logger.trace {
-    val offset  = popGroupOffset()
-    val grouped = AST.Group(offset, result, useLastOffset())
+    val leftOffset  = popGroupLeftOffset()
+    val rightOffset = useLastOffset()
+    val group       = AST.Group(leftOffset, Option(result), rightOffset)
+    popLastOffset()
     popAST()
-    app(grouped)
+    app(group)
+    endGroup()
+  }
+
+  final def onGroupEOF(): Unit = logger.trace {
+    val leftOffset  = popGroupLeftOffset()
+    var rightOffset = useLastOffset()
+
+    val group = if (result == null) {
+      rightOffset += leftOffset
+      AST.Group.Unclosed()
+    } else {
+      AST.Group.Unclosed(leftOffset, Option(result))
+    }
+    popLastOffset()
+    popAST()
+    app(group)
+    lastOffset = rightOffset
+    endGroup()
+    rewind()
+  }
+
+  final def onGroupUnmatchedClose(): Unit = logger.trace {
+    app(AST.Group.UnmatchedClose)
   }
 
   val PARENSED = defineGroup("Parensed")
   PARENSED.setParent(NORMAL)
 
-  NORMAL rule "(" run Funcx { onGroupBegin(); beginGroup(PARENSED) }
-  PARENSED rule ")" run Funcx {
-    onGroupEnd()
-    endGroup()
-  }
+  // format: off
+  NORMAL   rule ("(" >> whitespace0) run Funcx { onGroupBegin() }
+  NORMAL   rule ")"                  run Funcx { onGroupUnmatchedClose() }
+  PARENSED rule ")"                  run Funcx { onGroupEnd() }
+  PARENSED rule eof                  run Funcx { onGroupEOF() }
+  // format: on
 
   //////////////
   /// Blocks ///
@@ -347,7 +397,7 @@ class Parser extends Flexer.ParserBase[AST] {
     var isValid: Boolean,
     var indent: Int,
     var emptyLines: List[Int],
-    var firstLine: AST.RequiredLine,
+    var firstLine: AST.Line.Required,
     var lines: List[AST.Line]
   )
   var blockStack: List[BlockState] = Nil
@@ -368,7 +418,7 @@ class Parser extends Flexer.ParserBase[AST] {
 
   final def buildBlock(): AST.Block = logger.trace {
     submitLine()
-    AST.block(
+    AST.Block(
       currentBlock.indent,
       currentBlock.emptyLines.reverse,
       currentBlock.firstLine,
@@ -380,7 +430,7 @@ class Parser extends Flexer.ParserBase[AST] {
     val block = buildBlock()
     val block2 =
       if (currentBlock.isValid) block
-      else AST.Invalid(AST.InvalidBlock(block))
+      else AST.Block.InvalidIndentation(block)
 
     popAST()
     popBlock()
@@ -405,11 +455,11 @@ class Parser extends Flexer.ParserBase[AST] {
     if (result != null) {
       if (currentBlock.firstLine == null) {
         currentBlock.emptyLines = emptyLines
-        currentBlock.firstLine  = AST.RequiredLine(useLastOffset(), result)
+        currentBlock.firstLine  = AST.Line.Required(result, useLastOffset())
       } else {
         val optResult = Option(result)
-        emptyLines.foreach(currentBlock.lines +:= AST.Line(_, None))
-        currentBlock.lines +:= AST.Line(useLastOffset(), optResult)
+        emptyLines.foreach(currentBlock.lines +:= AST.Line(None, _))
+        currentBlock.lines +:= AST.Line(optResult, useLastOffset())
       }
       emptyLines = Nil
     } else {

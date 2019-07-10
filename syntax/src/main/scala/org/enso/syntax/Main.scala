@@ -58,10 +58,13 @@ object Main extends App {
 
   val p1   = new Parser
   val code = p1.specialize()
-  val p2   = p1.debugRun("   \n  \n \n ")
+  val p2   = p1.debugRun(")(  ")
   pprint(p2)
+  p2 match {
+    case Flexer.Success(v) =>
+      println(v.span)
+  }
   println("CODE LEN:", code.length) //136500
-
   //  println(tree1)
 //  println(p2.result.show())
 
