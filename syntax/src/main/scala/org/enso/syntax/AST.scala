@@ -68,7 +68,10 @@ object AST {
   ///////////
 
   trait AST extends Symbol {
-    def $(arg: AST) = App(this, arg)
+    def $(arg: AST)    = App(this, 0, arg)
+    def $_(arg: AST)   = App(this, 1, arg)
+    def $__(arg: AST)  = App(this, 2, arg)
+    def $___(arg: AST) = App(this, 3, arg)
   }
 
   trait InvalidAST extends AST
@@ -112,7 +115,13 @@ object AST {
     override def show(out: Code) = out += name += '='
   }
 
-  implicit def StringToVar(str: String): Var = Var(str)
+  implicit def StringToIdentifier(str: String): Identifier = {
+    if (str == "") throw new Error("Empty literal")
+    if (str == "_") Wildcard
+    else if (str.head.isLower) Var(str)
+    else if (str.head.isUpper) Cons(str)
+    else Operator(str)
+  }
 
   ////// App //////
 
@@ -256,6 +265,7 @@ object AST {
   }
 
   object Line {
+    val empty              = Line(None, 0)
     def empty(offset: Int) = Line(None, offset)
 
     final case class Required(elem: AST, offset: Int) extends Symbol {
@@ -279,7 +289,8 @@ object AST {
   }
 
   object Module {
-    def oneLiner(line: Line): Module = Module(line, List())
+    def apply(l: Line):            Module = Module(l, Nil)
+    def apply(l: Line, ls: Line*): Module = Module(l, ls.to[List])
   }
 
 }
