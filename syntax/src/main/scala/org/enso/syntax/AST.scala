@@ -2,6 +2,17 @@ package org.enso.syntax
 
 object AST {
 
+  import reflect.runtime.universe._
+
+  def getAllSeleadObjects[T](implicit ttag: TypeTag[T]) = {
+    val subs = ttag.tpe.typeSymbol.asClass.knownDirectSubclasses
+    subs.map { symbol =>
+      val module = reflect.runtime.currentMirror.staticModule(symbol.fullName)
+      val clazz  = reflect.runtime.currentMirror.reflectModule(module)
+      clazz.instance.asInstanceOf[T]
+    }
+  }
+
   ///////////////////
   /// Abstraction ///
   ///////////////////
@@ -74,7 +85,8 @@ object AST {
     def $___(arg: AST) = App(this, 3, arg)
   }
 
-  trait InvalidAST extends AST
+  trait Invalid
+  trait InvalidAST extends AST with Invalid
 
   implicit final class _OptionAST_(val self: Option[AST]) extends Symbol {
     val span            = self.map(_.span).getOrElse(0)
@@ -191,26 +203,172 @@ object AST {
 
   implicit def IntToNumber(int: Int): Number = Number(int)
 
-  ////// Text //////
+  ////////////
+  /// Text ///
+  ////////////
 
-  final case class Text(quoteNum: Text.QuoteSize, segments: List[Text.Segment])
+  final case class Text(quoteSize: Text.QuoteSize, segments: List[Text.Segment])
       extends AST {
-    val span            = 2 + segments.map(_.span).sum
-    def show(out: Code) = out += '\'' += segments += '\''
+    val span            = 2 * quoteSize.span + segments.map(_.span).sum
+    def show(out: Code) = out += quoteSize += segments += quoteSize
+
+    def prepend(segment: Text.Segment) =
+      this.copy(segments = segment :: segments)
   }
+
   object Text {
-    trait QuoteSize
-    case object SingleQuote extends QuoteSize
-    case object TripleQuote extends QuoteSize
+    trait QuoteSize extends Symbol
 
-    def apply():             Text = new Text(SingleQuote, Nil)
-    def apply(q: QuoteSize): Text = new Text(q, Nil)
+    case object SingleQuote extends QuoteSize {
+      val span            = 1
+      def show(out: Code) = out += '\''
+    }
 
-    trait Segment extends Symbol
+    case object TripleQuote extends QuoteSize {
+      val span            = 3
+      def show(out: Code) = out += "'''"
+    }
+
+    def apply():                          Text = Text(SingleQuote, Nil)
+    def apply(q: QuoteSize):              Text = Text(q, Nil)
+    def apply(q: QuoteSize, s: Segment*): Text = Text(q, s.to[List])
+    def apply(s: List[Segment]):          Text = Text(SingleQuote, s)
+    def apply(s: Segment*):               Text = Text(s.to[List])
+
+    trait Segment extends Symbol {
+      def +:(text: Text) = text.prepend(this)
+    }
+
     object Segment {
       final case class Plain(value: String) extends Segment {
         val span            = value.length
         def show(out: Code) = out += value
+      }
+
+      implicit def stringToPlain(str: String): Plain = Plain(str)
+
+      trait Escape extends Segment
+      object Escape {
+
+        abstract class Simple(val code: Int) extends Escape {
+          val name: String        = toString()
+          val span: Int           = name.length + 1
+          def show(out: AST.Code) = out += '\\' += name
+        }
+
+        // Reference: https://en.wikipedia.org/wiki/String_literal
+        sealed trait Unicode extends Escape
+        object Unicode {
+          abstract class U(val pfx: String, val sfx: String) extends Unicode {
+            val digits: String
+            val span            = 1 + pfx.length + digits.length + sfx.length
+            def show(out: Code) = out += "\\" += pfx += digits += sfx
+
+          }
+          final case class U16 private (digits: String) extends U("u", "")
+          final case class U32 private (digits: String) extends U("U", "")
+          final case class U21 private (digits: String) extends U("u{", "}")
+          final case class InvalidU16 private (digits: String)
+              extends U("u", "")
+              with Invalid
+          final case class InvalidU32 private (digits: String)
+              extends U("U", "")
+              with Invalid
+          final case class InvalidU21 private (digits: String)
+              extends U("u{", "}")
+              with Invalid
+
+          object Validator {
+            val hexChars = (('a' to 'f') ++ ('A' to 'F') ++ ('0' to '9')).toSet
+            def isHexChar(char: Char) =
+              hexChars.contains(char)
+          }
+
+          object U16 {
+            def apply(digits: String): Unicode =
+              if (validate(digits)) new U16(digits) else InvalidU16(digits)
+            def validate(digits: String) = {
+              import Validator._
+              val validLength = digits.length == 4
+              val validChars  = digits.map(isHexChar).forall(identity)
+              validLength && validChars
+            }
+          }
+          object U32 {
+            def apply(digits: String): Unicode =
+              if (validate(digits)) new U32(digits) else InvalidU32(digits)
+            def validate(digits: String) = {
+              import Validator._
+              val validLength = digits.length == 8
+              val validPrefix = digits.startsWith("00")
+              val validChars  = digits.map(isHexChar).forall(identity)
+              validLength && validPrefix && validChars
+            }
+          }
+          object U21 {
+            def apply(digits: String): Unicode =
+              if (validate(digits)) new U21(digits) else InvalidU21(digits)
+            def validate(digits: String) = {
+              import Validator._
+              val validLength = digits.length >= 1 && digits.length <= 6
+              val validChars  = digits.map(isHexChar).forall(identity)
+              validLength && validChars
+            }
+          }
+        }
+
+        // Reference: https://en.wikipedia.org/wiki/String_literal
+        sealed trait Character extends Escape
+        object Character {
+          case object a extends Simple('\u0007') with Character
+          case object b extends Simple('\u0008') with Character
+          case object f extends Simple('\u000C') with Character
+          case object n extends Simple('\n') with Character
+          case object r extends Simple('\r') with Character
+          case object t extends Simple('\u0009') with Character
+          case object v extends Simple('\u000B') with Character
+          case object e extends Simple('\u001B') with Character
+          val codes = getAllSeleadObjects[Character]
+        }
+
+        // Reference: https://en.wikipedia.org/wiki/Control_character
+        sealed trait Control extends Escape
+        object Control {
+          case object NUL extends Simple(0x00) with Control
+          case object SOH extends Simple(0x01) with Control
+          case object STX extends Simple(0x02) with Control
+          case object ETX extends Simple(0x03) with Control
+          case object EOT extends Simple(0x04) with Control
+          case object ENQ extends Simple(0x05) with Control
+          case object ACK extends Simple(0x06) with Control
+          case object BEL extends Simple(0x07) with Control
+          case object BS  extends Simple(0x08) with Control
+          case object TAB extends Simple(0x09) with Control
+          case object LF  extends Simple(0x0A) with Control
+          case object VT  extends Simple(0x0B) with Control
+          case object FF  extends Simple(0x0C) with Control
+          case object CR  extends Simple(0x0D) with Control
+          case object SO  extends Simple(0x0E) with Control
+          case object SI  extends Simple(0x0F) with Control
+          case object DLE extends Simple(0x10) with Control
+          case object DC1 extends Simple(0x11) with Control
+          case object DC2 extends Simple(0x12) with Control
+          case object DC3 extends Simple(0x13) with Control
+          case object DC4 extends Simple(0x14) with Control
+          case object NAK extends Simple(0x15) with Control
+          case object SYN extends Simple(0x16) with Control
+          case object ETB extends Simple(0x17) with Control
+          case object CAN extends Simple(0x18) with Control
+          case object EM  extends Simple(0x19) with Control
+          case object SUB extends Simple(0x1A) with Control
+          case object ESC extends Simple(0x1B) with Control
+          case object FS  extends Simple(0x1C) with Control
+          case object GS  extends Simple(0x1D) with Control
+          case object RS  extends Simple(0x1E) with Control
+          case object US  extends Simple(0x1F) with Control
+          case object DEL extends Simple(0x7F) with Control
+          val codes = getAllSeleadObjects[Control]
+        }
       }
     }
   }
@@ -265,8 +423,8 @@ object AST {
   }
 
   object Line {
-    val empty              = Line(None, 0)
-    def empty(offset: Int) = Line(None, offset)
+    def apply():            Line = Line(None, 0)
+    def apply(offset: Int): Line = Line(None, offset)
 
     final case class Required(elem: AST, offset: Int) extends Symbol {
       val span            = elem.span + offset

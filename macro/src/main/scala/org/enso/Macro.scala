@@ -106,11 +106,10 @@ object Funcx {
 
   def apply_impl[R: c.WeakTypeTag](c: Context)(fn: c.Tree): c.Expr[Funcx[R]] = {
     import c.universe._
-    c.Expr[Funcx[R]](q"new Funcx($fn, ${show(fn)})")
+    c.Expr[Funcx[R]](q"Funcx(${show(fn)})")
   }
 }
 
-class Funcx[R](fn: => R, description: String) extends Function0[R] {
-  def apply():           R      = fn
-  override def toString: String = description
+case class Funcx[R](code: String) {
+  override def toString: String = code
 }

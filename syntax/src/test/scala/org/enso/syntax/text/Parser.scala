@@ -1,5 +1,6 @@
 package org.enso.syntax.text.test
 
+import org.enso.syntax.AST.Text.Segment
 import org.scalatest._
 import org.enso.syntax.Parser
 import org.enso.syntax.AST._
@@ -104,7 +105,7 @@ class LexerSpec extends FlatSpec with Matchers {
   "(("        ?== Group.Unclosed(Group.Unclosed())
   "( "        ?== Group.Unclosed()
   ")"         ?== Group.UnmatchedClose
-  ")("        ?== App(Group.UnmatchedClose, 0, Group.Unclosed())
+  ")("        ?== Group.UnmatchedClose $ Group.Unclosed()
   "a ( b c )" ?== ("a" $_ Group(1, "b" $_ "c", 1))
   "(a (b c))" ?== Group("a" $_ Group("b" $_ "c"))
 
@@ -112,10 +113,10 @@ class LexerSpec extends FlatSpec with Matchers {
   // Layout //
   ////////////
 
-  ""      ?== Module(Line.empty)
-  "\n"    ?== Module(Line.empty, Line.empty)
-  "  \n " ?== Module(Line.empty(2), Line.empty(1))
-  "\n\n"  ?== Module(Line.empty, Line.empty, Line.empty)
+  ""      ?== Module(Line())
+  "\n"    ?== Module(Line(), Line())
+  "  \n " ?== Module(Line(2), Line(1))
+  "\n\n"  ?== Module(Line(), Line(), Line())
 //  test module "(a)"  ==? GroupBegin  :: Var("a") :: GroupEnd
 //  test module "[a]"  ==? ListBegin   :: Var("a") :: ListEnd
 //  test module "{a}"  ==? RecordBegin :: Var("a") :: RecordEnd
@@ -130,35 +131,34 @@ class LexerSpec extends FlatSpec with Matchers {
   "16_ff" ?== Number(16, "ff")
   "16_"   ?== Number.DanglingBase("16")
   "7.5"   ?== 7 $ "." $ 5
-//
-//
-//  //////////
-//  // Text //
-//  //////////
-//
-//  // Basic
-//  expr("'"          , TextBegin   )
-//  expr("\""         , TextRawBegin)
-//  expr("''"         , TextBegin    :: TextEnd)
-//  expr("\"\""       , TextRawBegin :: TextRawEnd)
-//  expr("'''"        , TextBegin   )
-//  expr("\"\"\""     , TextRawBegin)
-//  expr("' '"        , TextBegin    :: Text(" ") :: TextEnd)
-//  expr("\" \""      , TextRawBegin :: Text(" ") :: TextRawEnd)
-//  expr("'' ''"      , TextBegin    :: TextEnd    :: TextBegin    :: TextEnd   )
-//  expr("\"\" \"\""  , TextRawBegin :: TextRawEnd :: TextRawBegin :: TextRawEnd)
-//  expr("'\n'"       , TextBegin    :: EOL :: TextEnd   )
-//  expr("\"\n\""     , TextRawBegin :: EOL :: TextRawEnd)
-//  expr("'\\\\'"     , TextBegin    :: TextEscape(SlashEscape) :: TextEnd)
-//  expr("\"\\\\\""   , TextRawBegin :: Text("\\") :: TextEscape(RawQuoteEscape))
-//  expr("'\\\''"     , TextBegin    :: TextEscape(QuoteEscape) :: TextEnd   )
-//  expr("\"\\\'\""   , TextRawBegin :: TextEscape(QuoteEscape) :: TextRawEnd)
-//  expr("'\\\"'"     , TextBegin    :: TextEscape(RawQuoteEscape) :: TextEnd   )
-//  expr("\"\\\"\""   , TextRawBegin :: TextEscape(RawQuoteEscape) :: TextRawEnd)
-//  expr("''' '''"            , TextBegin    :: Text(" ") :: TextEnd   )
-//  expr("\"\"\" \"\"\""      , TextRawBegin :: Text(" ") :: TextRawEnd)
-//  expr("''' '' '''"         , TextBegin    :: Text(" ") :: Text("''")   :: Text(" ") :: TextEnd   )
-//  expr("\"\"\" \"\" \"\"\"" , TextRawBegin :: Text(" ") :: Text("\"\"") :: Text(" ") :: TextRawEnd)
+
+  //////////
+  // Text //
+  //////////
+
+  "'foo'" ?== Text("foo")
+//  "'"          , TextBegin   )
+//  "\""         , TextRawBegin)
+//  "''"         , TextBegin    :: TextEnd)
+//  "\"\""       , TextRawBegin :: TextRawEnd)
+//  "'''"        , TextBegin   )
+//  "\"\"\""     , TextRawBegin)
+//  "' '"        , TextBegin    :: Text(" ") :: TextEnd)
+//  "\" \""      , TextRawBegin :: Text(" ") :: TextRawEnd)
+//  "'' ''"      , TextBegin    :: TextEnd    :: TextBegin    :: TextEnd   )
+//  "\"\" \"\""  , TextRawBegin :: TextRawEnd :: TextRawBegin :: TextRawEnd)
+//  "'\n'"       , TextBegin    :: EOL :: TextEnd   )
+//  "\"\n\""     , TextRawBegin :: EOL :: TextRawEnd)
+//  "'\\\\'"     , TextBegin    :: TextEscape(SlashEscape) :: TextEnd)
+//  "\"\\\\\""   , TextRawBegin :: Text("\\") :: TextEscape(RawQuoteEscape))
+//  "'\\\''"     , TextBegin    :: TextEscape(QuoteEscape) :: TextEnd   )
+//  "\"\\\'\""   , TextRawBegin :: TextEscape(QuoteEscape) :: TextRawEnd)
+//  "'\\\"'"     , TextBegin    :: TextEscape(RawQuoteEscape) :: TextEnd   )
+//  "\"\\\"\""   , TextRawBegin :: TextEscape(RawQuoteEscape) :: TextRawEnd)
+//  "''' '''"            , TextBegin    :: Text(" ") :: TextEnd   )
+//  "\"\"\" \"\"\""      , TextRawBegin :: Text(" ") :: TextRawEnd)
+//  "''' '' '''"         , TextBegin    :: Text(" ") :: Text("''")   :: Text(" ") :: TextEnd   )
+//  "\"\"\" \"\" \"\"\"" , TextRawBegin :: Text(" ") :: Text("\"\"") :: Text(" ") :: TextRawEnd)
 //
 //  // Int Escapes
 //  expr("'\\12'"     , TextBegin    :: TextEscape(IntEscape(12)) :: TextEnd   )
