@@ -35,14 +35,15 @@ lazy val logger = (project in file("lib/logger"))
   .settings(
     libraryDependencies ++= Seq(
       "org.scala-lang" % "scala-reflect"  % "2.12.8",
-      "org.scala-lang" % "scala-compiler" % "2.12.8",
+      "org.scala-lang" % "scala-compiler" % "2.12.8"
     )
   )
 
 lazy val flexer = (project in file("lib/flexer"))
   .settings(
     version := "0.1",
-    scalacOptions += "-language:experimental.macros"
+    scalacOptions += "-language:experimental.macros",
+    scalacOptions += "-Xmacro-settings:-logging@org.enso.flexer"
   )
   .settings(
     libraryDependencies ++= Seq(
@@ -66,9 +67,9 @@ lazy val parser = (project in file("syntax/parser"))
     ),
     resolvers ++= Seq(
       "Sonatype OSS Snapshots" at
-        "https://oss.sonatype.org/content/repositories/snapshots",
+      "https://oss.sonatype.org/content/repositories/snapshots",
       "Sonatype OSS Releases" at
-        "https://oss.sonatype.org/content/repositories/releases"
+      "https://oss.sonatype.org/content/repositories/releases"
     )
   )
   .dependsOn(logger)
@@ -77,8 +78,7 @@ lazy val parser = (project in file("syntax/parser"))
 lazy val syntax = (project in file("syntax/runner"))
   .settings(
     mainClass in (Compile, run) := Some("org.enso.syntax.Main"),
-    version := "0.1",
-    scalacOptions += "-Xmacro-settings:-logging@org.enso.syntax.Flexer"
+    version := "0.1"
   )
   .settings(
     libraryDependencies ++= Seq(

@@ -111,6 +111,7 @@ object Parser extends ParserBase[AST] {
   val lowerLetter: Pattern = range('a', 'z')
   val upperLetter: Pattern = range('A', 'Z')
   val digit: Pattern       = range('0', '9')
+  val hex: Pattern         = digit | range('a', 'f') | range('A', 'F')
   val alphaNum: Pattern    = digit | lowerLetter | upperLetter
   val whitespace0: Pattern = ' '.many
   val whitespace: Pattern  = ' '.many1
@@ -303,24 +304,34 @@ object Parser extends ParserBase[AST] {
   NUMBER_PHASE2 rule pass                    run reify { onNoExplicitBase() }
   // format: on
 
-  //////////////
+  ////////////
   /// Text ///
-  //////////////
+  ////////////
 
-  case class TextState(
-    quoteSize: QuoteSize,
-    var segments: List[AST.Text.Segment]
-  )
-  var textStateStack: List[TextState] = Nil
+  var textStateStack: List[AST.Text] = Nil
 
   final def currentText = textStateStack.head
+  final def withCurrentText(f: AST.Text => AST.Text) =
+    textStateStack = f(textStateStack.head) :: textStateStack.tail
 
   final def pushTextState(quoteSize: QuoteSize): Unit = logger.trace {
-    textStateStack +:= TextState(quoteSize, Nil)
+    textStateStack +:= AST.Text(quoteSize)
+  }
+
+  final def popTextState(): Unit = logger.trace {
+    textStateStack = textStateStack.tail
   }
 
   final def submitEmptyText(quoteNum: QuoteSize): Unit = logger.trace {
     app(AST.Text(quoteNum))
+  }
+
+  final def submitCurrentText(): Unit = logger.trace {
+    withCurrentText { t =>
+      t.copy(segments = t.segments.reverse)
+    }
+    app(currentText)
+    popTextState()
   }
 
   final def onTextBegin(quoteSize: QuoteSize): Unit = {
@@ -329,19 +340,57 @@ object Parser extends ParserBase[AST] {
   }
 
   final def onTextSegment(): Unit = logger.trace {
-    currentText.segments +:= AST.Text.Segment.Plain(currentMatch)
+    withCurrentText(_ +: AST.Text.Segment.Plain(currentMatch))
   }
 
-  val stringSegmentChar = noneOf("'`\n\\")
-  val stringSegment     = stringSegmentChar.many1
+  final def onTextQuote(quoteSize: QuoteSize): Unit = logger.trace {
+    if (currentText.quoteSize != quoteSize) onTextSegment()
+    else {
+      submitCurrentText()
+      endGroup()
+    }
+  }
+
+  final def onTextEscape(code: AST.Text.Segment.Escape): Unit = logger.trace {
+    withCurrentText(_ +: code)
+  }
+
+  final def onTextEscapeU16(): Unit = logger.trace {
+    val code = currentMatch.drop(2)
+    withCurrentText(_ +: AST.Text.Segment.Escape.Unicode.U16(code))
+  }
+
+  val stringChar    = noneOf("'`\n\\")
+  val stringSegment = stringChar.many1
 
   val TEXT: Group = defineGroup("Number Phase 2")
 
   // format: off
   NORMAL rule "'"           run reify { onTextBegin(AST.Text.SingleQuote) }
   NORMAL rule "'''"         run reify { onTextBegin(AST.Text.TripleQuote) }
+  TEXT   rule "'"           run reify { onTextQuote(AST.Text.SingleQuote) }
+  TEXT   rule "'''"         run reify { onTextQuote(AST.Text.TripleQuote) }
   TEXT   rule stringSegment run reify { onTextSegment() }
+  TEXT   rule ("\\u" >> stringChar >> stringChar >> stringChar >> stringChar) run reify {onTextEscapeU16()}
+  TEXT   rule ("\\u" >> stringChar >> stringChar >> stringChar) run reify {onTextEscapeU16()}
+  TEXT   rule ("\\u" >> stringChar >> stringChar) run reify {onTextEscapeU16()}
+  TEXT   rule ("\\u" >> stringChar) run reify {onTextEscapeU16()}
+  TEXT   rule ("\\u") run reify {onTextEscapeU16()}
   // format: on
+
+//  AST.Text.Segment.Escape.Character.codes.foreach { ctrl =>
+//    val func = reify { onTextEscape(AST.Text.Segment.Escape.Character.a) }
+//    val func2 =
+//      func.copy(code = func.code.replace("Control.a", s"Control.${ctrl}"))
+//    TEXT rule s"\\$ctrl" run func2
+//  }
+//
+//  AST.Text.Segment.Escape.Control.codes.foreach { ctrl =>
+//    val func = reify { onTextEscape(AST.Text.Segment.Escape.Control.DEL) }
+//    val func2 =
+//      func.copy(code = func.code.replace("Control.DEL", s"Control.${ctrl}"))
+//    TEXT rule s"\\$ctrl" run func2
+//  }
 
   //////////////
   /// Groups ///
@@ -463,8 +512,8 @@ object Parser extends ParserBase[AST] {
 
   final def submitModule(): Unit = logger.trace {
     submitLine()
-    val el  = currentBlock.emptyLines.reverse.map(AST.Line.empty)
-    val el2 = emptyLines.reverse.map(AST.Line.empty)
+    val el  = currentBlock.emptyLines.reverse.map(AST.Line(_))
+    val el2 = emptyLines.reverse.map(AST.Line(_))
     val firstLines = currentBlock.firstLine match {
       case None            => el
       case Some(firstLine) => firstLine.to[AST.Line] :: el

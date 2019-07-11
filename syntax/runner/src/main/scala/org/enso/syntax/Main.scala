@@ -3,6 +3,8 @@ import org.enso.flexer.Macro.compile
 import org.enso.flexer.Success
 import org.enso.parser.Parser
 
+import scala.reflect.runtime.universe
+
 object Main extends App {
 
   var indent = 0
@@ -59,10 +61,17 @@ object Main extends App {
 
   val p1 = compile(Parser)
   val p2 = p1.run("'foo'")
+
+//  val p1   = new Parser
+//  val code = p1.specialize()
+//  val p2   = p1.debugRun("'\\u12o45'")
   pprint(p2)
   p2 match {
     case Success(v, _) =>
       println(v.span)
   }
+//  println("CODE LEN:", code.length) //136500
+
+  println()
 
 }

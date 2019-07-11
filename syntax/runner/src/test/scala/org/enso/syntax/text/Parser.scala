@@ -1,4 +1,4 @@
-package org.enso.syntax.text
+package org.enso.syntax.text.test
 
 import org.enso.flexer.Macro
 import org.enso.parser.AST._
@@ -44,143 +44,121 @@ class LexerSpec extends FlatSpec with Matchers {
     }
   }
 
-  def module(input: String, result: AST): Unit =
-    it should parseTitle(input) in { assertModule(input, result) }
+  implicit class TestString(input: String) {
+    def parseTitle(str: String): String = {
+      val escape = (str: String) => str.replace("\n", "\\n")
+      s"parse `${escape(str)}`"
+    }
 
-  def expr(input: String, result: AST): Unit =
-    it should parseTitle(input) in { assertExpr(input, result) }
+    private val testBase = it should parseTitle(input)
 
-  case object test {
-    def expr(input: String):   ParseTest = ParseTest(input, assertExpr)
-    def module(input: String): ParseTest = ParseTest(input, assertModule)
+    def ?==(out: AST)    = testBase in { assertExpr(input, out) }
+    def ?==(out: Module) = testBase in { assertModule(input, out) }
   }
-
-  case class ParseTest(input: String, tester: (String, AST) => Assertion) {
-
-    def as(result: AST): Unit =
-      it should parseTitle(input) in { tester(input, result) }
-  }
-
-  //  def unexpectedSuffix(input: String): Symbol = {
-  //    Invalid(UnexpectedSuffix(input))
-  //  }
-
-  def escape(str: String): String =
-    str.replace("\n", "\\n")
-
-  def parseTitle(str: String): String = s"parse `${escape(str)}`"
-
-  // format: off
 
   /////////////////
   // Identifiers //
   /////////////////
 
-
-  test expr "_"      as Wildcard
-  test expr "Name"   as Cons("Name")
-  test expr "name"   as "name"
-  test expr "name'"  as "name'"
-  test expr "name''" as "name''"
-  test expr "name'a" as Identifier.InvalidSuffix("name'","a")
-  test expr "name_"  as "name_"
-  test expr "name_'" as "name_'"
-  test expr "name'_" as Identifier.InvalidSuffix("name'","_")
-  test expr "name`"  as App("name",0,Unrecognized("`"))
-
+  "_"      ?== "_"
+  "Name"   ?== "Name"
+  "name"   ?== "name"
+  "name'"  ?== "name'"
+  "name''" ?== "name''"
+  "name'a" ?== Identifier.InvalidSuffix("name'", "a")
+  "name_"  ?== "name_"
+  "name_'" ?== "name_'"
+  "name'_" ?== Identifier.InvalidSuffix("name'", "_")
+  "name`"  ?== "name" $ Unrecognized("`")
 
   ///////////////
   // Operators //
   ///////////////
 
-  test expr "++"   as Operator("++")
-  test expr "="    as Operator("=")
-  test expr "=="   as Operator("==")
-  test expr ":"    as Operator(":")
-  test expr ","    as Operator(",")
-  test expr "."    as Operator(".")
-  test expr ".."   as Operator("..")
-  test expr "..."  as Operator("...")
-  test expr ">="   as Operator(">=")
-  test expr "<="   as Operator("<=")
-  test expr "/="   as Operator("/=")
-  test expr "+="   as Modifier("+")
-  test expr "-="   as Modifier("-")
-  test expr "==="  as Identifier.InvalidSuffix(Operator("==")  , "=")
-  test expr "...." as Identifier.InvalidSuffix(Operator("...") , ".")
-  test expr ">=="  as Identifier.InvalidSuffix(Operator(">=")  , "=")
-  test expr "+=="  as Identifier.InvalidSuffix(Operator("+")   , "==")
-
+  "++"   ?== Operator("++")
+  "="    ?== Operator("=")
+  "=="   ?== Operator("==")
+  ":"    ?== Operator(":")
+  ","    ?== Operator(",")
+  "."    ?== Operator(".")
+  ".."   ?== Operator("..")
+  "..."  ?== Operator("...")
+  ">="   ?== Operator(">=")
+  "<="   ?== Operator("<=")
+  "/="   ?== Operator("/=")
+  "+="   ?== Modifier("+")
+  "-="   ?== Modifier("-")
+  "==="  ?== Identifier.InvalidSuffix("==", "=")
+  "...." ?== Identifier.InvalidSuffix("...", ".")
+  ">=="  ?== Identifier.InvalidSuffix(">=", "=")
+  "+=="  ?== Identifier.InvalidSuffix("+", "==")
 
   /////////////////
   // Expressions //
   /////////////////
 
-  test expr "a b"       as ("a" $ "b")
-  test expr "a + b"     as ("a" $ Operator("+") $ "b")
-  test expr "()"        as Group()
-  test expr "(())"      as Group(Group())
-  test expr "(()"       as Group.Unclosed(Group())
-  test expr "(("        as Group.Unclosed(Group.Unclosed())
-  test expr "( "        as Group.Unclosed()
-  test expr ")"         as Group.UnmatchedClose
-  test expr ")("        as App(Group.UnmatchedClose,0,Group.Unclosed())
-  test expr "a ( b c )" as ("a" $ Group(1,"b" $ "c",1))
-  test expr "(a (b c))" as Group("a" $ Group("b" $ "c"))
+  "a b"       ?== ("a" $_ "b")
+  "a + b"     ?== ("a" $_ "+" $_ "b")
+  "()"        ?== Group()
+  "(())"      ?== Group(Group())
+  "(()"       ?== Group.Unclosed(Group())
+  "(("        ?== Group.Unclosed(Group.Unclosed())
+  "( "        ?== Group.Unclosed()
+  ")"         ?== Group.UnmatchedClose
+  ")("        ?== Group.UnmatchedClose $ Group.Unclosed()
+  "a ( b c )" ?== ("a" $_ Group(1, "b" $_ "c", 1))
+  "(a (b c))" ?== Group("a" $_ Group("b" $_ "c"))
 
   ////////////
   // Layout //
   ////////////
 
-  test module ""      as Module.oneLiner(Line.empty(0))
-  test module "\n"    as Module(Line.empty(0), Line.empty(0) :: Nil)
-  test module "  \n " as Module(Line.empty(2), Line.empty(1) :: Nil)
-  test module "\n\n"  as Module(Line.empty(0), List.fill(2)(Line.empty(0)))
-  //  test module "(a)"  as GroupBegin  :: Var("a") :: GroupEnd
-  //  test module "[a]"  as ListBegin   :: Var("a") :: ListEnd
-  //  test module "{a}"  as RecordBegin :: Var("a") :: RecordEnd
-
-
+  ""      ?== Module(Line())
+  "\n"    ?== Module(Line(), Line())
+  "  \n " ?== Module(Line(2), Line(1))
+  "\n\n"  ?== Module(Line(), Line(), Line())
+  //  test module "(a)"  ==? GroupBegin  :: Var("a") :: GroupEnd
+  //  test module "[a]"  ==? ListBegin   :: Var("a") :: ListEnd
+  //  test module "{a}"  ==? RecordBegin :: Var("a") :: RecordEnd
 
   /////////////
   // Numbers //
   /////////////
 
-  test expr "7"        as 7
-  test expr "07"       as Number("07")
-  test expr "10_7"     as Number(10, 7)
-  test expr "16_ff"    as Number(16, "ff")
-  test expr "16_"      as Number.DanglingBase("16")
-  test expr "7.5"      as App(App(7,0,Operator(".")),0,5)
-  //
-  //
-  //  //////////
-  //  // Text //
-  //  //////////
-  //
-  //  // Basic
-  //  expr("'"          , TextBegin   )
-  //  expr("\""         , TextRawBegin)
-  //  expr("''"         , TextBegin    :: TextEnd)
-  //  expr("\"\""       , TextRawBegin :: TextRawEnd)
-  //  expr("'''"        , TextBegin   )
-  //  expr("\"\"\""     , TextRawBegin)
-  //  expr("' '"        , TextBegin    :: Text(" ") :: TextEnd)
-  //  expr("\" \""      , TextRawBegin :: Text(" ") :: TextRawEnd)
-  //  expr("'' ''"      , TextBegin    :: TextEnd    :: TextBegin    :: TextEnd   )
-  //  expr("\"\" \"\""  , TextRawBegin :: TextRawEnd :: TextRawBegin :: TextRawEnd)
-  //  expr("'\n'"       , TextBegin    :: EOL :: TextEnd   )
-  //  expr("\"\n\""     , TextRawBegin :: EOL :: TextRawEnd)
-  //  expr("'\\\\'"     , TextBegin    :: TextEscape(SlashEscape) :: TextEnd)
-  //  expr("\"\\\\\""   , TextRawBegin :: Text("\\") :: TextEscape(RawQuoteEscape))
-  //  expr("'\\\''"     , TextBegin    :: TextEscape(QuoteEscape) :: TextEnd   )
-  //  expr("\"\\\'\""   , TextRawBegin :: TextEscape(QuoteEscape) :: TextRawEnd)
-  //  expr("'\\\"'"     , TextBegin    :: TextEscape(RawQuoteEscape) :: TextEnd   )
-  //  expr("\"\\\"\""   , TextRawBegin :: TextEscape(RawQuoteEscape) :: TextRawEnd)
-  //  expr("''' '''"            , TextBegin    :: Text(" ") :: TextEnd   )
-  //  expr("\"\"\" \"\"\""      , TextRawBegin :: Text(" ") :: TextRawEnd)
-  //  expr("''' '' '''"         , TextBegin    :: Text(" ") :: Text("''")   :: Text(" ") :: TextEnd   )
-  //  expr("\"\"\" \"\" \"\"\"" , TextRawBegin :: Text(" ") :: Text("\"\"") :: Text(" ") :: TextRawEnd)
+  "7"     ?== 7
+  "07"    ?== Number("07")
+  "10_7"  ?== Number(10, 7)
+  "16_ff" ?== Number(16, "ff")
+  "16_"   ?== Number.DanglingBase("16")
+  "7.5"   ?== 7 $ "." $ 5
+
+  //////////
+  // Text //
+  //////////
+
+  "'foo'" ?== Text("foo")
+  //  "'"          , TextBegin   )
+  //  "\""         , TextRawBegin)
+  //  "''"         , TextBegin    :: TextEnd)
+  //  "\"\""       , TextRawBegin :: TextRawEnd)
+  //  "'''"        , TextBegin   )
+  //  "\"\"\""     , TextRawBegin)
+  //  "' '"        , TextBegin    :: Text(" ") :: TextEnd)
+  //  "\" \""      , TextRawBegin :: Text(" ") :: TextRawEnd)
+  //  "'' ''"      , TextBegin    :: TextEnd    :: TextBegin    :: TextEnd   )
+  //  "\"\" \"\""  , TextRawBegin :: TextRawEnd :: TextRawBegin :: TextRawEnd)
+  //  "'\n'"       , TextBegin    :: EOL :: TextEnd   )
+  //  "\"\n\""     , TextRawBegin :: EOL :: TextRawEnd)
+  //  "'\\\\'"     , TextBegin    :: TextEscape(SlashEscape) :: TextEnd)
+  //  "\"\\\\\""   , TextRawBegin :: Text("\\") :: TextEscape(RawQuoteEscape))
+  //  "'\\\''"     , TextBegin    :: TextEscape(QuoteEscape) :: TextEnd   )
+  //  "\"\\\'\""   , TextRawBegin :: TextEscape(QuoteEscape) :: TextRawEnd)
+  //  "'\\\"'"     , TextBegin    :: TextEscape(RawQuoteEscape) :: TextEnd   )
+  //  "\"\\\"\""   , TextRawBegin :: TextEscape(RawQuoteEscape) :: TextRawEnd)
+  //  "''' '''"            , TextBegin    :: Text(" ") :: TextEnd   )
+  //  "\"\"\" \"\"\""      , TextRawBegin :: Text(" ") :: TextRawEnd)
+  //  "''' '' '''"         , TextBegin    :: Text(" ") :: Text("''")   :: Text(" ") :: TextEnd   )
+  //  "\"\"\" \"\" \"\"\"" , TextRawBegin :: Text(" ") :: Text("\"\"") :: Text(" ") :: TextRawEnd)
   //
   //  // Int Escapes
   //  expr("'\\12'"     , TextBegin    :: TextEscape(IntEscape(12)) :: TextEnd   )
