@@ -4,11 +4,10 @@ import org.enso.Logger
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.reflect.runtime.currentMirror
-import scala.tools.reflect.ToolBox
 
 trait ParserBase[T] {
-  import java.io.{Reader, StringReader}
+  import java.io.Reader
+  import java.io.StringReader
 
   import scala.collection.mutable.StringBuilder
 
@@ -128,44 +127,5 @@ trait ParserBase[T] {
     println(s"REWIND ${currentMatch.length}")
     offset -= currentMatch.length + 1
     currentChar = getNextChar
-  }
-
-  def specialize(): String = {
-    val clsPath = this.getClass.getName.split("\\.")
-    val clsName = clsPath.last
-    val pkgName = clsPath.dropRight(1).mkString(".")
-
-    val imp  = s"import $pkgName.{$clsName => ParserBase}\n"
-    val pfx  = "class GeneratedParser extends ParserBase {\n"
-    val sfx  = "}\nscala.reflect.classTag[GeneratedParser].runtimeClass\n"
-    val code = imp + pfx + groupsx.map(_.generate()).mkString("\n") + sfx
-    code.replace(s"$clsName.", "")
-  }
-
-  def debugRun(input: String): Result[T] = {
-    val instance = debugInstance()
-    instance.run(input)
-  }
-
-  def debugInstance(): this.type = {
-    val cons = debugCompiledClass()
-    cons.newInstance()
-  }
-
-  def debugCompiledClass() = {
-    println(Console.RED + "Using debug runtime compilation method.")
-    println(Console.RED + "Do not use it on production!")
-    println(Console.RESET)
-
-    val code     = specialize()
-    val toolbox  = currentMirror.mkToolBox()
-    val classDef = toolbox.parse(code)
-
-    val clazz = toolbox
-      .compile(classDef)
-      .apply()
-      .asInstanceOf[Class[this.type]]
-
-    clazz.getConstructor()
   }
 }
