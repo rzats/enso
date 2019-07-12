@@ -8,10 +8,12 @@ import org.scalatest._
 
 class LexerSpec extends FlatSpec with Matchers {
 
-  val parserCls = Macro.compile(Parser)
+  val parserCons = Macro.compile(new Parser())
 
-  def parse(input: String) =
-    parserCls.run(input) // TODO new isntance?
+  def parse(input: String) = {
+    val parser = parserCons()
+    parser.run(input)
+  }
 
   def assertModule(input: String, result: AST): Assertion = {
     val tt = parse(input)

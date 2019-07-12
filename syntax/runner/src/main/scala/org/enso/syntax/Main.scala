@@ -1,7 +1,11 @@
 package org.enso.syntax
 import org.enso.flexer.Macro.compile
+import org.enso.flexer.Macro.compile2
 import org.enso.flexer.Success
 import org.enso.parser.Parser
+import org.enso.parser.Parser2
+import org.enso.flexer._
+import org.enso.parser.AST.AST
 
 import scala.reflect.runtime.universe
 
@@ -59,17 +63,58 @@ object Main extends App {
 
   //////////////////////////////////////////////////////////////
 
-  val p1 = compile(Parser)
-  val p2 = p1.run("'foo'")
+//  @expand object Parser extends ParserBase[Int] {
+//    def getResult() = Some(5)
+//
+//    override def initialize() = {}
+//  }
+//
+//  println(Foo(7))
 
-//  val p1   = new Parser
-//  val code = p1.specialize()
-//  val p2   = p1.debugRun("'\\u12o45'")
-  pprint(p2)
-  p2 match {
-    case Success(v, _) =>
-      println(v.span)
-  }
+  val parserCons = compile2(Parser2)
+
+  val p1 = parserCons()
+  val p2 = parserCons()
+
+  p1.bufferLen = 10
+
+  println(p1.bufferLen)
+  println(p2.bufferLen)
+
+  println(p1.run("foo"))
+
+//  import scala.reflect.runtime.universe._
+//  val r = reify((new Foo().getClass))
+//  println(r)
+//
+//  println(p1)
+//  println(p1())
+//
+//  object A {
+//    var x = 0;
+//    def foo() = {
+//      println(x)
+//    }
+//  }
+//
+//  object B {
+//    import A._
+//    A
+//  }
+//
+//  val b = new B()
+//  println(B.a
+//  val p2 = p1.run("'foo'")
+//
+////  val p1   = new Parser
+////  val code = p1.specialize()
+////  val p2   = p1.debugRun("'\\u12o45'")
+//  pprint(p2)
+//  p2 match {
+//    case Success(v, _) =>
+//      println(v.span)
+//  }
+
 //  println("CODE LEN:", code.length) //136500
 
   println()

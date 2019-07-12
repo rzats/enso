@@ -50,6 +50,10 @@ lazy val flexer = (project in file("lib/flexer"))
       "org.scala-lang" % "scala-reflect"  % "2.12.8",
       "org.scala-lang" % "scala-compiler" % "2.12.8",
       "org.feijoas"    %% "mango"         % "0.14"
+    ),
+    resolvers += Resolver.sonatypeRepo("releases"),
+    addCompilerPlugin(
+      "org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full
     )
   )
   .dependsOn(logger) //depends logger macro
@@ -97,6 +101,10 @@ lazy val syntax = (project in file("syntax/runner"))
       "https://oss.sonatype.org/content/repositories/snapshots",
       "Sonatype OSS Releases" at
       "https://oss.sonatype.org/content/repositories/releases"
+    ),
+    resolvers += Resolver.sonatypeRepo("releases"),
+    addCompilerPlugin(
+      "org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full
     )
   )
   .dependsOn(parser)
