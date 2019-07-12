@@ -107,7 +107,15 @@ lazy val syntax = (project in file("syntax/runner"))
       "org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full
     ),
     (Compile / compile) := (Compile / compile)
-      .dependsOn(parser / Compile / compile)
+      .dependsOn(Def.taskDyn {
+        val parserCompile = (parser / Compile / compileIncremental).value
+        if (parserCompile.hasModified) {
+          Def.task {
+            streams.value.log.info("Parser changed, forcing recompilation.")
+            clean.value
+          }
+        } else Def.task {}
+      })
       .value
   )
   .dependsOn(parser)
