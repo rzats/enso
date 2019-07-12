@@ -6,7 +6,7 @@ import scala.reflect.runtime.{universe => u}
 object Macro {
 
   type Base[T] = ParserBase[T]
-  type In[T]   = () => Base[T]
+  type In[T]   = Base[T]
   type Out[T]  = () => Base[T]
 
   def compile[T](p: In[T]): Out[T] =
@@ -17,13 +17,20 @@ object Macro {
   )(p: c.Expr[In[T]]): c.Expr[Out[T]] = {
     import c.universe._
     val tree   = p.tree
-    val expr   = q"$tree()"
+    val expr   = q"$tree"
     val parser = c.eval(c.Expr[Base[T]](c.untypecheck(expr.duplicate)))
     val groups = c.internal
       .createImporter(u)
       .importTree(u.Block(parser.groupsx.map(_.generate()): _*))
 
-    val superClassName = tree match {
+    println("---------")
+    val tree2 = tree match {
+      case Apply(Select(New(base), _), _) => base
+      case _                              => throw new Error("Wrong shape")
+    }
+    println("----")
+
+    val superClassName = tree2 match {
       case Select(_, name) => name
       case _               => throw new Error("Wrong shape")
     }
@@ -31,7 +38,9 @@ object Macro {
     val groupsRebind = new Transformer {
       override def transform(tree: Tree): Tree = tree match {
         case Select(Ident(base), name) =>
-          val base2 = if (base == superClassName) q"this" else Ident(base)
+          val base2 =
+            if (base.toString == superClassName.toString) q"this"
+            else Ident(base)
           super.transform(Select(base2, name))
         case node => super.transform(node)
       }
@@ -48,9 +57,12 @@ object Macro {
       }
     }
 
-    val clsDef = c.parse(s"final class __Parser__ extends $tree")
+    val clsDef = c.parse(s"final class __Parser__ extends $tree2")
     val tgtDef = addGroupDefs.transform(clsDef)
-    c.Expr[Out[T]](q"$tgtDef; () => { new __Parser__ () }")
+    println("!!!!!!!!!!!!!!!!!!!!!!!")
+    val out = c.Expr[Out[T]](q"$tgtDef; () => { new __Parser__ () }")
+//    println(out)
+    out
   }
 
 }

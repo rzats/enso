@@ -105,7 +105,10 @@ lazy val syntax = (project in file("syntax/runner"))
     resolvers += Resolver.sonatypeRepo("releases"),
     addCompilerPlugin(
       "org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full
-    )
+    ),
+    (Compile / compile) := (Compile / compile)
+      .dependsOn(parser / Compile / compile)
+      .value
   )
   .dependsOn(parser)
   .dependsOn(logger)

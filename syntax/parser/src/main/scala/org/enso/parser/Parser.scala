@@ -5,8 +5,9 @@ import org.enso.parser.AST.AST
 
 import scala.reflect.runtime.universe._
 import org.enso.parser.AST.Text.QuoteSize
+import scala.annotation.tailrec
 
-case class Parser() extends ParserBase[AST] {
+class Parser extends ParserBase[AST] {
 
   implicit final def charToExpr(char: Char): Pattern =
     Ran(char, char)
@@ -30,10 +31,8 @@ case class Parser() extends ParserBase[AST] {
   final def anyOf(chars: String): Pattern =
     anyOf(chars.map(char))
 
-  final def anyOf(alts: Seq[Pattern]): Pattern = {
+  final def anyOf(alts: Seq[Pattern]): Pattern =
     alts.fold(none)(_ | _)
-    //    alts.tail.fold(alts.head)(_ | _)
-  }
 
   final def noneOf(chars: String): Pattern = {
     val pointCodes  = chars.map(_.toInt).sorted
@@ -47,6 +46,29 @@ case class Parser() extends ParserBase[AST] {
 
   final def not(char: Char): Pattern =
     noneOf(char.toString)
+
+  def repeat(p: Pattern, min: Int, max: Int): Pattern = {
+    val minPat = repeat(p, min)
+    _repeatAlt(p, max - min, minPat, minPat)
+  }
+
+  def repeat(p: Pattern, num: Int): Pattern =
+    _repeat(p, num, pass)
+
+  @tailrec
+  final def _repeat(p: Pattern, num: Int, out: Pattern): Pattern = num match {
+    case 0 => out
+    case _ => _repeat(p, num - 1, out >> p)
+  }
+
+  @tailrec
+  final def _repeatAlt(p: Pattern, i: Int, ch: Pattern, out: Pattern): Pattern =
+    i match {
+      case 0 => out
+      case _ =>
+        val ch2 = ch >> p
+        _repeatAlt(p, i - 1, ch2, out | ch2)
+    }
 
   final def replaceGroupSymbols(
     s: String,
@@ -92,11 +114,12 @@ case class Parser() extends ParserBase[AST] {
   final def app(fn: String => AST): Unit =
     app(fn(currentMatch))
 
-  final def app(t: AST): Unit =
+  final def app(t: AST): Unit = logger.trace {
     result = Some(result match {
       case None    => t
       case Some(r) => AST.App(r, useLastOffset(), t)
     })
+  }
 
   /////////////////////////////////
   /// Basic Char Classification ///
@@ -330,7 +353,7 @@ case class Parser() extends ParserBase[AST] {
     popTextState()
   }
 
-  final def onTextBegin(quoteSize: QuoteSize): Unit = {
+  final def onTextBegin(quoteSize: QuoteSize): Unit = logger.trace {
     pushTextState(quoteSize)
     beginGroup(TEXT)
   }
@@ -340,8 +363,14 @@ case class Parser() extends ParserBase[AST] {
   }
 
   final def onTextQuote(quoteSize: QuoteSize): Unit = logger.trace {
-    if (currentText.quoteSize != quoteSize) onTextSegment()
-    else {
+    if (currentText.quoteSize == AST.Text.TripleQuote
+        && quoteSize == AST.Text.SingleQuote) onTextSegment()
+    else if (currentText.quoteSize == AST.Text.SingleQuote
+             && quoteSize == AST.Text.TripleQuote) {
+      submitCurrentText()
+      submitEmptyText(AST.Text.SingleQuote)
+      endGroup()
+    } else {
       submitCurrentText()
       endGroup()
     }
@@ -356,34 +385,37 @@ case class Parser() extends ParserBase[AST] {
     withCurrentText(_ +: AST.Text.Segment.Escape.Unicode.U16(code))
   }
 
+  final def onTextEscapeU32(): Unit = logger.trace {
+    val code = currentMatch.drop(2)
+    withCurrentText(_ +: AST.Text.Segment.Escape.Unicode.U32(code))
+  }
+
   val stringChar    = noneOf("'`\n\\")
   val stringSegment = stringChar.many1
 
-  val TEXT: Group = defineGroup("Number Phase 2")
+  val TEXT: Group = defineGroup("Text")
 
   // format: off
-  NORMAL rule "'"           run reify { onTextBegin(AST.Text.SingleQuote) }
-  NORMAL rule "'''"         run reify { onTextBegin(AST.Text.TripleQuote) }
+//  NORMAL rule "'"           run reify { onTextBegin(AST.Text.SingleQuote) }
+  NORMAL rule "'"          run reify { submitEmptyText(AST.Text.SingleQuote) } // FIXME: Remove after fixing DFA Gen
+//  NORMAL rule "'''"         run reify { onTextBegin(AST.Text.TripleQuote) }
   TEXT   rule "'"           run reify { onTextQuote(AST.Text.SingleQuote) }
   TEXT   rule "'''"         run reify { onTextQuote(AST.Text.TripleQuote) }
-  TEXT   rule stringSegment run reify { onTextSegment() }
-  TEXT   rule ("\\u" >> stringChar >> stringChar >> stringChar >> stringChar) run reify {onTextEscapeU16()}
-  TEXT   rule ("\\u" >> stringChar >> stringChar >> stringChar) run reify {onTextEscapeU16()}
-  TEXT   rule ("\\u" >> stringChar >> stringChar) run reify {onTextEscapeU16()}
-  TEXT   rule ("\\u" >> stringChar) run reify {onTextEscapeU16()}
-  TEXT   rule ("\\u") run reify {onTextEscapeU16()}
+//  TEXT   rule stringSegment run reify { onTextSegment() }
+//  TEXT   rule ("\\u" >> repeat(stringChar,0,4)) run reify {onTextEscapeU16()}
+//  TEXT   rule ("\\U" >> repeat(stringChar,0,8)) run reify {onTextEscapeU32()}
   // format: on
 
   AST.Text.Segment.Escape.Character.codes.foreach { ctrl =>
-    val func = reify { onTextEscape(AST.Text.Segment.Escape.Character.a) } tree
-
-    TEXT rule s"\\$ctrl" run replace(func, q"Control.a", q"Control.${TermName(ctrl.toString)}")
+    val name = TermName(ctrl.toString)
+    val func = q"onTextEscape(AST.Text.Segment.Escape.Character.$name)"
+    TEXT rule s"\\$ctrl" run func
   }
 
   AST.Text.Segment.Escape.Control.codes.foreach { ctrl =>
-    val func = reify { onTextEscape(AST.Text.Segment.Escape.Control.DEL) } tree
-
-    TEXT rule s"\\$ctrl" run replace(func, q"Control.DEL", q"Control.${TermName(ctrl.toString)}")
+    val name = TermName(ctrl.toString)
+    val func = q"onTextEscape(AST.Text.Segment.Escape.Control.$name)"
+    TEXT rule s"\\$ctrl" run func
   }
 
   //////////////
@@ -607,12 +639,4 @@ case class Parser() extends ParserBase[AST] {
   NORMAL rule whitespace run reify { onWhitespace() }
   NORMAL rule eof run reify { onEOF() }
   NORMAL rule any run reify { app(AST.Unrecognized) }
-
-  def replace(old: Tree, pattern: Tree, replace: Tree): Tree = {
-    val transformer = new Transformer {
-      override def transform(tree: Tree): Tree =
-        if (tree equalsStructure pattern) replace else super.transform(tree)
-    }
-    transformer.transform(old)
-  }
 }
