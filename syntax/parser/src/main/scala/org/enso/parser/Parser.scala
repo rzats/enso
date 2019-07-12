@@ -3,7 +3,7 @@ package org.enso.parser
 import org.enso.flexer._
 import org.enso.parser.AST.AST
 
-import scala.reflect.runtime.universe.reify
+import scala.reflect.runtime.universe._
 import org.enso.parser.AST.Text.QuoteSize
 
 case class Parser() extends ParserBase[AST] {
@@ -374,19 +374,17 @@ case class Parser() extends ParserBase[AST] {
   TEXT   rule ("\\u") run reify {onTextEscapeU16()}
   // format: on
 
-//  AST.Text.Segment.Escape.Character.codes.foreach { ctrl =>
-//    val func = reify { onTextEscape(AST.Text.Segment.Escape.Character.a) }
-//    val func2 =
-//      func.copy(code = func.code.replace("Control.a", s"Control.${ctrl}"))
-//    TEXT rule s"\\$ctrl" run func2
-//  }
-//
-//  AST.Text.Segment.Escape.Control.codes.foreach { ctrl =>
-//    val func = reify { onTextEscape(AST.Text.Segment.Escape.Control.DEL) }
-//    val func2 =
-//      func.copy(code = func.code.replace("Control.DEL", s"Control.${ctrl}"))
-//    TEXT rule s"\\$ctrl" run func2
-//  }
+  AST.Text.Segment.Escape.Character.codes.foreach { ctrl =>
+    val func = reify { onTextEscape(AST.Text.Segment.Escape.Character.a) } tree
+
+    TEXT rule s"\\$ctrl" run replace(func, q"Control.a", q"Control.${TermName(ctrl.toString)}")
+  }
+
+  AST.Text.Segment.Escape.Control.codes.foreach { ctrl =>
+    val func = reify { onTextEscape(AST.Text.Segment.Escape.Control.DEL) } tree
+
+    TEXT rule s"\\$ctrl" run replace(func, q"Control.DEL", q"Control.${TermName(ctrl.toString)}")
+  }
 
   //////////////
   /// Groups ///
@@ -610,4 +608,11 @@ case class Parser() extends ParserBase[AST] {
   NORMAL rule eof run reify { onEOF() }
   NORMAL rule any run reify { app(AST.Unrecognized) }
 
+  def replace(old: Tree, pattern: Tree, replace: Tree): Tree = {
+    val transformer = new Transformer {
+      override def transform(tree: Tree): Tree =
+        if (tree equalsStructure pattern) replace else super.transform(tree)
+    }
+    transformer.transform(old)
+  }
 }
