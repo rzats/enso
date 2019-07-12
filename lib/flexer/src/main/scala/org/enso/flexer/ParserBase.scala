@@ -34,9 +34,7 @@ trait ParserBase[T] {
 
   def run(input: String): Result[T] = {
     initialize()
-    offset    = -1
-    codePoint = 0
-    sreader   = new StringReader(input)
+    sreader = new StringReader(input)
     val numRead = sreader.read(buffer, 0, buffer.length)
     bufferLen = numRead
     if (numRead == -1) bufferLen = 0

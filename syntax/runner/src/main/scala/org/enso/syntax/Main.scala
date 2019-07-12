@@ -79,7 +79,11 @@ object Main extends App {
   println(p1.bufferLen)
   println(p2.bufferLen)
 
-  println(p1.run("foo"))
+  val out = p1.run("\n")
+  out match {
+    case Success(v, _) =>
+      pprint(v)
+  }
 
 //  import scala.reflect.runtime.universe._
 //  val r = reify((new Foo().getClass))
