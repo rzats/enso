@@ -8,47 +8,10 @@ import scala.reflect.api.Exprs
 
 object Macro {
 
-  def compile[T](p: ParserBase[T]): () => ParserBase[T] =
+  def compile[T](p: () => ParserBase[T]): () => ParserBase[T] =
     macro compileImpl[T]
 
   def compileImpl[T: c.WeakTypeTag](
-    c: Context
-  )(p: c.Expr[ParserBase[T]]): c.Expr[() => ParserBase[T]] = {
-    import c.universe._
-    val parser = c.eval(c.Expr[ParserBase[T]](c.untypecheck(p.tree.duplicate)))
-    val groups = c.internal
-      .createImporter(u)
-      .importTree(u.Block(parser.groupsx.map(_.generate()): _*))
-
-    val err = new Error("Use the macro as `val cons = compile(new Parser())`")
-    val base = p.tree match {
-      case Apply(Select(New(base), _), _) => base
-      case _                              => throw err
-    }
-
-    val addGroupDefs = new Transformer {
-      override def transform(tree: Tree): Tree = tree match {
-        case Template(parents, self, body) =>
-          val exprs = q"..$groups;".asInstanceOf[Block].stats
-          Template(parents, self, body ++ exprs)
-        case node => super.transform(node)
-      }
-    }
-
-    val clsdef  = q"class Generated extends $base".asInstanceOf[ClassDef]
-    val clsdef2 = addGroupDefs.transform(clsdef)
-    val result  = c.Expr[() => ParserBase[T]](q"""
-         $clsdef2
-         () => { new Generated () }
-       """)
-//    println(result)
-    result
-  }
-
-  def compile2[T](p: () => ParserBase[T]): () => ParserBase[T] =
-    macro compileImpl2[T]
-
-  def compileImpl2[T: c.WeakTypeTag](
     c: Context
   )(p: c.Expr[() => ParserBase[T]]): c.Expr[() => ParserBase[T]] = {
     import c.universe._
@@ -59,16 +22,33 @@ object Macro {
       .createImporter(u)
       .importTree(u.Block(parser.groupsx.map(_.generate()): _*))
 
+    val groupsRebind = new Transformer {
+      override def transform(tree: Tree): Tree = tree match {
+        case Select(Ident(base), name) =>
+          println(showRaw(base), base.getClass.getName)
+          val base2 = if (base.toString == "Parser") {
+            q"this"
+          } else Ident(base)
+          super.transform(Select(base2, name))
+        case node => super.transform(node)
+      }
+    }
+    val groups2 = groupsRebind.transform(groups)
+
     val addGroupDefs = new Transformer {
       override def transform(tree: Tree): Tree = tree match {
         case Template(parents, self, body) =>
-          val exprs = q"..$groups;".asInstanceOf[Block].stats
+          val exprs = q"..$groups2;".asInstanceOf[Block].stats
           Template(parents, self, body ++ exprs)
         case node => super.transform(node)
       }
     }
 
-    val clsDef = c.parse(s"final class Generated extends $tree")
+//    val clsDef = c.parse(s"final class Generated extends $tree")
+    val clsDef =
+      c.parse(
+        s"final class Generated extends $tree"
+      )
     val tgtDef = addGroupDefs.transform(clsDef)
     val result = c.Expr[() => ParserBase[T]](q"""
          $tgtDef

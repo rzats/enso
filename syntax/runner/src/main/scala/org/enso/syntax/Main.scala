@@ -1,11 +1,9 @@
 package org.enso.syntax
 import org.enso.flexer.Macro.compile
-import org.enso.flexer.Macro.compile2
 import org.enso.flexer.Success
 import org.enso.parser.Parser
-import org.enso.parser.Parser2
 import org.enso.flexer._
-import org.enso.parser.AST.AST
+import org.enso.parser.AST
 
 import scala.reflect.runtime.universe
 
@@ -71,7 +69,7 @@ object Main extends App {
 //
 //  println(Foo(7))
 
-  val parserCons = compile2(Parser2)
+  val parserCons = compile(Parser)
 
   val p1 = parserCons()
   val p2 = parserCons()

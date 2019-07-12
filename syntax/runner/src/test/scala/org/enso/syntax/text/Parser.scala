@@ -2,13 +2,14 @@ package org.enso.syntax.text.test
 
 import org.enso.flexer.Macro
 import org.enso.parser.AST._
+import org.enso.parser.AST
 import org.enso.parser.Parser
 import org.enso.{flexer => Flexer}
 import org.scalatest._
 
 class LexerSpec extends FlatSpec with Matchers {
 
-  val parserCons = Macro.compile(new Parser())
+  val parserCons = Macro.compile(Parser)
 
   def parse(input: String) = {
     val parser = parserCons()
