@@ -139,7 +139,24 @@ class LexerSpec extends FlatSpec with Matchers {
   // Text //
   //////////
 
-  "'foo'" ?== Text("foo")
+  "''"      ?== Text()
+  "'"       ?== Text.Unclosed(Text())
+  "'a'"     ?== Text("a")
+  "'a"      ?== Text.Unclosed(Text("a"))
+  "'a'''"   ?== Text("a") $ Text()
+  "'''a'''" ?== Text(Text.TripleQuote, "a")
+  "'''a'"   ?== Text.Unclosed(Text(Text.TripleQuote, "a'"))
+  "'''a''"  ?== Text.Unclosed(Text(Text.TripleQuote, "a''"))
+
+  //// Escapes ////
+
+  AST.Text.Segment.Escape.Character.codes.foreach(i => s"'\\$i'" ?== Text(i))
+  AST.Text.Segment.Escape.Control.codes.foreach(i => s"'\\$i'"   ?== Text(i))
+
+  "'\\c'"    ?== Text(Text.Segment.Escape.Invalid("c"))
+  "'\\cd'"   ?== Text(Text.Segment.Escape.Invalid("c"), "d")
+  "'\\123d'" ?== Text(Text.Segment.Escape.Number(123), "d")
+
   //  "'"          , TextBegin   )
   //  "\""         , TextRawBegin)
   //  "''"         , TextBegin    :: TextEnd)

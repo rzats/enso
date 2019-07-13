@@ -122,8 +122,11 @@ trait ParserBase[T] {
   }
 
   final def rewind(): Unit = logger.trace {
-    println(s"REWIND ${currentMatch.length}")
-    offset -= currentMatch.length + 1
+    rewind(currentMatch.length)
+  }
+
+  final def rewind(i: Int): Unit = logger.trace {
+    offset -= i + 1
     currentChar = getNextChar
   }
 }

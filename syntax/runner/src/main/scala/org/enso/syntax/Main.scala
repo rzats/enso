@@ -69,17 +69,17 @@ object Main extends App {
 //
 //  println(Foo(7))
 
-  val parserCons = compile(new Parser())
+  val parserCons = compile(Parser)
 
   val p1 = parserCons()
   val p2 = parserCons()
 
-  p1.bufferLen = 10
+  p1.bufferLen = 11
 
   println(p1.bufferLen)
   println(p2.bufferLen)
 
-  val out = p1.run("''")
+  val out = p1.run("'foo")
   out match {
     case Success(v, _) =>
       pprint(v)

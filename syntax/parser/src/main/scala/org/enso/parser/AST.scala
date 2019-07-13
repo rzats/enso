@@ -1,7 +1,6 @@
 package org.enso.parser
 
 object AST {
-
   import reflect.runtime.universe._
 
   def getAllSeleadObjects[T](implicit ttag: TypeTag[T]) = {
@@ -28,6 +27,36 @@ object AST {
 
   trait Spanned {
     val span: Int
+  }
+
+  ////////////////////
+  /// Code Builder ///
+  ////////////////////
+
+  object CodeRepr {
+    def apply(s: String):  Segment = Text(s)
+    def apply(char: Char): Segment = Letter(char)
+
+    sealed trait Segment {
+      val span: Int
+      def show(out: StringBuilder): Unit
+    }
+
+    case class Letter(char: Char) extends Segment {
+      val span                     = 1
+      def show(out: StringBuilder) = out += char
+    }
+
+    case class Text(str: String) extends Segment {
+      val span                     = str.length
+      def show(out: StringBuilder) = out ++= str
+    }
+
+    final case class Node(segments: List[Segment]) extends Segment {
+      val span = segments.map(_.span).sum
+      override def show(out: StringBuilder) =
+        segments.reverse.foreach(_.show(out))
+    }
   }
 
   ////////////////////
@@ -98,6 +127,7 @@ object AST {
   final case class Unrecognized(str: String) extends InvalidAST {
     val span            = str.length
     def show(out: Code) = out += str
+    val repr            = CodeRepr(str)
   }
 
   ////// Identifiers //////
@@ -105,6 +135,7 @@ object AST {
   abstract class Identifier(name: String) extends AST {
     val span            = name.length
     def show(out: Code) = out += name
+    val repr            = CodeRepr(name)
   }
 
   object Identifier {
@@ -214,6 +245,13 @@ object AST {
 
     def prepend(segment: Text.Segment) =
       this.copy(segments = segment :: segments)
+
+    def prependMergeReversed(segment: Text.Segment) =
+      (segment, segments) match {
+        case (Text.Segment.Plain(n), Text.Segment.Plain(t) :: ss) =>
+          this.copy(segments = Text.Segment.Plain(t + n) :: ss)
+        case _ => this.copy(segments = segment :: segments)
+      }
   }
 
   object Text {
@@ -235,6 +273,11 @@ object AST {
     def apply(s: List[Segment]):          Text = Text(SingleQuote, s)
     def apply(s: Segment*):               Text = Text(s.to[List])
 
+    final case class Unclosed(text: Text) extends InvalidAST {
+      val span            = text.quoteSize.span + text.segments.map(_.span).sum
+      def show(out: Code) = out += text.quoteSize += text.segments
+    }
+
     trait Segment extends Symbol {
       def +:(text: Text) = text.prepend(this)
     }
@@ -243,6 +286,11 @@ object AST {
       final case class Plain(value: String) extends Segment {
         val span            = value.length
         def show(out: Code) = out += value
+      }
+
+      final case class Interpolated(value: Option[AST]) extends Segment {
+        val span                     = value.span + 2
+        override def show(out: Code) = out += '`' += value += '`'
       }
 
       implicit def stringToPlain(str: String): Plain = Plain(str)
@@ -254,6 +302,16 @@ object AST {
           val name: String        = toString()
           val span: Int           = name.length + 1
           def show(out: AST.Code) = out += '\\' += name
+        }
+
+        case class Number(int: Int) extends Escape {
+          val span                     = int.toString.length
+          override def show(out: Code) = out += int.toString
+        }
+
+        case class Invalid(str: String) extends Escape with AST.Invalid {
+          val span            = 1 + str.length
+          def show(out: Code) = out += '\\' += str
         }
 
         // Reference: https://en.wikipedia.org/wiki/String_literal
@@ -270,13 +328,13 @@ object AST {
           final case class U21 private (digits: String) extends U("u{", "}")
           final case class InvalidU16 private (digits: String)
               extends U("u", "")
-              with Invalid
+              with AST.Invalid
           final case class InvalidU32 private (digits: String)
               extends U("U", "")
-              with Invalid
+              with AST.Invalid
           final case class InvalidU21 private (digits: String)
               extends U("u{", "}")
-              with Invalid
+              with AST.Invalid
 
           object Validator {
             val hexChars = (('a' to 'f') ++ ('A' to 'F') ++ ('0' to '9')).toSet

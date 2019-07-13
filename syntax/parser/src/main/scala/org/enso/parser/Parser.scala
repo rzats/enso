@@ -7,7 +7,7 @@ import scala.reflect.runtime.universe._
 import org.enso.parser.AST.Text.QuoteSize
 import scala.annotation.tailrec
 
-class Parser extends ParserBase[AST] {
+case class Parser() extends ParserBase[AST] {
 
   implicit final def charToExpr(char: Char): Pattern =
     Ran(char, char)
@@ -341,16 +341,27 @@ class Parser extends ParserBase[AST] {
     textStateStack = textStateStack.tail
   }
 
+  final def insideOfText: Boolean =
+    textStateStack.nonEmpty
+
   final def submitEmptyText(quoteNum: QuoteSize): Unit = logger.trace {
     app(AST.Text(quoteNum))
   }
 
-  final def submitCurrentText(): Unit = logger.trace {
-    withCurrentText { t =>
-      t.copy(segments = t.segments.reverse)
-    }
-    app(currentText)
+  final def finishCurrentTextBuilding(): AST.Text = logger.trace {
+    withCurrentText(t => t.copy(segments = t.segments.reverse))
+    val txt = currentText
     popTextState()
+    endGroup()
+    txt
+  }
+
+  final def submitText(): Unit = logger.trace {
+    app(finishCurrentTextBuilding())
+  }
+
+  final def submitUnclosedText(): Unit = logger.trace {
+    app(AST.Text.Unclosed(finishCurrentTextBuilding()))
   }
 
   final def onTextBegin(quoteSize: QuoteSize): Unit = logger.trace {
@@ -358,52 +369,102 @@ class Parser extends ParserBase[AST] {
     beginGroup(TEXT)
   }
 
-  final def onTextSegment(): Unit = logger.trace {
-    withCurrentText(_ +: AST.Text.Segment.Plain(currentMatch))
+  final def submitPlainTextSegment(segment: AST.Text.Segment): Unit =
+    logger.trace {
+      withCurrentText(_.prependMergeReversed(segment))
+    }
+
+  final def submitTextSegment(segment: AST.Text.Segment): Unit = logger.trace {
+    withCurrentText(_ +: segment)
+  }
+
+  final def onPlainTextSegment(): Unit = logger.trace {
+    submitPlainTextSegment(AST.Text.Segment.Plain(currentMatch))
   }
 
   final def onTextQuote(quoteSize: QuoteSize): Unit = logger.trace {
     if (currentText.quoteSize == AST.Text.TripleQuote
-        && quoteSize == AST.Text.SingleQuote) onTextSegment()
+        && quoteSize == AST.Text.SingleQuote) onPlainTextSegment()
     else if (currentText.quoteSize == AST.Text.SingleQuote
              && quoteSize == AST.Text.TripleQuote) {
-      submitCurrentText()
+      submitText()
       submitEmptyText(AST.Text.SingleQuote)
-      endGroup()
     } else {
-      submitCurrentText()
-      endGroup()
+      submitText()
     }
   }
 
   final def onTextEscape(code: AST.Text.Segment.Escape): Unit = logger.trace {
-    withCurrentText(_ +: code)
+    submitTextSegment(code)
   }
 
   final def onTextEscapeU16(): Unit = logger.trace {
     val code = currentMatch.drop(2)
-    withCurrentText(_ +: AST.Text.Segment.Escape.Unicode.U16(code))
+    submitTextSegment(AST.Text.Segment.Escape.Unicode.U16(code))
   }
 
   final def onTextEscapeU32(): Unit = logger.trace {
     val code = currentMatch.drop(2)
-    withCurrentText(_ +: AST.Text.Segment.Escape.Unicode.U32(code))
+    submitTextSegment(AST.Text.Segment.Escape.Unicode.U32(code))
+  }
+
+  final def onTextEscapeInt(): Unit = logger.trace {
+    val int = currentMatch.drop(1).toInt
+    submitTextSegment(AST.Text.Segment.Escape.Number(int))
+  }
+
+  final def onInvalidEscape(): Unit = logger.trace {
+    val str = currentMatch.drop(1)
+    submitTextSegment(AST.Text.Segment.Escape.Invalid(str))
+  }
+
+  final def onInterpolateBegin(): Unit = logger.trace {
+    pushAST()
+    pushLastOffset()
+    beginGroup(NORMAL)
+  }
+
+  final def onInterpolateEnd(): Unit = logger.trace {
+    if (insideOfText) {
+      submitTextSegment(AST.Text.Segment.Interpolated(result))
+      popAST()
+      popLastOffset()
+      endGroup()
+    } else {
+      onUnrecognized()
+    }
+  }
+
+  final def onTextEOF(): Unit = logger.trace {
+    submitUnclosedText()
+    rewind()
+  }
+
+  final def fixme_onTextDoubleQuote(): Unit = logger.trace {
+    currentMatch = "'"
+    onTextQuote(AST.Text.SingleQuote)
+    rewind(1)
   }
 
   val stringChar    = noneOf("'`\n\\")
   val stringSegment = stringChar.many1
+  val escape_int    = "\\" >> decimal
+  val escape_u16    = "\\u" >> repeat(stringChar, 0, 4)
+  val escape_u32    = "\\U" >> repeat(stringChar, 0, 8)
 
   val TEXT: Group = defineGroup("Text")
 
   // format: off
-//  NORMAL rule "'"           run reify { onTextBegin(AST.Text.SingleQuote) }
-  NORMAL rule "'"          run reify { submitEmptyText(AST.Text.SingleQuote) } // FIXME: Remove after fixing DFA Gen
-//  NORMAL rule "'''"         run reify { onTextBegin(AST.Text.TripleQuote) }
+  NORMAL rule "'"           run reify { onTextBegin(AST.Text.SingleQuote) }
+  NORMAL rule "''"          run reify { submitEmptyText(AST.Text.SingleQuote) } // FIXME: Remove after fixing DFA Gen
+  NORMAL rule "'''"         run reify { onTextBegin(AST.Text.TripleQuote) }
+  NORMAL rule '`'           run reify { onInterpolateEnd() }
+  TEXT   rule '`'           run reify { onInterpolateBegin() }
   TEXT   rule "'"           run reify { onTextQuote(AST.Text.SingleQuote) }
+  TEXT   rule "''"          run reify { fixme_onTextDoubleQuote() } // FIXME: Remove after fixing DFA Gen
   TEXT   rule "'''"         run reify { onTextQuote(AST.Text.TripleQuote) }
-//  TEXT   rule stringSegment run reify { onTextSegment() }
-//  TEXT   rule ("\\u" >> repeat(stringChar,0,4)) run reify {onTextEscapeU16()}
-//  TEXT   rule ("\\U" >> repeat(stringChar,0,8)) run reify {onTextEscapeU32()}
+  TEXT   rule stringSegment run reify { onPlainTextSegment() }
+  TEXT   rule eof           run reify { onTextEOF() }
   // format: on
 
   AST.Text.Segment.Escape.Character.codes.foreach { ctrl =>
@@ -417,6 +478,11 @@ class Parser extends ParserBase[AST] {
     val func = q"onTextEscape(AST.Text.Segment.Escape.Control.$name)"
     TEXT rule s"\\$ctrl" run func
   }
+
+  TEXT rule escape_u16 run reify { onTextEscapeU16() }
+  TEXT rule escape_u32 run reify { onTextEscapeU32() }
+  TEXT rule escape_int run reify { onTextEscapeInt() }
+  TEXT rule ("\\" >> stringChar) run reify { onInvalidEscape() }
 
   //////////////
   /// Groups ///
@@ -630,6 +696,10 @@ class Parser extends ParserBase[AST] {
   /// Defaults ///
   ////////////////
 
+  final def onUnrecognized(): Unit = logger.trace {
+    app(AST.Unrecognized)
+  }
+
   final def onEOF(): Unit = logger.trace {
     finalizeIdent()
     onBlockEnd(0)
@@ -638,5 +708,5 @@ class Parser extends ParserBase[AST] {
 
   NORMAL rule whitespace run reify { onWhitespace() }
   NORMAL rule eof run reify { onEOF() }
-  NORMAL rule any run reify { app(AST.Unrecognized) }
+  NORMAL rule any run reify { onUnrecognized() }
 }
