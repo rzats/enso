@@ -79,10 +79,11 @@ object Main extends App {
   println(p1.bufferLen)
   println(p2.bufferLen)
 
-  val out = p1.run("'foo")
+  val out = p1.run("''")
   out match {
     case Success(v, _) =>
       pprint(v)
+      println(v.show())
   }
 
 //  import scala.reflect.runtime.universe._

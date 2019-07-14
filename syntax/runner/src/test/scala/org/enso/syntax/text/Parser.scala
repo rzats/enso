@@ -150,12 +150,12 @@ class LexerSpec extends FlatSpec with Matchers {
 
   //// Escapes ////
 
-  AST.Text.Segment.Escape.Character.codes.foreach(i => s"'\\$i'" ?== Text(i))
-  AST.Text.Segment.Escape.Control.codes.foreach(i => s"'\\$i'"   ?== Text(i))
+//  AST.Text.Segment.Escape.Character.codes.foreach(i => s"'\\$i'" ?== Text(i))
+//  AST.Text.Segment.Escape.Control.codes.foreach(i => s"'\\$i'"   ?== Text(i))
 
-  "'\\c'"    ?== Text(Text.Segment.Escape.Invalid("c"))
-  "'\\cd'"   ?== Text(Text.Segment.Escape.Invalid("c"), "d")
-  "'\\123d'" ?== Text(Text.Segment.Escape.Number(123), "d")
+  "'\\c'"  ?== Text(Text.Segment.Escape.Invalid("c"))
+  "'\\cd'" ?== Text(Text.Segment.Escape.Invalid("c"), "d")
+//  "'\\123d'" ?== Text(Text.Segment.Escape.Number(123), "d")
 
   //  "'"          , TextBegin   )
   //  "\""         , TextRawBegin)

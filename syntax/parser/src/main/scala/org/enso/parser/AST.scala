@@ -12,100 +12,107 @@ object AST {
     }
   }
 
-  ///////////////////
-  /// Abstraction ///
-  ///////////////////
+  /////////////////////
+  //// Abstraction ////
+  /////////////////////
 
   trait Convertible[-Source, +Target] {
     def convert(source: Source): Target
   }
 
   trait Showable {
-    def show(out: Code): Unit
-    def show(): String = (Code() += this).result()
+    def show(): String
   }
 
   trait Spanned {
-    val span: Int
+    def span: Int
   }
 
-  ////////////////////
-  /// Code Builder ///
-  ////////////////////
+  //////////////
+  //// Repr ////
+  //////////////
 
-  object CodeRepr {
-    def apply(s: String):  Segment = Text(s)
-    def apply(char: Char): Segment = Letter(char)
+  trait HasRepr {
+    val repr: Repr
+  }
 
-    sealed trait Segment {
-      val span: Int
-      def show(out: StringBuilder): Unit
+  sealed trait Repr extends HasRepr {
+    import Repr._
+
+    val repr = this
+    val span: Int
+
+    def show(out: StringBuilder): Unit
+
+    def +[T](that: T)(implicit ev: ReprOf[T]) =
+      Seq(this, ev.reprOf(that))
+  }
+
+  object Repr {
+    def apply():                                Repr = Empty()
+    def apply[T](t: T)(implicit ev: ReprOf[T]): Repr = ev.reprOf(t)
+
+    case class Empty() extends Repr {
+      val span                     = 0
+      def show(out: StringBuilder) = {}
     }
 
-    case class Letter(char: Char) extends Segment {
+    case class Letter(char: Char) extends Repr {
       val span                     = 1
       def show(out: StringBuilder) = out += char
     }
 
-    case class Text(str: String) extends Segment {
+    case class Text(str: String) extends Repr {
       val span                     = str.length
       def show(out: StringBuilder) = out ++= str
     }
 
-    final case class Node(segments: List[Segment]) extends Segment {
-      val span = segments.map(_.span).sum
-      override def show(out: StringBuilder) =
-        segments.reverse.foreach(_.show(out))
-    }
-  }
-
-  ////////////////////
-  /// Code Builder ///
-  ////////////////////
-
-  final case class Code() {
-    type This = this.type
-
-    val stringBuilder: StringBuilder = new StringBuilder()
-    var indent: Int                  = 0
-
-    def +=(char: Char):       This = { stringBuilder += char; this }
-    def +=(str: String):      This = { stringBuilder ++= str; this }
-    def +=(a: Showable):      This = { a.show(this); this }
-    def +=(a: Seq[Showable]): This = { a.foreach(this += _); this }
-    def +=(off: Int):         This = { stringBuilder ++= " " * off; this }
-
-    def newline(): Unit =
-      this += '\n' += indent
-
-    def result(): String =
-      stringBuilder.result()
-
-    def withIndent[T](newIndent: Int)(f: => T): T = {
-      val oldIndent = indent
-      indent = newIndent
-      val out = f
-      indent = oldIndent
-      out
+    final case class Seq(first: Repr, second: Repr) extends Repr {
+      val span = first.span + second.span
+      override def show(out: StringBuilder) = {
+        first.show(out)
+        second.show(out)
+      }
     }
 
-    def withIndentDiff[T](indentDiff: Int): (=> T) => T =
-      withIndent(indent + indentDiff)
-
+    implicit def stringToRepr(a: String): Repr = Repr(a)
+    implicit def charToRepr(a: Char):     Repr = Repr(a)
   }
 
-  //////////////
-  /// Symbol ///
-  //////////////
+  val R = Repr.Empty()
 
-  trait Symbol extends Spanned with Showable {
+  ///// Type Class ////
+
+  trait ReprOf[-T] {
+    def reprOf(a: T): Repr
+  }
+
+  implicit val HasRepr_1: ReprOf[String]  = Repr.Text(_)
+  implicit val HasRepr_2: ReprOf[Int]     = i => Repr.Text(" " * i)
+  implicit val HasRepr_3: ReprOf[Char]    = Repr.Letter(_)
+  implicit val HasRepr_4: ReprOf[Repr]    = identity(_)
+  implicit val HasRepr_5: ReprOf[HasRepr] = _.repr
+  implicit def HasRepr_6[T](implicit ev: ReprOf[T]): ReprOf[List[T]] =
+    _.foldLeft(Repr.Empty(): Repr)((a, b) => Repr.Seq(a, ev.reprOf(b)))
+
+  ////////////////
+  //// Symbol ////
+  ////////////////
+
+  trait Symbol extends HasRepr with Spanned with Showable {
     def to[A](implicit converter: Convertible[this.type, A]): A =
       converter.convert(this)
+    def span: Int = repr.span
+    def show() = {
+      val bldr = new StringBuilder()
+      repr.show(bldr)
+      bldr.result()
+    }
   }
 
-  ///////////
-  /// AST ///
-  ///////////
+  /////////////
+  //// AST ////
+  /////////////
 
   trait AST extends Symbol {
     def $(arg: AST)    = App(this, 0, arg)
@@ -118,44 +125,41 @@ object AST {
   trait InvalidAST extends AST with Invalid
 
   implicit final class _OptionAST_(val self: Option[AST]) extends Symbol {
-    val span            = self.map(_.span).getOrElse(0)
-    def show(out: Code) = self.foreach(out += _)
+    val repr = self.map(_.repr).getOrElse(Repr())
   }
 
-  /////// Unrecognized //////
+  implicit def ReprOfOption[T](implicit ev: ReprOf[T]): ReprOf[Option[T]] =
+    _.map(ev.reprOf(_)).getOrElse(Repr())
+
+  // FIXME: Why this is needed?
+  implicit def ReprOfOptionAST: ReprOf[Option[AST]] =
+    _.map(_.repr).getOrElse(Repr())
+
+  //// Unrecognized ////
 
   final case class Unrecognized(str: String) extends InvalidAST {
-    val span            = str.length
-    def show(out: Code) = out += str
-    val repr            = CodeRepr(str)
+    val repr = str
   }
 
-  ////// Identifiers //////
+  //// Identifiers ////
 
   abstract class Identifier(name: String) extends AST {
-    val span            = name.length
-    def show(out: Code) = out += name
-    val repr            = CodeRepr(name)
+    val repr = name
   }
 
   object Identifier {
     final case class InvalidSuffix(elem: Identifier, suffix: String)
         extends InvalidAST {
-      val span            = elem.span + suffix.length
-      def show(out: Code) = out += elem += suffix
+      val repr = R + elem + suffix
     }
   }
 
-  final case object Wildcard extends Identifier("_") {
-    override val span = 1
-  }
-
+  final case object Wildcard              extends Identifier("_")
   final case class Var(name: String)      extends Identifier(name)
   final case class Cons(name: String)     extends Identifier(name)
   final case class Operator(name: String) extends Identifier(name)
   final case class Modifier(name: String) extends Identifier(name) {
-    override val span            = name.length + 1
-    override def show(out: Code) = out += name += '='
+    override val repr = name + '='
   }
 
   implicit def StringToIdentifier(str: String): Identifier = {
@@ -166,22 +170,20 @@ object AST {
     else Operator(str)
   }
 
-  ////// App //////
+  //// App ////
 
   final case class App(func: AST, off: Int, arg: AST) extends AST {
-    val span            = func.span + off + arg.span
-    def show(out: Code) = out += func += off += arg
+    val repr = R + func + off + arg
   }
   object App {
     def apply(func: AST, arg: AST): App = new App(func, 1, arg)
   }
 
-  ////// Group //////
+  //// Group ////
 
   final case class Group(leftOff: Int, body: Option[AST], rightOff: Int)
       extends AST {
-    val span            = leftOff + body.span + rightOff + 2
-    def show(out: Code) = out += '(' += leftOff += body += rightOff += ')'
+    val repr = Repr('(') + leftOff + body + rightOff + ')'
   }
 
   object Group {
@@ -193,14 +195,12 @@ object AST {
     def apply(l: Int, b: AST, r: Int): Group = Group(l, Some(b), r)
 
     final case object UnmatchedClose extends InvalidAST {
-      val span            = 1
-      def show(out: Code) = out += ')'
+      val repr = ')'
     }
 
     final case class Unclosed(leftOff: Int, body: Option[AST])
         extends InvalidAST {
-      val span            = leftOff + body.span
-      def show(out: Code) = out += '(' += leftOff += body
+      val repr = R + '(' + leftOff + body
     }
 
     object Unclosed {
@@ -211,11 +211,10 @@ object AST {
 
   }
 
-  ////// Number //////
+  //// Number ////
 
   final case class Number(base: Option[String], int: String) extends AST {
-    val span            = base.map(_.length + 1).getOrElse(0) + int.length
-    def show(out: Code) = out += base.map(_ + "_").getOrElse("") + int
+    val repr = base.map(_ + "_").getOrElse("") + int
   }
 
   object Number {
@@ -227,21 +226,19 @@ object AST {
     def apply(b: Int, i: Int):       Number = Number(b.toString, i.toString)
 
     final case class DanglingBase(base: String) extends InvalidAST {
-      val span            = base.length + 1
-      def show(out: Code) = out += base += '_'
+      val repr = base + '_'
     }
   }
 
   implicit def IntToNumber(int: Int): Number = Number(int)
 
-  ////////////
-  /// Text ///
-  ////////////
+  //////////////
+  //// Text ////
+  //////////////
 
   final case class Text(quoteSize: Text.QuoteSize, segments: List[Text.Segment])
       extends AST {
-    val span            = 2 * quoteSize.span + segments.map(_.span).sum
-    def show(out: Code) = out += quoteSize += segments += quoteSize
+    val repr = R + quoteSize + segments + quoteSize
 
     def prepend(segment: Text.Segment) =
       this.copy(segments = segment :: segments)
@@ -258,13 +255,11 @@ object AST {
     trait QuoteSize extends Symbol
 
     case object SingleQuote extends QuoteSize {
-      val span            = 1
-      def show(out: Code) = out += '\''
+      val repr = '\''
     }
 
     case object TripleQuote extends QuoteSize {
-      val span            = 3
-      def show(out: Code) = out += "'''"
+      val repr = "'''"
     }
 
     def apply():                          Text = Text(SingleQuote, Nil)
@@ -274,8 +269,7 @@ object AST {
     def apply(s: Segment*):               Text = Text(s.to[List])
 
     final case class Unclosed(text: Text) extends InvalidAST {
-      val span            = text.quoteSize.span + text.segments.map(_.span).sum
-      def show(out: Code) = out += text.quoteSize += text.segments
+      val repr = R + text.quoteSize + text.segments
     }
 
     trait Segment extends Symbol {
@@ -284,13 +278,11 @@ object AST {
 
     object Segment {
       final case class Plain(value: String) extends Segment {
-        val span            = value.length
-        def show(out: Code) = out += value
+        val repr = value
       }
 
       final case class Interpolated(value: Option[AST]) extends Segment {
-        val span                     = value.span + 2
-        override def show(out: Code) = out += '`' += value += '`'
+        val repr = R + '`' + value + '`'
       }
 
       implicit def stringToPlain(str: String): Plain = Plain(str)
@@ -299,19 +291,16 @@ object AST {
       object Escape {
 
         abstract class Simple(val code: Int) extends Escape {
-          val name: String        = toString()
-          val span: Int           = name.length + 1
-          def show(out: AST.Code) = out += '\\' += name
+          val name = toString()
+          val repr = R + '\\' + name
         }
 
         case class Number(int: Int) extends Escape {
-          val span                     = int.toString.length
-          override def show(out: Code) = out += int.toString
+          val repr = int.toString
         }
 
         case class Invalid(str: String) extends Escape with AST.Invalid {
-          val span            = 1 + str.length
-          def show(out: Code) = out += '\\' += str
+          val repr = R + '\\' + str
         }
 
         // Reference: https://en.wikipedia.org/wiki/String_literal
@@ -319,8 +308,7 @@ object AST {
         object Unicode {
           abstract class U(val pfx: String, val sfx: String) extends Unicode {
             val digits: String
-            val span            = 1 + pfx.length + digits.length + sfx.length
-            def show(out: Code) = out += "\\" += pfx += digits += sfx
+            val repr = R + "\\" + pfx + digits + sfx
 
           }
           final case class U16 private (digits: String) extends U("u", "")
@@ -431,7 +419,7 @@ object AST {
     }
   }
 
-  ////// Block //////
+  //// Block ////
 
   final case class Block(
     indent: Int,
@@ -439,45 +427,23 @@ object AST {
     firstLine: Line.Required,
     lines: List[Line]
   ) extends AST {
-
-    def linesCount: Int =
-      emptyLines.length + lines.length + 1
-
-    def linesSpan: Int =
-      emptyLines.sum + firstLine.span + lines.map(_.span).sum
-
-    val span: Int = {
-      val newlinesSpan = linesCount
-      val indentSpan   = linesCount * indent
-      linesSpan + newlinesSpan + indentSpan
-    }
-
-    def show(out: Code): Unit = {
-      val globalIndent = indent + out.indent
-      out.withIndent(globalIndent) {
-        out += '\n'
-        emptyLines.foreach(i => out += globalIndent += i + "\n")
-        out += globalIndent
-        out += firstLine
-        lines.foreach { line =>
-          out += '\n'
-          out += globalIndent
-          out += line
-        }
-      }
+    val repr = {
+      val headRepr       = R + '\n'
+      val emptyLinesRepr = emptyLines.map(R + indent + _ + "\n")
+      val firstLineRepr  = R + indent + firstLine
+      val linesRepr      = lines.map(R + '\n' + indent + _)
+      headRepr + emptyLinesRepr + firstLineRepr + linesRepr
     }
   }
 
   object Block {
     final case class InvalidIndentation(block: Block) extends InvalidAST {
-      val span            = block.span
-      def show(out: Code) = block.show(out)
+      val repr = R + block
     }
   }
 
   final case class Line(elem: Option[AST], offset: Int) extends Symbol {
-    val span            = elem.span + offset
-    def show(out: Code) = out += elem += offset
+    val repr = R + elem + offset
   }
 
   object Line {
@@ -485,8 +451,7 @@ object AST {
     def apply(offset: Int): Line = Line(None, offset)
 
     final case class Required(elem: AST, offset: Int) extends Symbol {
-      val span            = elem.span + offset
-      def show(out: Code) = out += elem += offset
+      val repr = R + elem + offset
     }
 
     implicit object Required_to_Optional extends Convertible[Required, Line] {
@@ -494,14 +459,10 @@ object AST {
     }
   }
 
-  ////// Unit //////
+  //// Unit ////
 
   final case class Module(firstLine: Line, lines: List[Line]) extends AST {
-    val span = firstLine.span + lines.map(_.span).sum
-    def show(out: Code) = {
-      out += firstLine
-      lines.foreach(out += '\n' += _)
-    }
+    val repr = R + firstLine + lines.map(R + '\n' + _)
   }
 
   object Module {
