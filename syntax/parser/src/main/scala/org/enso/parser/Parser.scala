@@ -418,6 +418,18 @@ case class Parser() extends ParserBase[AST] {
     submitTextSegment(AST.Text.Segment.Escape.Invalid(str))
   }
 
+  final def onEscapeSlash(): Unit = logger.trace {
+    submitTextSegment(AST.Text.Segment.Escape.Slash)
+  }
+
+  final def onEscapeQuote(): Unit = logger.trace {
+    submitTextSegment(AST.Text.Segment.Escape.Quote)
+  }
+
+  final def onEscapeRawQuote(): Unit = logger.trace {
+    submitTextSegment(AST.Text.Segment.Escape.RawQuote)
+  }
+
   final def onInterpolateBegin(): Unit = logger.trace {
     pushAST()
     pushLastOffset()
@@ -446,7 +458,7 @@ case class Parser() extends ParserBase[AST] {
     rewind(1)
   }
 
-  val stringChar    = noneOf("'`\n\\")
+  val stringChar    = noneOf("'`\"\n\\")
   val stringSegment = stringChar.many1
   val escape_int    = "\\" >> decimal
   val escape_u16    = "\\u" >> repeat(stringChar, 0, 4)
@@ -465,7 +477,6 @@ case class Parser() extends ParserBase[AST] {
   TEXT   rule "'''"         run reify { onTextQuote(AST.Text.TripleQuote) }
   TEXT   rule stringSegment run reify { onPlainTextSegment() }
   TEXT   rule eof           run reify { onTextEOF() }
-  // format: on
 
   AST.Text.Segment.Escape.Character.codes.foreach { ctrl =>
     val name = TermName(ctrl.toString)
@@ -479,10 +490,15 @@ case class Parser() extends ParserBase[AST] {
     TEXT rule s"\\$ctrl" run func
   }
 
-  TEXT rule escape_u16 run reify { onTextEscapeU16() }
-  TEXT rule escape_u32 run reify { onTextEscapeU32() }
-  TEXT rule escape_int run reify { onTextEscapeInt() }
+  TEXT rule escape_u16           run reify { onTextEscapeU16() }
+  TEXT rule escape_u32           run reify { onTextEscapeU32() }
+  TEXT rule escape_int           run reify { onTextEscapeInt() }
+  TEXT rule "\\\\"               run reify { onEscapeSlash() }
+  TEXT rule "\\'"                run reify { onEscapeQuote() }
+  TEXT rule "\\\""               run reify { onEscapeRawQuote() }
   TEXT rule ("\\" >> stringChar) run reify { onInvalidEscape() }
+  TEXT rule "\\"                 run reify { onPlainTextSegment() }
+  // format: on
 
   //////////////
   /// Groups ///
@@ -499,6 +515,9 @@ case class Parser() extends ParserBase[AST] {
     groupLeftOffsetStack = groupLeftOffsetStack.tail
     offset
   }
+
+  final def isInsideOfGroup(): Boolean =
+    groupLeftOffsetStack != Nil
 
   final def onGroupBegin(): Unit = logger.trace {
     val leftOffset = currentMatch.length - 1

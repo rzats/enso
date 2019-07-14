@@ -162,7 +162,7 @@ object AST {
     override val repr = name + '='
   }
 
-  implicit def StringToIdentifier(str: String): Identifier = {
+  implicit def stringToIdentifier(str: String): Identifier = {
     if (str == "") throw new Error("Empty literal")
     if (str == "_") Wildcard
     else if (str.head.isLower) Var(str)
@@ -284,6 +284,10 @@ object AST {
       final case class Interpolated(value: Option[AST]) extends Segment {
         val repr = R + '`' + value + '`'
       }
+      //FIXME: Why it does not work?
+//      object Interpolated {
+//        def apply(t: AST): Interpolated = Interpolated(Some(t))
+//      }
 
       implicit def stringToPlain(str: String): Plain = Plain(str)
 
@@ -292,15 +296,27 @@ object AST {
 
         abstract class Simple(val code: Int) extends Escape {
           val name = toString()
-          val repr = R + '\\' + name
+          val repr = '\\' + name
+        }
+
+        case object Slash extends Escape {
+          val repr = "\\\\"
+        }
+
+        case object Quote extends Escape {
+          val repr = "\\'"
+        }
+
+        case object RawQuote extends Escape {
+          val repr = "\\\""
         }
 
         case class Number(int: Int) extends Escape {
-          val repr = int.toString
+          val repr = '\\' + int.toString
         }
 
         case class Invalid(str: String) extends Escape with AST.Invalid {
-          val repr = R + '\\' + str
+          val repr = '\\' + str
         }
 
         // Reference: https://en.wikipedia.org/wiki/String_literal

@@ -139,8 +139,13 @@ class LexerSpec extends FlatSpec with Matchers {
   // Text //
   //////////
 
-  "''"      ?== Text()
   "'"       ?== Text.Unclosed(Text())
+  "''"      ?== Text()
+  "'''"     ?== Text.Unclosed(Text(Text.TripleQuote))
+  "''''"    ?== Text.Unclosed(Text(Text.TripleQuote, "'"))
+  "'''''"   ?== Text.Unclosed(Text(Text.TripleQuote, "''"))
+  "''''''"  ?== Text(Text.TripleQuote)
+  "'''''''" ?== Text(Text.TripleQuote) $ Text.Unclosed(Text())
   "'a'"     ?== Text("a")
   "'a"      ?== Text.Unclosed(Text("a"))
   "'a'''"   ?== Text("a") $ Text()
@@ -150,96 +155,26 @@ class LexerSpec extends FlatSpec with Matchers {
 
   //// Escapes ////
 
-//  AST.Text.Segment.Escape.Character.codes.foreach(i => s"'\\$i'" ?== Text(i))
-//  AST.Text.Segment.Escape.Control.codes.foreach(i => s"'\\$i'"   ?== Text(i))
+  AST.Text.Segment.Escape.Character.codes.foreach(i => s"'\\$i'" ?== Text(i))
+  AST.Text.Segment.Escape.Control.codes.foreach(i => s"'\\$i'"   ?== Text(i))
 
-  "'\\c'"  ?== Text(Text.Segment.Escape.Invalid("c"))
-  "'\\cd'" ?== Text(Text.Segment.Escape.Invalid("c"), "d")
-//  "'\\123d'" ?== Text(Text.Segment.Escape.Number(123), "d")
+  "'\\\\'"   ?== Text(Text.Segment.Escape.Slash)
+  "'\\''"    ?== Text(Text.Segment.Escape.Quote)
+  "'\\\"'"   ?== Text(Text.Segment.Escape.RawQuote)
+  "'\\"      ?== Text.Unclosed(Text("\\"))
+  "'\\c'"    ?== Text(Text.Segment.Escape.Invalid("c"))
+  "'\\cd'"   ?== Text(Text.Segment.Escape.Invalid("c"), "d")
+  "'\\123d'" ?== Text(Text.Segment.Escape.Number(123), "d")
 
-  //  "'"          , TextBegin   )
-  //  "\""         , TextRawBegin)
-  //  "''"         , TextBegin    :: TextEnd)
-  //  "\"\""       , TextRawBegin :: TextRawEnd)
-  //  "'''"        , TextBegin   )
-  //  "\"\"\""     , TextRawBegin)
-  //  "' '"        , TextBegin    :: Text(" ") :: TextEnd)
-  //  "\" \""      , TextRawBegin :: Text(" ") :: TextRawEnd)
-  //  "'' ''"      , TextBegin    :: TextEnd    :: TextBegin    :: TextEnd   )
-  //  "\"\" \"\""  , TextRawBegin :: TextRawEnd :: TextRawBegin :: TextRawEnd)
-  //  "'\n'"       , TextBegin    :: EOL :: TextEnd   )
-  //  "\"\n\""     , TextRawBegin :: EOL :: TextRawEnd)
-  //  "'\\\\'"     , TextBegin    :: TextEscape(SlashEscape) :: TextEnd)
-  //  "\"\\\\\""   , TextRawBegin :: Text("\\") :: TextEscape(RawQuoteEscape))
-  //  "'\\\''"     , TextBegin    :: TextEscape(QuoteEscape) :: TextEnd   )
-  //  "\"\\\'\""   , TextRawBegin :: TextEscape(QuoteEscape) :: TextRawEnd)
-  //  "'\\\"'"     , TextBegin    :: TextEscape(RawQuoteEscape) :: TextEnd   )
-  //  "\"\\\"\""   , TextRawBegin :: TextEscape(RawQuoteEscape) :: TextRawEnd)
-  //  "''' '''"            , TextBegin    :: Text(" ") :: TextEnd   )
-  //  "\"\"\" \"\"\""      , TextRawBegin :: Text(" ") :: TextRawEnd)
-  //  "''' '' '''"         , TextBegin    :: Text(" ") :: Text("''")   :: Text(" ") :: TextEnd   )
-  //  "\"\"\" \"\" \"\"\"" , TextRawBegin :: Text(" ") :: Text("\"\"") :: Text(" ") :: TextRawEnd)
-  //
-  //  // Int Escapes
-  //  expr("'\\12'"     , TextBegin    :: TextEscape(IntEscape(12)) :: TextEnd   )
-  //  expr("\"\\12\""   , TextRawBegin :: Text("\\") :: Text("12")  :: TextRawEnd)
-  //
-  //  // Char Escapes
-  //  expr("'\\a'"      , TextBegin :: TextEscape(CharEscape(7)) :: TextEnd)
-  //  expr("'\\b'"      , TextBegin :: TextEscape(CharEscape(8)) :: TextEnd)
-  //  expr("'\\f'"      , TextBegin :: TextEscape(CharEscape(12)) :: TextEnd)
-  //  expr("'\\n'"      , TextBegin :: TextEscape(CharEscape(10)) :: TextEnd)
-  //  expr("'\\r'"      , TextBegin :: TextEscape(CharEscape(13)) :: TextEnd)
-  //  expr("'\\t'"      , TextBegin :: TextEscape(CharEscape(9)) :: TextEnd)
-  //  expr("'\\v'"      , TextBegin :: TextEscape(CharEscape(11)) :: TextEnd)
-  //  expr("'\\e'"      , TextBegin :: TextEscape(CharEscape(27)) :: TextEnd)
-  //  expr("'\\q'"      , TextBegin :: TextEscape(InvalidCharEscape('q')) :: TextEnd)
-  //  expr("\"\\a\""    , TextRawBegin :: Text("\\") :: Text("a") :: TextRawEnd)
-  //
-  //  // Control Escapes
-  //  expr("'\\NUL'"    , TextBegin :: TextEscape(CtrlEscape(0)) :: TextEnd)
-  //  expr("'\\SOH'"    , TextBegin :: TextEscape(CtrlEscape(1)) :: TextEnd)
-  //  expr("'\\STX'"    , TextBegin :: TextEscape(CtrlEscape(2)) :: TextEnd)
-  //  expr("'\\ETX'"    , TextBegin :: TextEscape(CtrlEscape(3)) :: TextEnd)
-  //  expr("'\\EOT'"    , TextBegin :: TextEscape(CtrlEscape(4)) :: TextEnd)
-  //  expr("'\\ENQ'"    , TextBegin :: TextEscape(CtrlEscape(5)) :: TextEnd)
-  //  expr("'\\ACK'"    , TextBegin :: TextEscape(CtrlEscape(6)) :: TextEnd)
-  //  expr("'\\BEL'"    , TextBegin :: TextEscape(CtrlEscape(7)) :: TextEnd)
-  //  expr("'\\BS'"     , TextBegin :: TextEscape(CtrlEscape(8)) :: TextEnd)
-  //  expr("'\\TAB'"    , TextBegin :: TextEscape(CtrlEscape(9)) :: TextEnd)
-  //  expr("'\\LF'"     , TextBegin :: TextEscape(CtrlEscape(10)) :: TextEnd)
-  //  expr("'\\VT'"     , TextBegin :: TextEscape(CtrlEscape(11)) :: TextEnd)
-  //  expr("'\\FF'"     , TextBegin :: TextEscape(CtrlEscape(12)) :: TextEnd)
-  //  expr("'\\CR'"     , TextBegin :: TextEscape(CtrlEscape(13)) :: TextEnd)
-  //  expr("'\\SO'"     , TextBegin :: TextEscape(CtrlEscape(14)) :: TextEnd)
-  //  expr("'\\SI'"     , TextBegin :: TextEscape(CtrlEscape(15)) :: TextEnd)
-  //  expr("'\\DLE'"    , TextBegin :: TextEscape(CtrlEscape(16)) :: TextEnd)
-  //  expr("'\\DC1'"    , TextBegin :: TextEscape(CtrlEscape(17)) :: TextEnd)
-  //  expr("'\\DC2'"    , TextBegin :: TextEscape(CtrlEscape(18)) :: TextEnd)
-  //  expr("'\\DC3'"    , TextBegin :: TextEscape(CtrlEscape(19)) :: TextEnd)
-  //  expr("'\\DC4'"    , TextBegin :: TextEscape(CtrlEscape(20)) :: TextEnd)
-  //  expr("'\\NAK'"    , TextBegin :: TextEscape(CtrlEscape(21)) :: TextEnd)
-  //  expr("'\\SYN'"    , TextBegin :: TextEscape(CtrlEscape(22)) :: TextEnd)
-  //  expr("'\\ETB'"    , TextBegin :: TextEscape(CtrlEscape(23)) :: TextEnd)
-  //  expr("'\\CAN'"    , TextBegin :: TextEscape(CtrlEscape(24)) :: TextEnd)
-  //  expr("'\\EM'"     , TextBegin :: TextEscape(CtrlEscape(25)) :: TextEnd)
-  //  expr("'\\SUB'"    , TextBegin :: TextEscape(CtrlEscape(26)) :: TextEnd)
-  //  expr("'\\ESC'"    , TextBegin :: TextEscape(CtrlEscape(27)) :: TextEnd)
-  //  expr("'\\FS'"     , TextBegin :: TextEscape(CtrlEscape(28)) :: TextEnd)
-  //  expr("'\\GS'"     , TextBegin :: TextEscape(CtrlEscape(29)) :: TextEnd)
-  //  expr("'\\RS'"     , TextBegin :: TextEscape(CtrlEscape(30)) :: TextEnd)
-  //  expr("'\\US'"     , TextBegin :: TextEscape(CtrlEscape(31)) :: TextEnd)
-  //  expr("'\\DEL'"    , TextBegin :: TextEscape(CtrlEscape(127)) :: TextEnd)
-  //  expr("\"\\NUL\""  , TextRawBegin :: Text("\\") :: Text("NUL") :: TextRawEnd)
-  //
-  //  // Unicode Escapes
-  //  expr("'\\uF'"          , TextBegin :: TextEscape(InvalidCharEscape('u')) :: Text("F") :: TextEnd)
-  //  expr("'\\uFF00'"       , TextBegin :: TextEscape(Uni16Escape(0xFF00)) :: TextEnd)
-  //  expr("'\\U00ABCDEF'"   , TextBegin :: TextEscape(Uni32Escape(0x00ABCDEF)) :: TextEnd)
-  //  expr("'\\UFFFFFFFF'"   , TextBegin :: TextEscape(InvalidUni32Escape("FFFFFFFF")) :: TextEnd)
-  //  expr("'\\u{FF0}'"      , TextBegin :: TextEscape(Uni21Escape(0xFF0)) :: TextEnd)
-  //  expr("'\\u{FFFFFFFF}'" , TextBegin :: TextEscape(InvalidUni21Escape("FFFFFFFF")) :: TextEnd)
-  //  expr("'\\u{}'"         , TextBegin :: TextEscape(InvalidUni21Escape("")) :: TextEnd)
+  //// Interpolation ////
+
+  "'a`b`c'" ?== Text("a", Text.Segment.Interpolated(Some("b")), "c")
+  "'a`b 'c`d`e' f`g'" ?== {
+    val bd = "b" $_ Text("c", Text.Segment.Interpolated(Some("d")), "e") $_ "f"
+    Text("a", Text.Segment.Interpolated(Some(bd)), "g")
+  }
+  "'`a(`'" ?== Text("d")
+
   //
   //  // Interpolation
   //  expr("'`{ }`'"        , TextBegin :: TextInterpolateBegin :: RecordBegin :: RecordEnd :: TextInterpolateEnd :: TextEnd)

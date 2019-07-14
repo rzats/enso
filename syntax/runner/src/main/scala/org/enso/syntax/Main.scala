@@ -58,6 +58,8 @@ object Main extends App {
 //  pprint("!")
 //  println(sparser.strInput)
 //  pprint(sparser.parse.toString)
+//
+// '`('d`
 
   //////////////////////////////////////////////////////////////
 
@@ -79,7 +81,7 @@ object Main extends App {
   println(p1.bufferLen)
   println(p2.bufferLen)
 
-  val out = p1.run("''")
+  val out = p1.run("'`'`'")
   out match {
     case Success(v, _) =>
       pprint(v)
