@@ -102,15 +102,15 @@ class LexerSpec extends FlatSpec with Matchers {
 
   "a b"       ?== ("a" $_ "b")
   "a + b"     ?== ("a" $_ "+" $_ "b")
-  "()"        ?== Group()
-  "(())"      ?== Group(Group())
-  "(()"       ?== Group.Unclosed(Group())
-  "(("        ?== Group.Unclosed(Group.Unclosed())
-  "( "        ?== Group.Unclosed()
-  ")"         ?== Group.UnmatchedClose
-  ")("        ?== Group.UnmatchedClose $ Group.Unclosed()
-  "a ( b c )" ?== ("a" $_ Group(1, "b" $_ "c", 1))
-  "(a (b c))" ?== Group("a" $_ Group("b" $_ "c"))
+  "()"        ?== "(" $ ")" // Group()
+  "(())"      ?== "(" $ "(" $ ")" $ ")" // Group(Group())
+  "(()"       ?== "(" $ "(" $ ")" // Group.Unclosed(Group())
+  "(("        ?== "(" $ "(" // Group.Unclosed(Group.Unclosed())
+  "( "        ?== "(" // Group.Unclosed()
+  ")"         ?== ")" // Group.UnmatchedClose
+  ")("        ?== ")" $ "(" // Group.UnmatchedClose $ Group.Unclosed()
+  "a ( b c )" ?== "a" $_ "(" $_ "b" $_ "c" $_ ")" // ("a" $_ Group(1, "b" $_ "c", 1))
+  "(a (b c))" ?== "(" $ "a" $_ "(" $ "b" $_ "c" $ ")" $ ")" // Group("a" $_ Group("b" $_ "c"))
 
   ////////////
   // Layout //
@@ -173,20 +173,8 @@ class LexerSpec extends FlatSpec with Matchers {
     val bd = "b" $_ Text("c", Text.Segment.Interpolated(Some("d")), "e") $_ "f"
     Text("a", Text.Segment.Interpolated(Some(bd)), "g")
   }
-  "'`a(`'" ?== Text("d")
+//  "'`a(`'" ?== Text(Text.Segment.Interpolated(Some("a" $ Group.Unclosed())))
 
-  //
-  //  // Interpolation
-  //  expr("'`{ }`'"        , TextBegin :: TextInterpolateBegin :: RecordBegin :: RecordEnd :: TextInterpolateEnd :: TextEnd)
-  //  expr("'`{ }'"         , TextBegin :: TextInterpolateBegin :: RecordBegin :: RecordEnd :: TextBegin)
-  //  expr("'`  `}'"        , TextBegin :: TextInterpolateBegin :: TextInterpolateEnd :: Text("}") :: TextEnd)
-  //  expr("'`a`'"          , TextBegin :: TextInterpolateBegin :: Var("a") :: TextInterpolateEnd :: TextEnd)
-  //  expr("'`'a'`'"        , TextBegin :: TextInterpolateBegin :: TextBegin :: Text("a") :: TextEnd :: TextInterpolateEnd :: TextEnd)
-  //  expr("'''`'a'`'''"    , TextBegin :: TextInterpolateBegin :: TextBegin :: Text("a") :: TextEnd :: TextInterpolateEnd :: TextEnd)
-  //  expr("'`'''a'''`'"    , TextBegin :: TextInterpolateBegin :: TextBegin :: Text("a") :: TextEnd :: TextInterpolateEnd :: TextEnd)
-  //  expr("\"``\""         , TextRawBegin :: Text("``") :: TextRawEnd)
-  //  expr("'`'`a`'`'"      , TextBegin :: TextInterpolateBegin :: TextBegin :: TextInterpolateBegin :: Var("a") :: TextInterpolateEnd :: TextEnd :: TextInterpolateEnd :: TextEnd)
-  //
   //  // Comments
   //  expr("#"              , Comment)
   //  expr("#c"             , Comment :: CommentBody("c"))

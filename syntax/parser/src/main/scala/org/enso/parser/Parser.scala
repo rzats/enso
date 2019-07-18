@@ -254,10 +254,11 @@ case class Parser() extends ParserBase[AST] {
   val operatorChar: Pattern    = anyOf("!$%&*+-/<>?^~|:\\")
   val operatorErrChar: Pattern = operatorChar | "=" | "," | "."
   val operatorErrSfx: Pattern  = operatorErrChar.many1
-  val eqOperators: Pattern     = "=" | "==" | ">=" | "<=" | "/="
-  val dotOperators: Pattern    = "." | ".." | "..."
+  val eqOperators: Pattern     = "=" | "==" | ">=" | "<=" | "/=" | "#="
+  val dotOperators: Pattern    = "." | ".." | "..." | ","
   val operator: Pattern        = operatorChar.many1
-  val noModOperator: Pattern   = eqOperators | dotOperators | ","
+  val groupOperators: Pattern  = anyOf("()[]{}")
+  val noModOperator: Pattern   = eqOperators | dotOperators | groupOperators
 
   val OPERATOR_SFX_CHECK = defineGroup("Operator Suffix Check")
   val OPERATOR_MOD_CHECK = defineGroup("Operator Modifier Check")
@@ -433,11 +434,23 @@ case class Parser() extends ParserBase[AST] {
   final def onInterpolateBegin(): Unit = logger.trace {
     pushAST()
     pushLastOffset()
-    beginGroup(NORMAL)
+    beginGroup(INTERPOLATE)
+  }
+
+  final def terminateGroupsTill(g: Group): Unit = logger.trace {
+    terminateGroupsTill(g.groupIx)
+  }
+
+  final def terminateGroupsTill(g: Int): Unit = logger.trace {
+    while (g != group) {
+      getGroup(group).finish()
+      endGroup()
+    }
   }
 
   final def onInterpolateEnd(): Unit = logger.trace {
-    if (insideOfText) {
+    if (insideOfGroup(INTERPOLATE)) {
+      terminateGroupsTill(INTERPOLATE)
       submitTextSegment(AST.Text.Segment.Interpolated(result))
       popAST()
       popLastOffset()
@@ -464,7 +477,9 @@ case class Parser() extends ParserBase[AST] {
   val escape_u16    = "\\u" >> repeat(stringChar, 0, 4)
   val escape_u32    = "\\U" >> repeat(stringChar, 0, 8)
 
-  val TEXT: Group = defineGroup("Text")
+  val TEXT: Group        = defineGroup("Text")
+  val INTERPOLATE: Group = defineGroup("Interpolate")
+  INTERPOLATE.setParent(NORMAL)
 
   // format: off
   NORMAL rule "'"           run reify { onTextBegin(AST.Text.SingleQuote) }
@@ -500,75 +515,79 @@ case class Parser() extends ParserBase[AST] {
   TEXT rule "\\"                 run reify { onPlainTextSegment() }
   // format: on
 
-  //////////////
-  /// Groups ///
-  //////////////
-
-  var groupLeftOffsetStack: List[Int] = Nil
-
-  final def pushGroupLeftOffset(offset: Int): Unit = logger.trace {
-    groupLeftOffsetStack +:= offset
-  }
-
-  final def popGroupLeftOffset(): Int = logger.trace {
-    val offset = groupLeftOffsetStack.head
-    groupLeftOffsetStack = groupLeftOffsetStack.tail
-    offset
-  }
-
-  final def isInsideOfGroup(): Boolean =
-    groupLeftOffsetStack != Nil
-
-  final def onGroupBegin(): Unit = logger.trace {
-    val leftOffset = currentMatch.length - 1
-    pushGroupLeftOffset(leftOffset)
-    pushAST()
-    pushLastOffset()
-    beginGroup(PARENSED)
-  }
-
-  final def onGroupEnd(): Unit = logger.trace {
-    val leftOffset  = popGroupLeftOffset()
-    val rightOffset = useLastOffset()
-    val group       = AST.Group(leftOffset, result, rightOffset)
-    popLastOffset()
-    popAST()
-    app(group)
-    endGroup()
-  }
-
-  final def onGroupEOF(): Unit = logger.trace {
-    val leftOffset  = popGroupLeftOffset()
-    var rightOffset = useLastOffset()
-
-    val group = result match {
-      case Some(_) =>
-        AST.Group.Unclosed(leftOffset, result)
-      case None =>
-        rightOffset += leftOffset
-        AST.Group.Unclosed()
-    }
-    popLastOffset()
-    popAST()
-    app(group)
-    lastOffset = rightOffset
-    endGroup()
-    rewind()
-  }
-
-  final def onGroupUnmatchedClose(): Unit = logger.trace {
-    app(AST.Group.UnmatchedClose)
-  }
-
-  val PARENSED = defineGroup("Parensed")
-  PARENSED.setParent(NORMAL)
-
-  // format: off
-  NORMAL   rule ("(" >> whitespace0) run reify { onGroupBegin() }
-  NORMAL   rule ")"                  run reify { onGroupUnmatchedClose() }
-  PARENSED rule ")"                  run reify { onGroupEnd() }
-  PARENSED rule eof                  run reify { onGroupEOF() }
-  // format: on
+//  //////////////
+//  /// Groups ///
+//  //////////////
+//
+//  var groupLeftOffsetStack: List[Int] = Nil
+//
+//  final def pushGroupLeftOffset(offset: Int): Unit = logger.trace {
+//    groupLeftOffsetStack +:= offset
+//  }
+//
+//  final def popGroupLeftOffset(): Int = logger.trace {
+//    val offset = groupLeftOffsetStack.head
+//    groupLeftOffsetStack = groupLeftOffsetStack.tail
+//    offset
+//  }
+//
+//  final def isInsideOfGroup(): Boolean =
+//    groupLeftOffsetStack != Nil
+//
+//  final def onGroupBegin(): Unit = logger.trace {
+//    val leftOffset = currentMatch.length - 1
+//    pushGroupLeftOffset(leftOffset)
+//    pushAST()
+//    pushLastOffset()
+//    beginGroup(PARENSED)
+//  }
+//
+//  final def onGroupEnd(): Unit = logger.trace {
+//    val leftOffset  = popGroupLeftOffset()
+//    val rightOffset = useLastOffset()
+//    val group       = AST.Group(leftOffset, result, rightOffset)
+//    popLastOffset()
+//    popAST()
+//    app(group)
+//    endGroup()
+//  }
+//
+//  final def onGroupFinalize(): Unit = logger.trace {
+//    val leftOffset  = popGroupLeftOffset()
+//    var rightOffset = useLastOffset()
+//
+//    val group = result match {
+//      case Some(_) =>
+//        AST.Group.Unclosed(leftOffset, result)
+//      case None =>
+//        rightOffset += leftOffset
+//        AST.Group.Unclosed()
+//    }
+//    popLastOffset()
+//    popAST()
+//    app(group)
+//    lastOffset = rightOffset
+//  }
+//
+//  final def onGroupEOF(): Unit = logger.trace {
+//    onGroupFinalize()
+//    endGroup()
+//    rewind()
+//  }
+//
+//  final def onGroupUnmatchedClose(): Unit = logger.trace {
+//    app(AST.Group.UnmatchedClose)
+//  }
+//
+//  val PARENSED = defineGroup("Parensed", { onGroupFinalize() })
+//  PARENSED.setParent(NORMAL)
+//
+//  // format: off
+//  NORMAL   rule ("(" >> whitespace0) run reify { onGroupBegin() }
+//  NORMAL   rule ")"                  run reify { onGroupUnmatchedClose() }
+//  PARENSED rule ")"                  run reify { onGroupEnd() }
+//  PARENSED rule eof                  run reify { onGroupEOF() }
+//  // format: on
 
   //////////////
   /// Blocks ///

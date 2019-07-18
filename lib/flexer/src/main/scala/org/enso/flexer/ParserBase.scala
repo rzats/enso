@@ -59,6 +59,9 @@ trait ParserBase[T] {
   val groupLabelMap: mutable.Map[Int, String] = mutable.Map()
   var group: Int                              = 0
 
+  def insideOfGroup(g: Group): Boolean = insideOfGroup(g.groupIx)
+  def insideOfGroup(g: Int):   Boolean = group == g || groupStack.contains(g)
+
   def beginGroup(group: Group): Unit =
     beginGroup(group.groupIx)
 
@@ -83,13 +86,15 @@ trait ParserBase[T] {
 
   var groupsx = new ArrayBuffer[Group]()
 
-  def defineGroup(label: String = "unnamed"): Group = {
+  def defineGroup(label: String = "unnamed", finish: => Unit = {}): Group = {
     val groupIndex = groupsx.length
-    val group      = new Group(groupIndex)
+    val group      = new Group(groupIndex, () => finish)
     groupsx.append(group)
     groupLabelMap += (groupIndex -> label)
     group
   }
+
+  def getGroup(g: Int): Group = groupsx(g)
 
   def groupLabel(index: Int): String =
     groupLabelMap.get(index) match {

@@ -3,7 +3,7 @@ package org.enso.flexer
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.runtime.universe._
 
-class Group(val groupIx: Int) {
+class Group(val groupIx: Int, val finish: () => Unit) {
   var parent: Group = null
   val rules         = ArrayBuffer[Rule]()
 

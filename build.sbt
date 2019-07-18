@@ -82,7 +82,8 @@ lazy val parser = (project in file("syntax/parser"))
 lazy val syntax = (project in file("syntax/runner"))
   .settings(
     mainClass in (Compile, run) := Some("org.enso.syntax.Main"),
-    version := "0.1"
+    version := "0.1",
+    scalacOptions += "-Ypartial-unification"
   )
   .settings(
     libraryDependencies ++= Seq(
@@ -94,7 +95,8 @@ lazy val syntax = (project in file("syntax/runner"))
       "org.scala-lang"     % "scala-compiler" % "2.12.8",
       "org.feijoas"        %% "mango"         % "0.14",
       "org.apache.commons" % "commons-text"   % "1.6",
-      "org.scalameta"      %% "scalameta"     % "4.2.0"
+      "org.scalameta"      %% "scalameta"     % "4.2.0",
+      "org.typelevel"      %% "cats-core"     % "1.6.1"
     ),
     resolvers ++= Seq(
       "Sonatype OSS Snapshots" at

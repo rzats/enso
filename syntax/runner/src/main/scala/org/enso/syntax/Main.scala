@@ -60,6 +60,8 @@ object Main extends App {
 //  pprint(sparser.parse.toString)
 //
 // '`('d`
+//
+// a = ('foo`bar)`baz)
 
   //////////////////////////////////////////////////////////////
 
@@ -81,11 +83,24 @@ object Main extends App {
   println(p1.bufferLen)
   println(p2.bufferLen)
 
-  val out = p1.run("'`'`'")
+  val out = p1.run("a , b , c")
   out match {
     case Success(v, _) =>
       pprint(v)
       println(v.show())
+      val spaceGroups = AST.Ops.partitionExprToSpaceGroups(
+        v.asInstanceOf[AST.Module].firstLine.elem.get
+      )
+      pprint(spaceGroups)
+
+      println("-----")
+//      val out = AST.Ops.add2x(part.segs.head.expr)
+
+      val flatExpr = spaceGroups.segs.map(s => AST.Ops.add2x(s.expr))
+
+      println("----------------")
+      val out = AST.Ops.add2x(flatExpr)
+      pprint(out)
   }
 
 //  import scala.reflect.runtime.universe._
@@ -101,7 +116,7 @@ object Main extends App {
 //      println(x)
 //    }
 //  }
-//
+//  (* a + b)
 //  object B {
 //    import A._
 //    A
