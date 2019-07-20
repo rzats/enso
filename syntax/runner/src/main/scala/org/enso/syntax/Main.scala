@@ -84,20 +84,23 @@ object Main extends App {
   println(p1.bufferLen)
   println(p2.bufferLen)
 
-  val out = p1.run("a + b")
+//  val out = p1.run("+ * ^")
+  val out = p1.run("a b")
   out match {
     case Success(v, _) =>
       pprint(v)
       println(v.show())
-      val spaceGroups = Ops.partitionExprToSpaceGroups(
-        v.asInstanceOf[AST.Module].firstLine.elem.get
-      )
+
+      val line        = v.asInstanceOf[AST.Module].firstLine.elem.get
+      val spaceGroups = Ops.partitionExprToSpaceGroups(line)
+
+      println(line)
       pprint(spaceGroups)
 
       println("-----")
 //      val out = Ops.add2x(part.segs.head.expr)
 
-      val flatExpr = spaceGroups.segs.map(s => Ops.rebuildAssocExpr(s.expr))
+      val flatExpr = spaceGroups.map(s => Ops.rebuildAssocExpr(s))
 
       println("----------------")
       val out = Ops.rebuildAssocExpr(flatExpr)
