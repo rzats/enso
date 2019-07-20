@@ -1,11 +1,13 @@
-package org.enso.parser
+package org.enso.syntax.text
 
-import org.enso.flexer._
+import org.enso.flexer.Pattern.char
+import org.enso.flexer.Pattern.range
 import org.enso.flexer.Pattern._
-import org.enso.parser.AST.AST
-
+import org.enso.flexer._
+import org.enso.syntax.text.AST.AST
+import org.enso.syntax.text.AST.Text.QuoteSize
 import scala.reflect.runtime.universe._
-import org.enso.parser.AST.Text.QuoteSize
+
 import scala.annotation.tailrec
 
 case class Parser() extends ParserBase[AST] {

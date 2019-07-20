@@ -1,10 +1,11 @@
 package org.enso.syntax
 import org.enso.flexer.Macro.compile
 import org.enso.flexer.Success
-import org.enso.parser.Parser
 import org.enso.flexer._
-import org.enso.parser.AST
-import org.enso.parser.Renamer
+import org.enso.syntax.text.ast.Renamer
+import org.enso.syntax.text.AST
+import org.enso.syntax.text.Parser
+import org.enso.syntax.text.ast.Renamer
 
 import scala.reflect.runtime.universe
 

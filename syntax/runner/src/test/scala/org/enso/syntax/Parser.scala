@@ -2,8 +2,8 @@ package org.enso.syntax
 
 import org.enso.flexer.Macro
 import org.enso.flexer.ParserBase
-import org.enso.parser.AST._
-import org.enso.parser.Parser
+import org.enso.syntax.text.AST._
+import org.enso.syntax.text.Parser
 import org.enso.{flexer => Flexer}
 import org.scalatest._
 
@@ -47,8 +47,13 @@ class ParserSpec extends FlatSpec with Matchers {
 
   implicit class TestString(input: String) {
     def parseTitle(str: String): String = {
-      val escape = (str: String) => str.replace("\n", "\\n")
-      s"parse `${escape(str)}`"
+      val maxChars = 20
+      val escape   = (str: String) => str.replace("\n", "\\n")
+      val str2     = escape(str)
+      val str3 =
+        if (str2.length < maxChars) str2
+        else str2.take(maxChars) + "..."
+      s"parse `$str3`"
     }
 
     private val testBase = it should parseTitle(input)
@@ -143,7 +148,7 @@ class ParserSpec extends FlatSpec with Matchers {
   // Large Input //
   /////////////////
 
-  "II" * ParserBase.BUFFERSIZE ?== "II" * ParserBase.BUFFERSIZE
+  "BIG_INPUT_" * ParserBase.BUFFERSIZE ?== "BIG_INPUT_" * ParserBase.BUFFERSIZE
 
   //////////
   // Text //

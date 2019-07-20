@@ -1,7 +1,7 @@
 package org.enso.syntax
 
 import org.enso.flexer.Macro
-import org.enso.parser.Parser
+import org.enso.syntax.text.Parser
 import org.scalameter.api._
 
 import scala.math.pow
