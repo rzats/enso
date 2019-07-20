@@ -4,7 +4,7 @@ import org.enso.flexer.Success
 import org.enso.parser.Parser
 import org.enso.flexer._
 import org.enso.parser.AST
-import org.enso.parser.Ops
+import org.enso.parser.Renamer
 
 import scala.reflect.runtime.universe
 
@@ -91,21 +91,11 @@ object Main extends App {
       pprint(v)
       println(v.show())
 
-      val line        = v.asInstanceOf[AST.Module].firstLine.elem.get
-      val spaceGroups = Ops.partitionExprToSpaceGroups(line)
+      val module  = v.asInstanceOf[AST.Module]
+      val module2 = Renamer.run(module)
 
-      println(line)
-      pprint(spaceGroups)
-
-      println("-----")
-//      val out = Ops.add2x(part.segs.head.expr)
-
-      val flatExpr = spaceGroups.map(s => Ops.rebuildAssocExpr(s))
-
-      println("----------------")
-      val out = Ops.rebuildAssocExpr(flatExpr)
-      pprint(out)
-      println(out.show())
+      pprint(module2)
+      println(module2.show())
 
   }
 

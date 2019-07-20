@@ -3,7 +3,6 @@ package org.enso.parser
 import scala.annotation.tailrec
 import scala.collection.immutable.Map
 import cats.data.NonEmptyList
-import org.enso.parser.Ops.ExprList
 
 object AST {
 
@@ -543,6 +542,8 @@ object AST {
 
   final case class Line(elem: Option[AST], offset: Int) extends Symbol {
     val repr = R + elem + offset
+    def map(f: AST => AST): Line =
+      Line(elem.map(f), offset)
   }
 
   object Line {
@@ -562,6 +563,9 @@ object AST {
 
   final case class Module(firstLine: Line, lines: List[Line]) extends AST {
     val repr = R + firstLine + lines.map(R + '\n' + _)
+
+    def map(f: Line => Line): Module =
+      Module(f(firstLine), lines.map(f))
   }
 
   object Module {
@@ -578,7 +582,7 @@ object AST {
 // format: off
 
 
-object Ops {
+object Renamer {
   type List1[T] = NonEmptyList[T]
 
   import AST._
@@ -597,9 +601,13 @@ object Ops {
   def cross(as: List[String], bs: List[String]) =
     for { a <- as; b <- bs } yield a + b
 
-  type NonSpacedSegment = NonEmptyList[AST]
-//  case class SpacedSegment(segs: NonEmptyList[NonSpacedSegment])
 
+
+  //////////////////////////////////////
+  //// Spaced / Non-Spaced Segments ////
+  //////////////////////////////////////
+  
+  //// Definition ////
 
   case class Spaced[T](off:Int, el: T) {
     def map[S](f: T => S): Spaced[S] =
@@ -609,21 +617,26 @@ object Ops {
   case class SpacedList[T](head: T, tail: List[Spaced[T]]) {
     def map[S](f: T => S): SpacedList[S] =
       SpacedList(f(head),tail.map(_.map(f)))
+    
     def prepend(t:T, off:Int):SpacedList[T] =
       SpacedList(t, Spaced(off,head) :: tail)
+    
     def prepend(t:Spaced[T]):SpacedList[T] =
       SpacedList(t.el, Spaced(t.off,head) :: tail)
   }
   
   implicit def tupleToSpacedList[T](t:(T,List[Spaced[T]])): SpacedList[T] =
     SpacedList(t._1,t._2)
+
+  type NonSpacedSegment = NonEmptyList[AST]
+  type SpacedSegment    = Spaced[NonSpacedSegment]
+  type SpacedSegments   = SpacedList[NonSpacedSegment]
   
-  type SpaceGroup  = Spaced[NonSpacedSegment]
-  type SpaceGroups = SpacedList[NonSpacedSegment]
+  //// API ////
   
-  def partitionExprToSpaceGroups(t: AST): SpaceGroups = {
+  def partitionToSpacedSegments(t: AST): SpacedSegments = {
     @tailrec
-    def go(t: AST, stack: List[AST], out: List[SpaceGroup]): SpaceGroups = {
+    def go(t: AST, stack: List[AST], out: List[SpacedSegment]): SpacedSegments = {
       println("\n")
       println(s"stack: $stack")
       println(s"out: $out")
@@ -640,20 +653,12 @@ object Ops {
     go(t, Nil, Nil)
   }
 
-  case class OpDesc(op: Operator, desc: Desc)
 
-  trait OpList
-  trait ExprList
-
-  case class ExprNode(expr: AST, tail: OpList)  extends ExprList
-  case class OpNode(op: OpDesc, tail: ExprList) extends OpList
-  case object Empty                             extends ExprList with OpList
-
-  val appOp = Operator(" ")
+  val appOperator: Operator = Operator(" ")
 
   def astToOp(ast: AST) = ast match {
     case ast: Operator => ast
-    case _             => appOp
+    case _             => appOperator
   }
 
   
@@ -743,5 +748,19 @@ object Ops {
       case _   => flatten(reduceHead(stack))
     }
   }
+  
+  
+  
+  def run(ast:AST):AST = {
+    val segments = partitionToSpacedSegments(ast)
+    val flatExpr = segments.map(rebuildAssocExpr)
+    rebuildAssocExpr(flatExpr)
+  }
+  
+
+  def run(module:AST.Module): AST.Module =
+    module.map(_.map(run))
+  
+
 
 }
