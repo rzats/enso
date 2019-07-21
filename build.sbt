@@ -56,7 +56,7 @@ lazy val flexer = (project in file("lib/flexer"))
   )
   .dependsOn(logger) //depends logger macro
 
-lazy val parser = (project in file("syntax/parser"))
+lazy val syntax_definition = (project in file("syntax/definition"))
   .settings(
     scalacOptions += "-Xmacro-settings:-logging@org.enso",
     libraryDependencies ++= Seq(
@@ -78,9 +78,9 @@ lazy val parser = (project in file("syntax/parser"))
   .dependsOn(logger)
   .dependsOn(flexer)
 
-lazy val syntax = (project in file("syntax/runner"))
+lazy val syntax = (project in file("syntax/specialization"))
   .settings(
-    mainClass in (Compile, run) := Some("org.enso.syntax.Main"),
+    mainClass in (Compile, run) := Some("org.enso.syntax.text.Main"),
     version := "0.1",
     scalacOptions += "-Ypartial-unification"
   )
@@ -109,7 +109,8 @@ lazy val syntax = (project in file("syntax/runner"))
     ),
     (Compile / compile) := (Compile / compile)
       .dependsOn(Def.taskDyn {
-        val parserCompile = (parser / Compile / compileIncremental).value
+        val parserCompile =
+          (syntax_definition / Compile / compileIncremental).value
         if (parserCompile.hasModified) {
           Def.task {
             streams.value.log.info("Parser changed, forcing recompilation.")
@@ -119,7 +120,7 @@ lazy val syntax = (project in file("syntax/runner"))
       })
       .value
   )
-  .dependsOn(parser)
+  .dependsOn(syntax_definition)
   .dependsOn(logger)
   .dependsOn(flexer)
   .configs(Test)
