@@ -80,8 +80,15 @@ object Renamer {
     case _             => appOperator
   }
 
+  
+  def rebuildAssocSubExpr(seg: NonSpacedSegment): AST = {
+    rebuildAssocExpr(seg) match {
+      case t: Section => t.operator
+      case t => t
+    }
+  }
 
-  def rebuildAssocExpr(seg:NonSpacedSegment): AST = {
+  def rebuildAssocExpr(seg: NonSpacedSegment): AST = {
     val sl = SpacedList(seg.head, seg.tail.map(Spaced(0,_)))
     rebuildAssocExpr(sl)
   }
@@ -162,7 +169,7 @@ object Renamer {
   @tailrec
   def flatten(stack: SpacedList[AST]): AST = {
     stack.tail match {
-      case Nil => stack.head
+      case Nil => reduceHead(stack).head
       case _   => flatten(reduceHead(stack))
     }
   }
@@ -171,7 +178,7 @@ object Renamer {
 
   def run(ast:AST):AST = {
     val segments = partitionToSpacedSegments(ast)
-    val flatExpr = segments.map(rebuildAssocExpr)
+    val flatExpr = segments.map(rebuildAssocSubExpr)
     rebuildAssocExpr(flatExpr)
   }
 
