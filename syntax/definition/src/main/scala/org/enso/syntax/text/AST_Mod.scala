@@ -166,9 +166,9 @@ object AST_Mod {
   trait AST extends Symbol {
 
     private def smartApp(off: Int)(r: AST): AST = (this, r) match {
-      case (l: Operator, r) => SectionLeft(l, off, r)
-      case (l, r: Operator) => SectionRight(l, off, r)
-      case (l, r)           => App(l, off, r)
+      case (l, r: Section) => SectionRight(l, off, r.operator)
+      case (l: Section, r) => SectionLeft(l.operator, off, r)
+      case (l, r)          => App(l, off, r)
     }
 
     def $(t: AST)    = smartApp(0)(t)

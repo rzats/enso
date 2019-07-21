@@ -110,17 +110,24 @@ class ParserSpec extends FlatSpec with Matchers {
   "a+ +b"         ?== ("a" $ "+") $$_ ("+" $ "b")
   "*a+"           ?== ("*" $ "a") $ "+"
   "+a*"           ?== "+" $ ("a" $ "*")
-  "+ <$> a <*> b" ?== (Section("+") $_ "<$>" $_ "a") $_ "<*>" $_ "b"
-//  "a+b"    ?==
-//  "()"        ?== "(" $ ")" // Group()
-//  "(())"      ?== "(" $ "(" $ ")" $ ")" // Group(Group())
-//  "(()"       ?== "(" $ "(" $ ")" // Group.Unclosed(Group())
-//  "(("        ?== "(" $ "(" // Group.Unclosed(Group.Unclosed())
-//  "( "        ?== "(" // Group.Unclosed()
-//  ")"         ?== ")" // Group.UnmatchedClose
-//  ")("        ?== ")" $ "(" // Group.UnmatchedClose $ Group.Unclosed()
-//  "a ( b c )" ?== "a" $_ "(" $_ "b" $_ "c" $_ ")" // ("a" $_ Group(1, "b" $_ "c", 1))
-//  "(a (b c))" ?== "(" $ "a" $_ "(" $ "b" $_ "c" $ ")" $ ")" // Group("a" $_ Group("b" $_ "c"))
+  "+ <$> a <*> b" ?== ("+" $_ "<$>" $_ "a") $_ "<*>" $_ "b"
+  "+ * ^"         ?== SectionLeft("+", 1, SectionLeft("*", 1, Section("^")))
+  "+ ^ *"         ?== SectionLeft("+", 1, SectionRight(Section("^"), 1, "*"))
+  "^ * +"         ?== SectionRight(SectionRight(Section("^"), 1, "*"), 1, "+")
+  "* ^ +"         ?== SectionRight(SectionLeft("*", 1, Section("^")), 1, "+")
+  "^ + *"         ?== InfixApp(Section("^"), 1, "+", 1, Section("*"))
+  "* + ^"         ?== InfixApp(Section("*"), 1, "+", 1, Section("^"))
+
+  //  "a+b"    ?==
+  //  "()"        ?== "(" $ ")" // Group()
+  //  "(())"      ?== "(" $ "(" $ ")" $ ")" // Group(Group())
+  //  "(()"       ?== "(" $ "(" $ ")" // Group.Unclosed(Group())
+  //  "(("        ?== "(" $ "(" // Group.Unclosed(Group.Unclosed())
+  //  "( "        ?== "(" // Group.Unclosed()
+  //  ")"         ?== ")" // Group.UnmatchedClose
+  //  ")("        ?== ")" $ "(" // Group.UnmatchedClose $ Group.Unclosed()
+  //  "a ( b c )" ?== "a" $_ "(" $_ "b" $_ "c" $_ ")" // ("a" $_ Group(1, "b" $_ "c", 1))
+  //  "(a (b c))" ?== "(" $ "a" $_ "(" $ "b" $_ "c" $ ")" $ ")" // Group("a" $_ Group("b" $_ "c"))
 
   ////////////
   // Layout //
@@ -161,11 +168,11 @@ class ParserSpec extends FlatSpec with Matchers {
   // Text //
   //////////
 
-//  "'"       ?== Text.Unclosed(Text())
+  //  "'"       ?== Text.Unclosed(Text())
   "''"   ?== Text()
   "'''"  ?== Text.Unclosed(Text(Text.TripleQuote))
   "''''" ?== Text.Unclosed(Text(Text.TripleQuote, "'"))
-//  "'''''"   ?== Text.Unclosed(Text(Text.TripleQuote, "''")) // FIXME
+  //  "'''''"   ?== Text.Unclosed(Text(Text.TripleQuote, "''")) // FIXME
   "''''''"  ?== Text(Text.TripleQuote)
   "'''''''" ?== Text(Text.TripleQuote) $ Text.Unclosed(Text())
   "'a'"     ?== Text("a")
@@ -173,7 +180,7 @@ class ParserSpec extends FlatSpec with Matchers {
   "'a'''"   ?== Text("a") $ Text()
   "'''a'''" ?== Text(Text.TripleQuote, "a")
   "'''a'"   ?== Text.Unclosed(Text(Text.TripleQuote, "a'"))
-//  "'''a''"  ?== Text.Unclosed(Text(Text.TripleQuote, "a''")) // FIXME
+  //  "'''a''"  ?== Text.Unclosed(Text(Text.TripleQuote, "a''")) // FIXME
 
   //// Escapes ////
 
@@ -195,7 +202,7 @@ class ParserSpec extends FlatSpec with Matchers {
     val bd = "b" $_ Text("c", Text.Segment.Interpolated(Some("d")), "e") $_ "f"
     Text("a", Text.Segment.Interpolated(Some(bd)), "g")
   }
-//  "'`a(`'" ?== Text(Text.Segment.Interpolated(Some("a" $ Group.Unclosed())))
+  //  "'`a(`'" ?== Text(Text.Segment.Interpolated(Some("a" $ Group.Unclosed())))
   //  // Comments
   //  expr("#"              , Comment)
   //  expr("#c"             , Comment :: CommentBody("c"))

@@ -121,8 +121,8 @@ object Renamer {
 
         inp.stack.head match {
           case stack1: Operator => seg1.el match {
-            case seg1:Operator => go(handleOp(seg1,stack1))
-            case _             => go(shift)
+            case seg1: Operator => go(handleOp(seg1,stack1))
+            case _              => go(shift)
           }
           case _ => inp.stack.tail match {
             case Nil         => go(shift)
@@ -131,19 +131,19 @@ object Renamer {
         }
       }
     }
+    
     go(seg.tail, SpacedList(seg.head, Nil))
   }
 
 
-  @tailrec
   def reduceHead(stack: SpacedList[AST]): SpacedList[AST] = {
     stack.head match {
       case t1: Operator =>
         stack.tail match {
           case Nil => (Section(t1), Nil)
           case t2 :: t3_ => t2.el match {
-            case _: Operator => reduceHead(Section(t1), t2 :: t3_)
-            case _ => (SectionRight(t2.el, t2.off, t1), t3_)
+            case _: Operator => (Section(t1), t2 :: t3_)
+            case _           => (SectionRight(t2.el, t2.off, t1), t3_)
           }
         }
       case t1 =>
