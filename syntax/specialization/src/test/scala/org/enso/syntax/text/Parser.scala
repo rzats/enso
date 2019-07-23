@@ -1,7 +1,7 @@
 package org.enso.syntax.text
 
 import org.enso.flexer.ParserBase
-import org.enso.syntax.text.AST_Mod._
+import org.enso.syntax.text.AST._
 import org.enso.{flexer => Flexer}
 import org.scalatest._
 

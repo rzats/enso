@@ -17,14 +17,15 @@ class Parser {
   import Parser._
   private val engine = newEngine()
 
-  def run(input: String): Result[AST_Mod.Module] = engine.run(input).map {
-    module =>
-      val module2 = module.asInstanceOf[AST_Mod.Module] // FIXME
-      val ppp     = MMM.partition(module2.firstLine.elem.get)
-      println("---")
-      println(ppp)
-      //      Renamer.run(module2)
-      module2
+  def run(input: String): Result[AST.Module] = engine.run(input).map { module =>
+    val module2 = module.asInstanceOf[AST.Module] // FIXME
+    val ppp     = MMM.partition(module2.firstLine.elem.get)
+    println("---")
+    println(ppp)
+    val tt: SpacedList[AST] = SpacedList(ppp.head.el, ppp.tail)
+    pprint.pprintln(Renamer.run(tt), width = 50)
+    //      Renamer.run(module2)
+    module2
   }
 
 }
@@ -75,7 +76,8 @@ object Main extends App {
   val p1 = new Parser()
   val p2 = new Parser()
 
-  val out = p1.run("( a  b   )")
+  val out = p1.run("(a)")
+//  val out = p1.run("x ( a  b   )")
   out match {
     case Success(v, _) =>
       pprint(v)

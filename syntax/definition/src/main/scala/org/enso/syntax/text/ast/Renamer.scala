@@ -1,6 +1,6 @@
 package org.enso.syntax.text.ast
 
-import org.enso.syntax.text.AST_Mod._
+import org.enso.syntax.text.AST._
 import org.enso.syntax.text._
 import cats.data.NonEmptyList
 import javax.swing.tree.MutableTreeNode
@@ -67,16 +67,16 @@ object Renamer {
 
     
     final case class Registry() {
-      var tree = Tree[AST,Mixfix.Pattern]()
+      var tree = Tree[AST,Mixfix.Header]()
 
       override def toString(): String = 
         tree.toString
 
-      def insert(t: Mixfix.Pattern): Unit =
-        tree += t.patterns.toList.map(_.head) -> t
+      def insert(t: Mixfix.Header): Unit =
+        tree += t.segments.toList.map(_.head) -> t
     }
     object Registry {
-      def apply(ts: Mixfix.Pattern*): Registry = {
+      def apply(ts: Mixfix.Header*): Registry = {
         val registry = new Registry()
         ts.foreach(registry.insert)
         registry
@@ -84,23 +84,23 @@ object Renamer {
     }
 
     val registry = Registry(
-      Mixfix.Pattern(
+      Mixfix.Header(
         Mixfix.Segment.Expr(Operator("(")),
         Mixfix.Segment.Empty(Operator(")"))
       ),
-      Mixfix.Pattern(
+      Mixfix.Header(
         Mixfix.Segment.Expr(Var("if")),
         Mixfix.Segment.Expr(Var("then"))
       ),
-      Mixfix.Pattern(
+      Mixfix.Header(
         Mixfix.Segment.Expr(Var("if")),
         Mixfix.Segment.Expr(Var("then")),
         Mixfix.Segment.Expr(Var("else"))
       )
     )
     
-    case class Context(tree: Tree[AST,Mixfix.Pattern], parent: Option[Context]) {
-      def get(t: AST): Option[Tree[AST,Mixfix.Pattern]] =
+    case class Context(tree: Tree[AST,Mixfix.Header], parent: Option[Context]) {
+      def get(t: AST): Option[Tree[AST,Mixfix.Header]] =
         tree.get(t)
     }
     
@@ -121,7 +121,7 @@ object Renamer {
               case Some(tr) => 
                 val mfx = go2(Context(tr,Some(context)), t2_, None, None, List())
                 println(mfx)
-                ???
+                go(context, Nil, Spaced(0, mfx) :: out)
             }
             
         }
@@ -131,11 +131,11 @@ object Renamer {
       
       @tailrec
       def go2(
-          context : Context,
-          lst     : List[Spaced[AST]],
-          mixfix  : Option[Mixfix.Pattern],
-          current : Option[Spaced[SpacedList[AST]]],
-          out     : List[Option[Spaced[SpacedList[AST]]]]
+               context : Context,
+               lst     : List[Spaced[AST]],
+               mixfix  : Option[Mixfix.Header],
+               current : Option[Spaced[SpacedList[AST]]],
+               out     : List[Option[Spaced[SpacedList[AST]]]]
         ): Mixfix = {
         lst match {
           case Nil => 
@@ -146,7 +146,7 @@ object Renamer {
               case None => ???
               case Some(mfx) =>
                 println("!!!")
-                val patterns = mfx.patterns.toList.zip(out2)
+                val patterns = mfx.segments.toList.zip(out2)
                 val segments = patterns.map { case (pattern, exprs) =>
                   pattern.tp match {
                     case t: Segment.Type.Expr => exprs match {
@@ -282,7 +282,7 @@ object Renamer {
   
   def rebuildOpAwareSubExpr(seg: NonSpacedSegment): AST = {
     rebuildOpAwareExpr(seg) match {
-      case t: App.Section => t.operator
+      case t: App.Sides => t.operator
       case t => t
     }
   }
@@ -339,10 +339,10 @@ object Renamer {
     stack.head match {
       case t1: Operator =>
         stack.tail match {
-          case Nil => (App.Section(t1), Nil)
+          case Nil => (App.Sides(t1), Nil)
           case t2 :: t3_ => t2.el match {
-            case _: Operator => (App.Section(t1), t2 :: t3_)
-            case _           => (App.Right(t2.el, t2.off, t1), t3_)
+            case _: Operator => (App.Sides(t1), t2 :: t3_)
+            case _           => (App.Left(t2.el, t2.off, t1), t3_)
           }
         }
       case t1 =>
@@ -351,14 +351,14 @@ object Renamer {
 
           case t2 :: t3 :: t4_ => t2.el match {
             case v2: Operator => t3.el match {
-              case _:Operator => (App.Left(v2, t2.off, t1),t3 :: t4_)
+              case _:Operator => (App.Right(v2, t2.off, t1),t3 :: t4_)
               case _          => (App.Infix(t3.el, t3.off, v2, t2.off, t1),t4_)
             }
             case v2 => (App(v2,t2.off,t1), t3::t4_)
           }
 
           case t2 :: t3_ => t2.el match {
-            case v2: Operator => (App.Left(v2, t2.off, t1), t3_)
+            case v2: Operator => (App.Right(v2, t2.off, t1), t3_)
             case v2           => (App(v2, t2.off, t1), t3_)
           }
         }

@@ -1,13 +1,20 @@
 package org.enso.syntax.text
 import cats.data.NonEmptyList
+import org.enso.syntax.text.AST.HasRepr
+import org.enso.syntax.text.AST.ReprOf
+import org.enso.syntax.text.AST.R
 
-case class Spaced[+T](off: Int, el: T) {
-  def map[S](f: T => S): Spaced[S] =
+case class Spaced[+T: ReprOf](off: Int, el: T) extends HasRepr {
+  val repr = R + off + implicitly[ReprOf[T]].reprOf(el)
+  def map[S](f: T => S)(implicit ev: ReprOf[S]): Spaced[S] =
     Spaced(off, f(el))
 }
 
-case class SpacedList[T](head: T, tail: List[Spaced[T]]) {
-  def map[S](f: T => S): SpacedList[S] =
+case class SpacedList[T: ReprOf](head: T, tail: List[Spaced[T]])
+    extends HasRepr {
+  val repr = R + head + tail.map(_.repr)
+
+  def map[S: ReprOf](f: T => S): SpacedList[S] =
     SpacedList(f(head), tail.map(_.map(f)))
 
   def prepend(t: T, off: Int): SpacedList[T] =
@@ -20,7 +27,7 @@ case class SpacedList[T](head: T, tail: List[Spaced[T]]) {
     Spaced(0, head) :: tail
 }
 object SpacedList {
-  implicit def fromTuple[T](t: (T, List[Spaced[T]])): SpacedList[T] =
+  implicit def fromTuple[T: ReprOf](t: (T, List[Spaced[T]])): SpacedList[T] =
     SpacedList(t._1, t._2)
 }
 
@@ -28,13 +35,15 @@ object SpacedList {
 
 trait Invalid
 
-trait AST extends AST_Mod.Symbol {
-  import AST_Mod._
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+sealed trait AST extends AST.Symbol {
+  import AST._
 
   private def smartApp(off: Int)(r: AST): AST = (this, r) match {
-    case (l, r: App.Section) => App.Right(l, off, r.operator)
-    case (l: App.Section, r) => App.Left(l.operator, off, r)
-    case (l, r)              => App(l, off, r)
+    case (l, r: App.Sides) => App.Left(l, off, r.operator)
+    case (l: App.Sides, r) => App.Right(l.operator, off, r)
+    case (l, r)            => App(l, off, r)
   }
 
   def $(t: AST)    = smartApp(0)(t)
@@ -49,10 +58,7 @@ trait AST extends AST_Mod.Symbol {
 }
 
 object AST {
-  trait Invalid extends AST with org.enso.syntax.text.Invalid
-}
-
-object AST_Mod {
+  sealed trait Invalid extends AST with org.enso.syntax.text.Invalid
 
   /////////////////////////////////
 
@@ -73,7 +79,7 @@ object AST_Mod {
       case _   => 0
     }
     if (isApplicative(op)) Left
-    else if (op.map(assocVal(_)).sum >= 0) Left
+    else if (op.map(assocVal).sum >= 0) Left
     else Right
   }
 
@@ -147,13 +153,13 @@ object AST_Mod {
 
     def show(out: StringBuilder): Unit
 
-    def +[T](that: T)(implicit ev: ReprOf[T]) =
-      Seq(this, ev.reprOf(that))
+    def +[T: ReprOf](that: T) =
+      Seq(this, implicitly[ReprOf[T]].reprOf(that))
   }
 
   object Repr {
-    def apply():                                Repr = Empty()
-    def apply[T](t: T)(implicit ev: ReprOf[T]): Repr = ev.reprOf(t)
+    def apply():                Repr = Empty()
+    def apply[T: ReprOf](t: T): Repr = implicitly[ReprOf[T]].reprOf(t)
 
     case class Empty() extends Repr {
       val span                     = 0
@@ -189,14 +195,18 @@ object AST_Mod {
   trait ReprOf[-T] {
     def reprOf(a: T): Repr
   }
+  def reprOf[T](t: T)(implicit ev: ReprOf[T]) = ev.reprOf(t)
 
+  implicit val HasRepr_0: ReprOf[Unit]    = _ => Repr.Empty()
   implicit val HasRepr_1: ReprOf[String]  = Repr.Text(_)
   implicit val HasRepr_2: ReprOf[Int]     = i => Repr.Text(" " * i)
   implicit val HasRepr_3: ReprOf[Char]    = Repr.Letter(_)
   implicit val HasRepr_4: ReprOf[Repr]    = identity(_)
   implicit val HasRepr_5: ReprOf[HasRepr] = _.repr
-  implicit def HasRepr_6[T](implicit ev: ReprOf[T]): ReprOf[List[T]] =
-    _.foldLeft(Repr.Empty(): Repr)((a, b) => Repr.Seq(a, ev.reprOf(b)))
+  implicit def HasRepr_6[T: ReprOf]: ReprOf[List[T]] =
+    _.foldLeft(Repr.Empty(): Repr)((a, b) => Repr.Seq(a, reprOf(b)))
+  implicit def HasRepr_7[T: ReprOf]: ReprOf[NonEmptyList[T]] =
+    _.foldLeft(Repr.Empty(): Repr)((a, b) => Repr.Seq(a, reprOf(b)))
 
   ////////////////
   //// Symbol ////
@@ -221,8 +231,8 @@ object AST_Mod {
     val repr = self.map(_.repr).getOrElse(Repr())
   }
 
-  implicit def ReprOfOption[T](implicit ev: ReprOf[T]): ReprOf[Option[T]] =
-    _.map(ev.reprOf).getOrElse(Repr())
+  implicit def ReprOfOption[T: ReprOf]: ReprOf[Option[T]] =
+    _.map(reprOf(_)).getOrElse(Repr())
 
   // FIXME: Why this is needed?
   implicit def ReprOfOptionAST: ReprOf[Option[AST]] =
@@ -279,7 +289,7 @@ object AST_Mod {
     if (str == "_") Wildcard
     else if (str.head.isLower) Var(str)
     else if (str.head.isUpper) Cons(str)
-    else App.Section(Operator(str))
+    else App.Sides(Operator(str))
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -288,7 +298,18 @@ object AST_Mod {
     val repr = R + func + off + arg
   }
   object App {
-    def apply(func: AST, arg: AST): App = new App(func, 1, arg)
+    def apply(func: AST, arg: AST):              App   = App(func, 1, arg)
+    def apply(op: Operator, off: Int, arg: AST): Right = Right(op, off, arg)
+    def apply(op: Operator, arg: AST):           Right = Right(op, 1, arg)
+    def apply(arg: AST, off: Int, op: Operator): Left  = Left(arg, off, op)
+    def apply(arg: AST, op: Operator):           Left  = Left(arg, 1, op)
+    def apply(
+      leftArg: AST,
+      leftOff: Int,
+      operator: Operator,
+      rightOff: Int,
+      rightArg: AST
+    ): Infix = Infix(leftArg, leftOff, operator, rightOff, rightArg)
 
     final case class Infix(
       leftArg: AST,
@@ -300,20 +321,19 @@ object AST_Mod {
       val repr = R + leftArg + leftOff + operator + rightOff + rightArg
     }
 
-    final case class Left(operator: Operator, off: Int, arg: AST) extends AST {
+    final case class Right(operator: Operator, off: Int, arg: AST) extends AST {
       val repr = R + operator + off + arg
     }
 
-    final case class Right(arg: AST, off: Int, op: Operator) extends AST {
-      val repr = R + arg + off + op
-
+    final case class Left(arg: AST, off: Int, op: Operator) extends AST {
+      val repr                  = R + arg + off + op
       override def $(t: AST)    = Infix(arg, off, op, 0, t)
       override def $_(t: AST)   = Infix(arg, off, op, 1, t)
       override def $__(t: AST)  = Infix(arg, off, op, 2, t)
       override def $___(t: AST) = Infix(arg, off, op, 3, t)
     }
 
-    final case class Section(operator: Operator) extends AST {
+    final case class Sides(operator: Operator) extends AST {
       val repr = R + operator
     }
 
@@ -321,12 +341,16 @@ object AST_Mod {
 
   //////////////////////////////////////////////////////////////////////////////
 
-  case class Mixfix(segments: SpacedList[Mixfix.Segment[_]])
+  case class Mixfix(segments: SpacedList[Mixfix.Segment[_]]) extends AST {
+    val repr = R + segments.map(_.repr)
+  }
   object Mixfix {
 
-    case class Segment[T](tp: Segment.Type[T], head: AST, body: T)
+    case class Segment[T: ReprOf](tp: Segment.Type[T], head: AST, body: T)
+        extends Symbol {
+      val repr = R + head + body
+    }
     object Segment {
-
       trait Type[T]
       object Type {
         final case class Empty() extends Type[Unit]
@@ -334,53 +358,53 @@ object AST_Mod {
         final case class Expr1() extends Type[Spaced[AST]]
       }
 
-      type AnyPattern = Pattern[_]
-      case class Pattern[T](head: AST, tp: Segment.Type[T]) {
+      type Any = Header[_]
+      case class Header[T: ReprOf](head: AST, tp: Segment.Type[T]) {
         def toSegment(t: T): Segment[T] = Segment(tp, head, t)
       }
 
-      object Empty { def apply(t: AST): Pattern[_] = Pattern(t, Type.Empty()) }
-      object Expr { def apply(t: AST):  Pattern[_] = Pattern(t, Type.Expr()) }
-      object Expr1 { def apply(t: AST): Pattern[_] = Pattern(t, Type.Expr1()) }
+      object Empty { def apply(t: AST): Header[_] = Header(t, Type.Empty()) }
+      object Expr { def apply(t: AST):  Header[_] = Header(t, Type.Expr()) }
+      object Expr1 { def apply(t: AST): Header[_] = Header(t, Type.Expr1()) }
     }
 
-    case class Pattern(patterns: NonEmptyList[Segment.AnyPattern])
-    object Pattern {
-      def apply(t1: Segment.AnyPattern, ts: Segment.AnyPattern*): Pattern =
-        Pattern(NonEmptyList(t1, ts.to[List]))
+    case class Header(segments: NonEmptyList[Segment.Any])
+    object Header {
+      def apply(t1: Segment.Any, ts: Segment.Any*): Header =
+        Header(NonEmptyList(t1, ts.to[List]))
     }
   }
 
   //////////////////////////////////////////////////////////////////////////////
 
-  final case class Group(leftOff: Int, body: Option[AST], rightOff: Int)
-      extends AST {
-    val repr = Repr('(') + leftOff + body + rightOff + ')'
-  }
-
-  object Group {
-    def apply():                       Group = Group(0, None, 0)
-    def apply(l: Int):                 Group = Group(l, None, 0)
-    def apply(b: AST):                 Group = Group(0, Some(b), 0)
-    def apply(l: Int, b: AST):         Group = Group(l, Some(b), 0)
-    def apply(b: AST, r: Int):         Group = Group(0, Some(b), r)
-    def apply(l: Int, b: AST, r: Int): Group = Group(l, Some(b), r)
-
-    final case object UnmatchedClose extends AST.Invalid {
-      val repr = ')'
-    }
-
-    final case class Unclosed(leftOff: Int, body: Option[AST])
-        extends AST.Invalid {
-      val repr = R + '(' + leftOff + body
-    }
-
-    object Unclosed {
-      def apply():               Unclosed = Unclosed(0, None)
-      def apply(b: AST):         Unclosed = Unclosed(0, Some(b))
-      def apply(l: Int, b: AST): Unclosed = Unclosed(l, Some(b))
-    }
-  }
+//  final case class Group(leftOff: Int, body: Option[AST], rightOff: Int)
+//      extends AST {
+//    val repr = Repr('(') + leftOff + body + rightOff + ')'
+//  }
+//
+//  object Group {
+//    def apply():                       Group = Group(0, None, 0)
+//    def apply(l: Int):                 Group = Group(l, None, 0)
+//    def apply(b: AST):                 Group = Group(0, Some(b), 0)
+//    def apply(l: Int, b: AST):         Group = Group(l, Some(b), 0)
+//    def apply(b: AST, r: Int):         Group = Group(0, Some(b), r)
+//    def apply(l: Int, b: AST, r: Int): Group = Group(l, Some(b), r)
+//
+//    final case object UnmatchedClose extends AST.Invalid {
+//      val repr = ')'
+//    }
+//
+//    final case class Unclosed(leftOff: Int, body: Option[AST])
+//        extends AST.Invalid {
+//      val repr = R + '(' + leftOff + body
+//    }
+//
+//    object Unclosed {
+//      def apply():               Unclosed = Unclosed(0, None)
+//      def apply(b: AST):         Unclosed = Unclosed(0, Some(b))
+//      def apply(l: Int, b: AST): Unclosed = Unclosed(l, Some(b))
+//    }
+//  }
 
   //////////////////////////////////////////////////////////////////////////////
 
