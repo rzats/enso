@@ -1,6 +1,60 @@
 package org.enso.syntax.text
+import cats.data.NonEmptyList
+
+case class Spaced[+T](off: Int, el: T) {
+  def map[S](f: T => S): Spaced[S] =
+    Spaced(off, f(el))
+}
+
+case class SpacedList[T](head: T, tail: List[Spaced[T]]) {
+  def map[S](f: T => S): SpacedList[S] =
+    SpacedList(f(head), tail.map(_.map(f)))
+
+  def prepend(t: T, off: Int): SpacedList[T] =
+    SpacedList(t, Spaced(off, head) :: tail)
+
+  def prepend(t: Spaced[T]): SpacedList[T] =
+    SpacedList(t.el, Spaced(t.off, head) :: tail)
+
+  def toList(): List[Spaced[T]] =
+    Spaced(0, head) :: tail
+}
+object SpacedList {
+  implicit def fromTuple[T](t: (T, List[Spaced[T]])): SpacedList[T] =
+    SpacedList(t._1, t._2)
+}
+
+// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+trait Invalid
+
+trait AST extends AST_Mod.Symbol {
+  import AST_Mod._
+
+  private def smartApp(off: Int)(r: AST): AST = (this, r) match {
+    case (l, r: App.Section) => App.Right(l, off, r.operator)
+    case (l: App.Section, r) => App.Left(l.operator, off, r)
+    case (l, r)              => App(l, off, r)
+  }
+
+  def $(t: AST)    = smartApp(0)(t)
+  def $_(t: AST)   = smartApp(1)(t)
+  def $__(t: AST)  = smartApp(2)(t)
+  def $___(t: AST) = smartApp(3)(t)
+
+  def $$(t: AST)    = smartApp(0)(t)
+  def $$_(t: AST)   = smartApp(1)(t)
+  def $$__(t: AST)  = smartApp(2)(t)
+  def $$___(t: AST) = smartApp(3)(t)
+}
+
+object AST {
+  trait Invalid extends AST with org.enso.syntax.text.Invalid
+}
 
 object AST_Mod {
+
+  /////////////////////////////////
 
   trait Association
   case object Left  extends Association
@@ -163,28 +217,6 @@ object AST_Mod {
   //// AST ////
   /////////////
 
-  trait AST extends Symbol {
-
-    private def smartApp(off: Int)(r: AST): AST = (this, r) match {
-      case (l, r: Section) => SectionRight(l, off, r.operator)
-      case (l: Section, r) => SectionLeft(l.operator, off, r)
-      case (l, r)          => App(l, off, r)
-    }
-
-    def $(t: AST)    = smartApp(0)(t)
-    def $_(t: AST)   = smartApp(1)(t)
-    def $__(t: AST)  = smartApp(2)(t)
-    def $___(t: AST) = smartApp(3)(t)
-
-    def $$(t: AST)    = smartApp(0)(t)
-    def $$_(t: AST)   = smartApp(1)(t)
-    def $$__(t: AST)  = smartApp(2)(t)
-    def $$___(t: AST) = smartApp(3)(t)
-  }
-
-  trait Invalid
-  trait InvalidAST extends AST with Invalid
-
   implicit final class _OptionAST_(val self: Option[AST]) extends Symbol {
     val repr = self.map(_.repr).getOrElse(Repr())
   }
@@ -198,7 +230,7 @@ object AST_Mod {
 
   //// Unrecognized ////
 
-  final case class Unrecognized(str: String) extends InvalidAST {
+  final case class Unrecognized(str: String) extends AST.Invalid {
     val repr = str
   }
 
@@ -213,7 +245,7 @@ object AST_Mod {
 
   object Identifier {
     final case class InvalidSuffix(elem: Identifier, suffix: String)
-        extends InvalidAST {
+        extends AST.Invalid {
       val repr = R + elem + suffix
     }
     implicit def stringToIdentifier(str: String): Identifier = {
@@ -247,47 +279,79 @@ object AST_Mod {
     if (str == "_") Wildcard
     else if (str.head.isLower) Var(str)
     else if (str.head.isUpper) Cons(str)
-    else Section(Operator(str))
+    else App.Section(Operator(str))
   }
 
-  //// App ////
+  //////////////////////////////////////////////////////////////////////////////
 
   final case class App(func: AST, off: Int, arg: AST) extends AST {
     val repr = R + func + off + arg
   }
   object App {
     def apply(func: AST, arg: AST): App = new App(func, 1, arg)
+
+    final case class Infix(
+      leftArg: AST,
+      leftOff: Int,
+      operator: Operator,
+      rightOff: Int,
+      rightArg: AST
+    ) extends AST {
+      val repr = R + leftArg + leftOff + operator + rightOff + rightArg
+    }
+
+    final case class Left(operator: Operator, off: Int, arg: AST) extends AST {
+      val repr = R + operator + off + arg
+    }
+
+    final case class Right(arg: AST, off: Int, op: Operator) extends AST {
+      val repr = R + arg + off + op
+
+      override def $(t: AST)    = Infix(arg, off, op, 0, t)
+      override def $_(t: AST)   = Infix(arg, off, op, 1, t)
+      override def $__(t: AST)  = Infix(arg, off, op, 2, t)
+      override def $___(t: AST) = Infix(arg, off, op, 3, t)
+    }
+
+    final case class Section(operator: Operator) extends AST {
+      val repr = R + operator
+    }
+
   }
 
-  final case class InfixApp(
-    leftArg: AST,
-    leftOff: Int,
-    operator: Operator,
-    rightOff: Int,
-    rightArg: AST
-  ) extends AST {
-    val repr = R + leftArg + leftOff + operator + rightOff + rightArg
+  //////////////////////////////////////////////////////////////////////////////
+
+  case class Mixfix(segments: SpacedList[Mixfix.Segment[_]])
+  object Mixfix {
+
+    case class Segment[T](tp: Segment.Type[T], head: AST, body: T)
+    object Segment {
+
+      trait Type[T]
+      object Type {
+        final case class Empty() extends Type[Unit]
+        final case class Expr()  extends Type[Option[Spaced[AST]]]
+        final case class Expr1() extends Type[Spaced[AST]]
+      }
+
+      type AnyPattern = Pattern[_]
+      case class Pattern[T](head: AST, tp: Segment.Type[T]) {
+        def toSegment(t: T): Segment[T] = Segment(tp, head, t)
+      }
+
+      object Empty { def apply(t: AST): Pattern[_] = Pattern(t, Type.Empty()) }
+      object Expr { def apply(t: AST):  Pattern[_] = Pattern(t, Type.Expr()) }
+      object Expr1 { def apply(t: AST): Pattern[_] = Pattern(t, Type.Expr1()) }
+    }
+
+    case class Pattern(patterns: NonEmptyList[Segment.AnyPattern])
+    object Pattern {
+      def apply(t1: Segment.AnyPattern, ts: Segment.AnyPattern*): Pattern =
+        Pattern(NonEmptyList(t1, ts.to[List]))
+    }
   }
 
-  final case class SectionLeft(operator: Operator, off: Int, arg: AST)
-      extends AST {
-    val repr = R + operator + off + arg
-  }
-
-  final case class SectionRight(arg: AST, off: Int, op: Operator) extends AST {
-    val repr = R + arg + off + op
-
-    override def $(t: AST)    = InfixApp(arg, off, op, 0, t)
-    override def $_(t: AST)   = InfixApp(arg, off, op, 1, t)
-    override def $__(t: AST)  = InfixApp(arg, off, op, 2, t)
-    override def $___(t: AST) = InfixApp(arg, off, op, 3, t)
-  }
-
-  final case class Section(operator: Operator) extends AST {
-    val repr = R + operator
-  }
-
-  //// Group ////
+  //////////////////////////////////////////////////////////////////////////////
 
   final case class Group(leftOff: Int, body: Option[AST], rightOff: Int)
       extends AST {
@@ -302,12 +366,12 @@ object AST_Mod {
     def apply(b: AST, r: Int):         Group = Group(0, Some(b), r)
     def apply(l: Int, b: AST, r: Int): Group = Group(l, Some(b), r)
 
-    final case object UnmatchedClose extends InvalidAST {
+    final case object UnmatchedClose extends AST.Invalid {
       val repr = ')'
     }
 
     final case class Unclosed(leftOff: Int, body: Option[AST])
-        extends InvalidAST {
+        extends AST.Invalid {
       val repr = R + '(' + leftOff + body
     }
 
@@ -316,10 +380,9 @@ object AST_Mod {
       def apply(b: AST):         Unclosed = Unclosed(0, Some(b))
       def apply(l: Int, b: AST): Unclosed = Unclosed(l, Some(b))
     }
-
   }
 
-  //// Number ////
+  //////////////////////////////////////////////////////////////////////////////
 
   final case class Number(base: Option[String], int: String) extends AST {
     val repr = base.map(_ + "_").getOrElse("") + int
@@ -333,16 +396,14 @@ object AST_Mod {
     def apply(b: String, i: Int):    Number = Number(b, i.toString)
     def apply(b: Int, i: Int):       Number = Number(b.toString, i.toString)
 
-    final case class DanglingBase(base: String) extends InvalidAST {
+    final case class DanglingBase(base: String) extends AST.Invalid {
       val repr = base + '_'
     }
   }
 
   implicit def IntToNumber(int: Int): Number = Number(int)
 
-  //////////////
-  //// Text ////
-  //////////////
+  //////////////////////////////////////////////////////////////////////////////
 
   final case class Text(quoteSize: Text.QuoteSize, segments: List[Text.Segment])
       extends AST {
@@ -376,7 +437,7 @@ object AST_Mod {
     def apply(s: List[Segment]):          Text = Text(SingleQuote, s)
     def apply(s: Segment*):               Text = Text(s.to[List])
 
-    final case class Unclosed(text: Text) extends InvalidAST {
+    final case class Unclosed(text: Text) extends AST.Invalid {
       val repr = R + text.quoteSize + text.segments
     }
 
@@ -423,7 +484,9 @@ object AST_Mod {
           val repr = '\\' + int.toString
         }
 
-        case class Invalid(str: String) extends Escape with AST_Mod.Invalid {
+        case class Invalid(str: String)
+            extends Escape
+            with org.enso.syntax.text.Invalid {
           val repr = '\\' + str
         }
 
@@ -440,13 +503,13 @@ object AST_Mod {
           final case class U21 private (digits: String) extends U("u{", "}")
           final case class InvalidU16 private (digits: String)
               extends U("u", "")
-              with AST_Mod.Invalid
+              with org.enso.syntax.text.Invalid
           final case class InvalidU32 private (digits: String)
               extends U("U", "")
-              with AST_Mod.Invalid
+              with org.enso.syntax.text.Invalid
           final case class InvalidU21 private (digits: String)
               extends U("u{", "}")
-              with AST_Mod.Invalid
+              with org.enso.syntax.text.Invalid
 
           object Validator {
             val hexChars = (('a' to 'f') ++ ('A' to 'F') ++ ('0' to '9')).toSet
@@ -561,7 +624,7 @@ object AST_Mod {
   }
 
   object Block {
-    final case class InvalidIndentation(block: Block) extends InvalidAST {
+    final case class InvalidIndentation(block: Block) extends AST.Invalid {
       val repr = R + block
     }
   }

@@ -1,6 +1,7 @@
 package org.enso.syntax.text.ast
 
 import org.enso.syntax.text.AST_Mod._
+import org.enso.syntax.text._
 import cats.data.NonEmptyList
 import javax.swing.tree.MutableTreeNode
 
@@ -49,71 +50,57 @@ object Renamer {
     else EQ
   }
 
-  /////////////////////////
-  //// Mixfix functions////
-  /////////////////////////
+  ////////////////
+  //// Mixfix ////
+  ////////////////
+
+
+
 
   
-  case class MixfixPattern(
-    patterns: NonEmptyList[MixfixPattern.AnySegmentPattern])
 
 
-  object MixfixPattern {
-    def apply(t1:AnySegmentPattern, ts:AnySegmentPattern*): MixfixPattern =
-      MixfixPattern(NonEmptyList(t1,ts.to[List]))
-
-    trait SegmentType[T]
-    final case class Empty() extends SegmentType[Unit]
-    final case class Expr()  extends SegmentType[Option[Spaced[AST]]]
-    final case class Expr1() extends SegmentType[Spaced[AST]]
-
-    case class Segment[T](tp: SegmentType[T], head:AST, body:T)
+  object MMM {
     
     
-    case class SegmentPattern[T](head: AST, tp: SegmentType[_])
-    type AnySegmentPattern = SegmentPattern[_]
 
-    
-
-    case class Mixfix(segments: SpacedList[Segment[_]])
 
     
     final case class Registry() {
-      var tree = Tree[AST,MixfixPattern]()
+      var tree = Tree[AST,Mixfix.Pattern]()
 
-      override def toString = tree.toString
+      override def toString(): String = 
+        tree.toString
 
-      def insert(t: MixfixPattern): Unit =
+      def insert(t: Mixfix.Pattern): Unit =
         tree += t.patterns.toList.map(_.head) -> t
-
+    }
+    object Registry {
+      def apply(ts: Mixfix.Pattern*): Registry = {
+        val registry = new Registry()
+        ts.foreach(registry.insert)
+        registry
+      }
     }
 
-    val registry = Registry()
-
-    registry.insert(
-      MixfixPattern(
-        SegmentPattern(Operator("("), Expr()),
-        SegmentPattern(Operator(")"), Empty())
-      )
-    )
-
-    registry.insert(
-      MixfixPattern(
-        SegmentPattern(Var("if"), Expr()),
-        SegmentPattern(Var("then"), Expr())
-      )
-    )
-
-    registry.insert(
-      MixfixPattern(
-        SegmentPattern(Var("if"), Expr()),
-        SegmentPattern(Var("then"), Expr()),
-        SegmentPattern(Var("else"), Expr())
+    val registry = Registry(
+      Mixfix.Pattern(
+        Mixfix.Segment.Expr(Operator("(")),
+        Mixfix.Segment.Empty(Operator(")"))
+      ),
+      Mixfix.Pattern(
+        Mixfix.Segment.Expr(Var("if")),
+        Mixfix.Segment.Expr(Var("then"))
+      ),
+      Mixfix.Pattern(
+        Mixfix.Segment.Expr(Var("if")),
+        Mixfix.Segment.Expr(Var("then")),
+        Mixfix.Segment.Expr(Var("else"))
       )
     )
     
-    case class Context(tree: Tree[AST,MixfixPattern], parent: Option[Context]) {
-      def get(t: AST): Option[Tree[AST,MixfixPattern]] =
+    case class Context(tree: Tree[AST,Mixfix.Pattern], parent: Option[Context]) {
+      def get(t: AST): Option[Tree[AST,Mixfix.Pattern]] =
         tree.get(t)
     }
     
@@ -140,14 +127,16 @@ object Renamer {
         }
       }
 
+      import Mixfix._
+      
       @tailrec
       def go2(
-               context : Context,
-               lst     : List[Spaced[AST]],
-               mixfix  : Option[MixfixPattern],
-               current : Option[SpacedList[AST]],
-               out     : List[Option[SpacedList[AST]]]
-          ): Mixfix = {
+          context : Context,
+          lst     : List[Spaced[AST]],
+          mixfix  : Option[Mixfix.Pattern],
+          current : Option[Spaced[SpacedList[AST]]],
+          out     : List[Option[Spaced[SpacedList[AST]]]]
+        ): Mixfix = {
         lst match {
           case Nil => 
             println("go2 end")
@@ -160,15 +149,16 @@ object Renamer {
                 val patterns = mfx.patterns.toList.zip(out2)
                 val segments = patterns.map { case (pattern, exprs) =>
                   pattern.tp match {
-                    case t:Expr  => exprs match {
+                    case t: Segment.Type.Expr => exprs match {
                       case None => Spaced(0, Segment(t, pattern.head, None))
-                      case Some(SpacedList(e,es)) => 
-                        println(s">>>> $exprs")
+                      case Some(Spaced(off,SpacedList(e,es))) => 
+                        println(s">>>> $off, $exprs")
                         val lst = SpacedList(e, es)
-                        val ast = Spaced(7,run(lst))
+                        val ast = Spaced(off,run(lst))
                         Spaced(0, Segment(t, pattern.head, Some(ast)))
                     }
-                    case t:Empty => Spaced(0, Segment(t, pattern.head, ()))
+                    case t: Segment.Type.Empty =>
+                      Spaced(0, Segment(t, pattern.head, ()))
                   }
                 }
                 segments match {
@@ -179,8 +169,12 @@ object Renamer {
             println(s">> $t1")
             context.get(t1.el) match {
               case None => current match {
-                case None => go2 (context, t2_, mixfix, Some(SpacedList(t1.el,Nil)), out)
-                case Some(c) => go2 (context, t2_, mixfix, Some(c.prepend(t1)), out)
+                case None => 
+                  val current = Some(Spaced(t1.off,SpacedList(t1.el,Nil)))
+                  go2 (context, t2_, mixfix, current, out)
+                case Some(c) => 
+                  val current = Some(c.map(_.prepend(t1)))
+                  go2 (context, t2_, mixfix, current, out)
               }
               case Some(tr) => 
                 val out2 = current :: out
@@ -222,27 +216,7 @@ object Renamer {
   //// Spaced / Non-Spaced Segments ////
   //////////////////////////////////////
 
-  case class Spaced[+T](off:Int, el: T) {
-    def map[S](f: T => S): Spaced[S] =
-      Spaced(off, f(el))
-  }
 
-  case class SpacedList[T](head: T, tail: List[Spaced[T]]) {
-    def map[S](f: T => S): SpacedList[S] =
-      SpacedList(f(head),tail.map(_.map(f)))
-
-    def prepend(t:T, off:Int):SpacedList[T] =
-      SpacedList(t, Spaced(off,head) :: tail)
-
-    def prepend(t:Spaced[T]):SpacedList[T] =
-      SpacedList(t.el, Spaced(t.off,head) :: tail)
-    
-    def toList(): List[Spaced[T]] =
-      Spaced(0,head) :: tail
-  }
-
-  implicit def tupleToSpacedList[T](t:(T,List[Spaced[T]])): SpacedList[T] =
-    SpacedList(t._1,t._2)
 
   type NonSpacedSegment = NonEmptyList[AST]
   type SpacedSegment    = Spaced[NonSpacedSegment]
@@ -308,7 +282,7 @@ object Renamer {
   
   def rebuildOpAwareSubExpr(seg: NonSpacedSegment): AST = {
     rebuildOpAwareExpr(seg) match {
-      case t: Section => t.operator
+      case t: App.Section => t.operator
       case t => t
     }
   }
@@ -365,10 +339,10 @@ object Renamer {
     stack.head match {
       case t1: Operator =>
         stack.tail match {
-          case Nil => (Section(t1), Nil)
+          case Nil => (App.Section(t1), Nil)
           case t2 :: t3_ => t2.el match {
-            case _: Operator => (Section(t1), t2 :: t3_)
-            case _           => (SectionRight(t2.el, t2.off, t1), t3_)
+            case _: Operator => (App.Section(t1), t2 :: t3_)
+            case _           => (App.Right(t2.el, t2.off, t1), t3_)
           }
         }
       case t1 =>
@@ -377,14 +351,14 @@ object Renamer {
 
           case t2 :: t3 :: t4_ => t2.el match {
             case v2: Operator => t3.el match {
-              case _:Operator => (SectionLeft(v2, t2.off, t1),t3 :: t4_)
-              case _          => (InfixApp(t3.el, t3.off, v2, t2.off, t1),t4_)
+              case _:Operator => (App.Left(v2, t2.off, t1),t3 :: t4_)
+              case _          => (App.Infix(t3.el, t3.off, v2, t2.off, t1),t4_)
             }
             case v2 => (App(v2,t2.off,t1), t3::t4_)
           }
 
           case t2 :: t3_ => t2.el match {
-            case v2: Operator => (SectionLeft(v2, t2.off, t1), t3_)
+            case v2: Operator => (App.Left(v2, t2.off, t1), t3_)
             case v2           => (App(v2, t2.off, t1), t3_)
           }
         }

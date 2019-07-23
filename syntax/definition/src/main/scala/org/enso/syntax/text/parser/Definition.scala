@@ -4,7 +4,7 @@ import org.enso.flexer.Pattern.char
 import org.enso.flexer.Pattern.range
 import org.enso.flexer._
 import org.enso.syntax.text.AST_Mod
-import org.enso.syntax.text.AST_Mod.AST
+import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST_Mod.Text.QuoteSize
 import org.enso.flexer.Pattern._
 import scala.reflect.runtime.universe._
