@@ -7,6 +7,9 @@ import org.enso.syntax.text.parser.Definition
 import org.enso.flexer
 import org.enso.syntax.text.AST_Mod.AST
 
+import org.enso.syntax.text.ast.Renamer.MixfixPattern.registry
+import org.enso.syntax.text.ast.Renamer.MixfixPattern
+
 ////////////////
 //// Parser ////
 ////////////////
@@ -18,7 +21,11 @@ class Parser {
   def run(input: String): Result[AST_Mod.Module] = engine.run(input).map {
     module =>
       val module2 = module.asInstanceOf[AST_Mod.Module] // FIXME
-      Renamer.run(module2)
+      val ppp     = MixfixPattern.partition(module2.firstLine.elem.get)
+      println("---")
+      println(ppp)
+      //      Renamer.run(module2)
+      module2
   }
 
 }
@@ -69,7 +76,7 @@ object Main extends App {
   val p1 = new Parser()
   val p2 = new Parser()
 
-  val out = p1.run("+ ^ *")
+  val out = p1.run("( a  b   )")
   out match {
     case Success(v, _) =>
       pprint(v)

@@ -168,11 +168,11 @@ class ParserSpec extends FlatSpec with Matchers {
   // Text //
   //////////
 
-  //  "'"       ?== Text.Unclosed(Text())
+  "'"    ?== Text.Unclosed(Text())
   "''"   ?== Text()
   "'''"  ?== Text.Unclosed(Text(Text.TripleQuote))
   "''''" ?== Text.Unclosed(Text(Text.TripleQuote, "'"))
-  //  "'''''"   ?== Text.Unclosed(Text(Text.TripleQuote, "''")) // FIXME
+//  "'''''"   ?== Text.Unclosed(Text(Text.TripleQuote, "''")) // FIXME
   "''''''"  ?== Text(Text.TripleQuote)
   "'''''''" ?== Text(Text.TripleQuote) $ Text.Unclosed(Text())
   "'a'"     ?== Text("a")
