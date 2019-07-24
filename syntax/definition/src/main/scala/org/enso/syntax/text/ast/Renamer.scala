@@ -7,32 +7,6 @@ import javax.swing.tree.MutableTreeNode
 
 import scala.annotation.tailrec
 
-case class Tree[K, V](value: Option[V], branches: Map[K, Tree[K, V]]) {
-  def +(item: (List[K], V)): Tree[K, V] = item._1 match {
-    case Nil => this.copy(value = Some(item._2))
-    case p :: ps => {
-      val newBranch = branches.getOrElse(p, Tree[K, V]()) + (ps -> item._2)
-      this.copy(branches = branches + (p -> newBranch))
-    }
-  }
-
-  def get(key: K): Option[Tree[K, V]] =
-    branches.get(key)
-
-  def get(path: List[K]): Option[Tree[K, V]] = path match {
-    case Nil     => Some(this)
-    case p :: ps => branches.get(p).flatMap(_.get(ps))
-  }
-
-  def getValue(path: List[K]): Option[V] =
-    get(path).flatMap(_.value)
-
-}
-
-object Tree {
-  def apply[K, V](): Tree[K, V] = Tree(None, Map())
-}
-
 // format: off
 
 object Renamer {
@@ -186,7 +160,9 @@ object Renamer {
           println(s"revSegments =")
           pprint.pprintln(revSegments,width = 50,height = 10000)
           val result = builder.mixfix match {
-            case None => ???
+            case None => 
+              println(builder.context.tree.dropValues())
+              ???
             case Some(mfx) =>
               val revPatterns = mfx.segments.toList.reverse
               val revSegDefs  = revPatterns.zip(revSegments)
@@ -245,35 +221,6 @@ object Renamer {
             }
           case t1 :: t2_ =>
             println(s"> $t1")
-            
-//            builder.context.parentCheck(t1.el) match {
-//              case true =>
-//                println("Parent close")
-//                close2()
-//                go(input)
-//              case false => root.get(t1.el) match {
-//                case Some(tr) =>
-//                  println(">> Root")
-//                  val context = builder.context
-//                  pushBuilder(t1.off)
-//                  builder.context = Context(tr, Some(context))
-//                  go(t2_)
-//                case None => builder.context.get(t1.el) match {
-//                  case None =>
-//                    println(">> Add token")
-//                    builder.current.revBody ::= t1
-//                    go(t2_)
-//
-//                  case Some(tr) =>
-//                    println(">> New segment")
-//                    pushSegment(t1.off)
-//                    builder.mixfix = builder.mixfix.map(Some(_)).getOrElse(tr.value)
-//                    go(t2_)
-//
-//                }
-//              }
-//            }
-
 
             builder.context.get(t1.el) match {
               case Some(tr) =>

@@ -4,6 +4,40 @@ import org.enso.syntax.text.AST.HasRepr
 import org.enso.syntax.text.AST.ReprOf
 import org.enso.syntax.text.AST.R
 
+case class Tree[K, V](value: Option[V], branches: Map[K, Tree[K, V]]) {
+  def +(item: (List[K], V)): Tree[K, V] = item._1 match {
+    case Nil => this.copy(value = Some(item._2))
+    case p :: ps => {
+      val newBranch = branches.getOrElse(p, Tree[K, V]()) + (ps -> item._2)
+      this.copy(branches = branches + (p -> newBranch))
+    }
+  }
+
+  def map[S](f: V => S): Tree[K, S] =
+    Tree(value.map(f), branches.mapValues(_.map(f)))
+
+  def dropValues(): Tree[K, Unit] =
+    map(_ => ())
+
+  def get(key: K): Option[Tree[K, V]] =
+    branches.get(key)
+
+  def get(path: List[K]): Option[Tree[K, V]] = path match {
+    case Nil     => Some(this)
+    case p :: ps => branches.get(p).flatMap(_.get(ps))
+  }
+
+  def getValue(path: List[K]): Option[V] =
+    get(path).flatMap(_.value)
+
+}
+
+object Tree {
+  def apply[K, V](): Tree[K, V] = Tree(None, Map())
+}
+
+/////////////////////////
+
 case class Spaced[+T: ReprOf](off: Int, el: T) extends HasRepr {
   val repr = R + off + implicitly[ReprOf[T]].reprOf(el)
   def map[S](f: T => S)(implicit ev: ReprOf[S]): Spaced[S] =
@@ -116,7 +150,7 @@ object AST {
 
   //////
 
-  import reflect.runtime.universe._
+  import reflect.runtime.universe.TypeTag
 
   def getAllSeleadObjects[T](implicit ttag: TypeTag[T]) = {
     val subs = ttag.tpe.typeSymbol.asClass.knownDirectSubclasses
@@ -347,16 +381,19 @@ object AST {
 
   //////////////////////////////////////////////////////////////////////////////
 
-  case class Mixfix(segments: SpacedList[Mixfix.Segment[_]]) extends AST {
+  case class Mixfix(segments: SpacedList[Mixfix.Segment.Class]) extends AST {
     val repr = R + segments.map(_.repr)
   }
   object Mixfix {
 
     case class Segment[T: ReprOf](tp: Segment.Type[T], head: AST, body: T)
-        extends Symbol {
+        extends Segment.Class {
       val repr = R + head + body
     }
     object Segment {
+      trait Class extends Symbol
+      type Any = Segment[_]
+
       trait Type[T]
       object Type {
         final case class Empty() extends Type[Unit]
@@ -364,19 +401,27 @@ object AST {
         final case class Expr1() extends Type[Spaced[AST]]
       }
 
-      type Any = Header[_]
       case class Header[T: ReprOf](head: AST, tp: Segment.Type[T]) {
         def toSegment(t: T): Segment[T] = Segment(tp, head, t)
       }
+      object Header {
+        type Any = Header[_]
+      }
 
-      object Empty { def apply(t: AST): Header[_] = Header(t, Type.Empty()) }
-      object Expr { def apply(t: AST):  Header[_] = Header(t, Type.Expr()) }
-      object Expr1 { def apply(t: AST): Header[_] = Header(t, Type.Expr1()) }
+      object Empty { def apply(t: AST): Header.Any = Header(t, Type.Empty()) }
+      object Expr { def apply(t: AST):  Header.Any = Header(t, Type.Expr()) }
+      object Expr1 { def apply(t: AST): Header.Any = Header(t, Type.Expr1()) }
+
+      case class Missing(paths: Tree[AST, Unit])
+          extends Segment.Class
+          with Invalid {
+        val repr = R
+      }
     }
 
-    case class Header(segments: NonEmptyList[Segment.Any])
+    case class Header(segments: NonEmptyList[Segment.Header.Any])
     object Header {
-      def apply(t1: Segment.Any, ts: Segment.Any*): Header =
+      def apply(t1: Segment.Header.Any, ts: Segment.Header.Any*): Header =
         Header(NonEmptyList(t1, ts.to[List]))
     }
   }
