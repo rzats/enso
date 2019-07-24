@@ -20,10 +20,11 @@ class Parser {
   def run(input: String): Result[AST.Module] = engine.run(input).map { module =>
     val module2 = module.asInstanceOf[AST.Module] // FIXME
     val ppp     = MMM.partition(module2.firstLine.elem.get)
-    println("---")
-    println(ppp)
+    println("\n========= 1\n")
+    pprint.pprintln(ppp, width = 50, height = 1000)
     val tt: SpacedList[AST] = SpacedList(ppp.head.el, ppp.tail)
-    pprint.pprintln(Renamer.run(tt), width = 50)
+    println("\n========= 2\n")
+    pprint.pprintln(Renamer.run(tt), width = 50, height = 1000)
     //      Renamer.run(module2)
     module2
   }
@@ -76,12 +77,14 @@ object Main extends App {
   val p1 = new Parser()
   val p2 = new Parser()
 
-  val out = p1.run("(a)")
+  val out = p1.run("t if  a + b * c   then    x")
+//  val out = p1.run("(t  if a then b)")
 //  val out = p1.run("x ( a  b   )")
-  out match {
-    case Success(v, _) =>
-      pprint(v)
-      println(v.show())
-  }
+
+//  out match {
+//    case Success(v, _) =>
+//      pprint(v)
+//      println(v.show())
+//  }
   println()
 }

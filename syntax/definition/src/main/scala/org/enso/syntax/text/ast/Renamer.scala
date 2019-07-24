@@ -91,103 +91,213 @@ object Renamer {
       Mixfix.Header(
         Mixfix.Segment.Expr(Var("if")),
         Mixfix.Segment.Expr(Var("then"))
-      ),
-      Mixfix.Header(
-        Mixfix.Segment.Expr(Var("if")),
-        Mixfix.Segment.Expr(Var("then")),
-        Mixfix.Segment.Expr(Var("else"))
-      )
+      )//,
+//      Mixfix.Header(
+//        Mixfix.Segment.Expr(Var("if")),
+//        Mixfix.Segment.Expr(Var("then")),
+//        Mixfix.Segment.Expr(Var("else"))
+//      )
     )
     
     case class Context(tree: Tree[AST,Mixfix.Header], parent: Option[Context]) {
       def get(t: AST): Option[Tree[AST,Mixfix.Header]] =
         tree.get(t)
+      
+      @tailrec
+      final def parentCheck(t: AST): Boolean = parent match {
+        case None => false
+        case Some(p) => p.get(t) match {
+          case None    => p.parentCheck(t)
+          case Some(_) => true
+        }
+      }
+    }
+    object Context {
+      def apply(): Context = Context(Tree(), None)
     }
     
     
     def partition(t: AST) = {
 
-      def go(
-          context:Context, 
-          lst: List[Spaced[AST]], 
-          out: List[Spaced[AST]]
-          ): List[Spaced[AST]]= {
-        lst match {
-          case Nil => println("go end"); out
-          case t1 :: t2_ => 
-            println(s"> $t1")
-            context.get(t1.el) match {
-              case None => go(context, t2_, t1 :: out)
-              case Some(tr) => 
-                val mfx = go2(Context(tr,Some(context)), t2_, None, None, List())
-                println(mfx)
-                go(context, Nil, Spaced(0, mfx) :: out)
-            }
-            
-        }
+      case class SegmentBuilder(
+        leftOff  : Int, 
+        div      : AST, 
+        rightOff : Int, 
+        body     : SpacedList[AST]
+      )
+      
+      
+      class MixfixBuilder() {
+        var context : Context                               = Context()
+        var mixfix  : Option[Mixfix.Header]                 = None
+        var current : Option[Spaced[SpacedList[AST]]]       = None
+        var out     : List[Option[Spaced[SpacedList[AST]]]] = List()
       }
+      
+      var builder: MixfixBuilder = new MixfixBuilder()
+      builder.mixfix = Some(Mixfix.Header(NonEmptyList(Mixfix.Segment.Expr(Var("module")),Nil)))
+      var builderStack: List[(MixfixBuilder,Int)] = Nil
+      
+      def pushBuilder(off: Int): Unit = {
+        println("pushBuilder")
+        builderStack +:= (builder, off) 
+        builder = new MixfixBuilder()
+      }
+      
+      def popBuilder(): Int = {
+        println("popBuilder")
+        val (bldr,off) = builderStack.head
+        builder = bldr
+        builderStack = builderStack.tail
+        off
+      }
+      
+      def getLastBuilderOffset(): Int = {
+        val (bldr,off) = builderStack.head
+        off
+      }
+      
 
       import Mixfix._
       
+      
       @tailrec
-      def go2(
-               context : Context,
-               lst     : List[Spaced[AST]],
-               mixfix  : Option[Mixfix.Header],
-               current : Option[Spaced[SpacedList[AST]]],
-               out     : List[Option[Spaced[SpacedList[AST]]]]
-        ): Mixfix = {
-        lst match {
-          case Nil => 
-            println("go2 end")
-            val out2 = (current :: out).reverse
-            println(current :: out)
-            mixfix match {
-              case None => ???
-              case Some(mfx) =>
-                println("!!!")
-                val patterns = mfx.segments.toList.zip(out2)
-                val segments = patterns.map { case (pattern, exprs) =>
-                  pattern.tp match {
-                    case t: Segment.Type.Expr => exprs match {
-                      case None => Spaced(0, Segment(t, pattern.head, None))
-                      case Some(Spaced(off,SpacedList(e,es))) => 
-                        println(s">>>> $off, $exprs")
-                        val lst = SpacedList(e, es)
-                        val ast = Spaced(off,run(lst))
-                        Spaced(0, Segment(t, pattern.head, Some(ast)))
-                    }
-                    case t: Segment.Type.Empty =>
-                      Spaced(0, Segment(t, pattern.head, ()))
+      def go(root : Context, input: List[Spaced[AST]]): List[Spaced[AST]] = {
+        
+        def close(goff:Int): List[Spaced[AST]] = {
+          println(s"\n\n-----------------------------------\nclose($goff)")
+          val out2 = builder.current :: builder.out
+          println(s"out2 =")
+          pprint.pprintln(out2,width = 50,height = 10000)
+          val result = builder.mixfix match {
+            case None => ???
+            case Some(mfx) =>
+              val revPatterns = mfx.segments.toList.reverse.zip(out2)
+              val lastPattern = revPatterns.head
+              val segments = revPatterns.reverseMap { case (pattern, exprs) =>
+                pattern.tp match {
+                  case t: Segment.Type.Expr => exprs match {
+                    case None => Spaced(-1, Segment(t, pattern.head, None))
+                    case Some(Spaced(off,SpacedList(e,es))) =>
+                      val es2 = es match {
+                        case Nil => Nil
+                        case e :: ee => Spaced(off, e.el) :: ee
+                      }
+                      println(s"OFF: $off")
+                      println(s"E: $e")
+                      println(s"ES: $es")
+                      val lst = SpacedList(e, es2)
+                      println("Rebuilding:")
+                      pprint.pprintln(lst,width = 50,height = 10000)
+                      val ast = Spaced(off,run(lst))
+                      Spaced(-11, Segment(t, pattern.head, Some(ast)))
                   }
+                  case t: Segment.Type.Empty =>
+                    Spaced(-2, Segment(t, pattern.head, ()))
                 }
-                segments match {
-                  case s :: ss => Mixfix(SpacedList(s.el, ss))
+              }
+
+
+              val mx = segments match {
+                case s :: ss => Mixfix(SpacedList(s.el, ss))
+              }
+
+              val suffix: List[Spaced[AST]] = lastPattern match { case (pattern, exprs) =>
+                pattern.tp match {
+                  case t: Segment.Type.Empty => exprs match {
+                    case None => List()
+                    case Some(Spaced(s,e)) => Spaced(s,e.head) :: e.tail
+                  }
+                  case _ => List()
                 }
+              }
+              suffix :+ Spaced(goff,mx)
+          }
+          println("Close Result:")
+          pprint.pprintln(result,width = 50,height = 10000)
+          result
+        }
+        
+        def close2() = {
+          println("close2")
+          val off = getLastBuilderOffset()
+          val lst = close(off)
+          popBuilder()
+          //          println("@@@", off, lst)
+//          println(builder.current)
+          builder.current = builder.current match {
+            case None =>
+              Some(Spaced(lst.head.off,SpacedList(lst.head.el, lst.tail)))
+            case Some(Spaced(o,s)) => 
+//              println("-----------")
+//              println(o)
+//              pprint.pprintln(s,width = 50,height = 10000)
+//              pprint.pprintln(lst, width = 50, height = 10000)
+//              Some(Spaced(o,s + lst))
+              val head = lst.head
+              val tail = lst.tail
+              val tail2 = Spaced(o,s.head) :: s.tail
+              Some(Spaced(head.off, SpacedList(head.el, tail ++ tail2)))
+          }
+        }
+        
+        input match {
+          case Nil => 
+            if (builderStack.isEmpty) {
+              println("End of input (not in stack)")
+              close(-4)
+            }
+            else {
+              println("End of input (in stack)")
+              close2()
+              go(root, input)
             }
           case t1 :: t2_ =>
-            println(s">> $t1")
-            context.get(t1.el) match {
-              case None => current match {
-                case None => 
-                  val current = Some(Spaced(t1.off,SpacedList(t1.el,Nil)))
-                  go2 (context, t2_, mixfix, current, out)
-                case Some(c) => 
-                  val current = Some(c.map(_.prepend(t1)))
-                  go2 (context, t2_, mixfix, current, out)
-              }
-              case Some(tr) => 
-                val out2 = current :: out
-                tr.value match {
-                  case None => ???
-                  case Some(mfx) => go2(context, t2_, Some(mfx), None, out2)
+            println(s"> $t1")
+            
+            builder.context.parentCheck(t1.el) match {
+              case true =>
+                close2()
+                go(root, input)
+              case false => root.get(t1.el) match {
+                case Some(tr) =>
+                  println(">> Root")
+                  val context = builder.context
+                  pushBuilder(t1.off)
+                  builder.context = Context(tr, Some(context))
+                  go(root, t2_)
+                case None => builder.context.get(t1.el) match {
+                  case None => builder.current match {
+                    case None =>
+                      println(">> First token")
+                      builder.current = Some(Spaced(t1.off, SpacedList(t1.el, Nil)))
+                      go(root, t2_)
+                    case Some(c) =>
+                      println(">> Non-First token")
+                      builder.current = Some(c.map(_.prepend(t1)))
+                      go(root, t2_)
+                  }
+                  case Some(tr) =>
+                    println(">> New segment")
+                    val out2 = builder.current :: builder.out
+                    tr.value match {
+                      case None => ???
+                      case Some(mfx) =>
+//                        builder.segOff = t1.off
+                        builder.mixfix = Some(mfx)
+                        builder.current = None
+                        builder.out = out2
+                        go(root, t2_)
+                    }
                 }
+              }
             }
 
         }
       }
 
-      go(Context(registry.tree, None), exprList(t).toList(), List())
+//      go(Context(registry.tree, None), exprList(t).toList(), List())
+      go(Context(registry.tree, None), exprList(t).toList())
     }
 
 

@@ -25,6 +25,12 @@ case class SpacedList[T: ReprOf](head: T, tail: List[Spaced[T]])
 
   def toList(): List[Spaced[T]] =
     Spaced(0, head) :: tail
+
+  def +(that: SpacedList[T]): SpacedList[T] =
+    SpacedList(head, tail ++ that.toList())
+
+  def +(that: List[Spaced[T]]): SpacedList[T] =
+    SpacedList(head, tail ++ that)
 }
 object SpacedList {
   implicit def fromTuple[T: ReprOf](t: (T, List[Spaced[T]])): SpacedList[T] =
