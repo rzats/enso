@@ -1,6 +1,7 @@
 package org.enso.syntax.text
 import cats.data.NonEmptyList
 import org.enso.syntax.text.AST.HasRepr
+import org.enso.syntax.text.AST.Mixfix.Segment
 import org.enso.syntax.text.AST.ReprOf
 import org.enso.syntax.text.AST.R
 
@@ -65,6 +66,9 @@ case class SpacedList[T: ReprOf](head: T, tail: List[Spaced[T]])
 
   def +(that: List[Spaced[T]]): SpacedList[T] =
     SpacedList(head, tail ++ that)
+
+  def :+(that: Spaced[T]): SpacedList[T] =
+    SpacedList(head, tail :+ that)
 }
 object SpacedList {
   implicit def fromTuple[T: ReprOf](t: (T, List[Spaced[T]])): SpacedList[T] =
@@ -332,6 +336,14 @@ object AST {
     else App.Sides(Operator(str))
   }
 
+  def stringToRawAST(str: String): AST = {
+    if (str == "") throw new Error("Empty literal")
+    if (str == "_") Wildcard
+    else if (str.head.isLower) Var(str)
+    else if (str.head.isUpper) Cons(str)
+    else Operator(str)
+  }
+
   //////////////////////////////////////////////////////////////////////////////
 
   final case class App(func: AST, off: Int, arg: AST) extends AST {
@@ -386,43 +398,64 @@ object AST {
   }
   object Mixfix {
 
+//    def apply(
+//      head: Mixfix.Segment.Class,
+//      tail: Spaced[Mixfix.Segment.Class]*
+//    ): Mixfix =
+//      Mixfix(SpacedList(head, tail.toList))
+
     case class Segment[T: ReprOf](tp: Segment.Type[T], head: AST, body: T)
         extends Segment.Class {
       val repr = R + head + body
     }
     object Segment {
+
       trait Class extends Symbol
       type Any = Segment[_]
 
-      trait Type[T]
+      trait Type[+T]
       object Type {
-        final case class Empty() extends Type[Unit]
-        final case class Expr()  extends Type[Option[Spaced[AST]]]
-        final case class Expr1() extends Type[Spaced[AST]]
+        type Any = Type[_]
       }
 
-      case class Header[T: ReprOf](head: AST, tp: Segment.Type[T]) {
-        def toSegment(t: T): Segment[T] = Segment(tp, head, t)
-      }
-      object Header {
-        type Any = Header[_]
+      final case class Empty() extends Type[Unit]
+      object Empty {
+        case class NonEmpty(body: Spaced[AST]) extends Class with Invalid {
+          val repr = R + body
+        }
       }
 
-      object Empty { def apply(t: AST): Header.Any = Header(t, Type.Empty()) }
-      object Expr { def apply(t: AST):  Header.Any = Header(t, Type.Expr()) }
-      object Expr1 { def apply(t: AST): Header.Any = Header(t, Type.Expr1()) }
+      final case class Expr() extends Type[Option[Spaced[AST]]]
 
-      case class Missing(paths: Tree[AST, Unit])
-          extends Segment.Class
-          with Invalid {
-        val repr = R
+      final case class Expr1() extends Type[Spaced[AST]]
+      object Expr1 {
+        case object Empty extends Class with Invalid {
+          val repr = R
+        }
+      }
+
+      def apply(head: AST, body: Option[Spaced[AST]]): Segment[_] =
+        new Segment(Expr(), head, body)
+
+    }
+
+    case class Unmatched(
+      segments: SpacedList[Unmatched.Segment],
+      possiblePaths: Tree[AST, Unit]
+    ) extends AST {
+      val repr = R + segments.map(_.repr)
+    }
+    object Unmatched {
+      case class Segment(head: AST, body: Option[Spaced[AST]]) extends Symbol {
+        val repr = R + head + body
       }
     }
 
-    case class Header(segments: NonEmptyList[Segment.Header.Any])
-    object Header {
-      def apply(t1: Segment.Header.Any, ts: Segment.Header.Any*): Header =
-        Header(NonEmptyList(t1, ts.to[List]))
+    case class Definition(segments: NonEmptyList[Definition.Input])
+    object Definition {
+      type Input = (AST, Segment.Type[_])
+      def apply(t1: Input, ts: Input*): Definition =
+        Definition(NonEmptyList(t1, ts.to[List]))
     }
   }
 

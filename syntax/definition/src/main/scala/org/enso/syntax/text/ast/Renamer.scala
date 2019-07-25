@@ -7,11 +7,8 @@ import javax.swing.tree.MutableTreeNode
 
 import scala.annotation.tailrec
 
-// format: off
-
 object Renamer {
-  
-  
+
   sealed trait Compare
   case object LT extends Compare
   case object GT extends Compare
@@ -27,244 +24,290 @@ object Renamer {
   //// Mixfix ////
   ////////////////
 
+  implicit def tupleToList1[T](t: (T, List[T])): List1[T] =
+    List1(t._1, t._2)
 
-
-
-  
-  implicit def tupleToList1[T](t:(T,List[T])): List1[T] =
-    List1(t._1,t._2)
-  
   type List1[T] = NonEmptyList[T]
   val List1 = NonEmptyList
 
-  object MMM {
-    
-    
+  final case class Registry() {
+    var tree = Tree[AST, NonEmptyList[Mixfix.Segment.Type.Any]]()
 
+    override def toString(): String =
+      tree.toString
 
-    
-    final case class Registry() {
-      var tree = Tree[AST,Mixfix.Header]()
-
-      override def toString(): String = 
-        tree.toString
-
-      def insert(t: Mixfix.Header): Unit =
-        tree += t.segments.toList.map(_.head) -> t
+    def insert(t: Mixfix.Definition): Unit =
+      tree += t.segments.toList.map(_._1) -> t.segments.map(_._2)
+  }
+  object Registry {
+    type T = Tree[AST, NonEmptyList[Mixfix.Segment.Type.Any]]
+    def apply(ts: Mixfix.Definition*): Registry = {
+      val registry = new Registry()
+      ts.foreach(registry.insert)
+      registry
     }
-    object Registry {
-      def apply(ts: Mixfix.Header*): Registry = {
-        val registry = new Registry()
-        ts.foreach(registry.insert)
-        registry
-      }
-    }
+  }
 
-    val registry = Registry(
-      Mixfix.Header(
-        Mixfix.Segment.Expr(Operator("(")),
-        Mixfix.Segment.Empty(Operator(")"))
-      ),
-      Mixfix.Header(
-        Mixfix.Segment.Expr(Var("if")),
-        Mixfix.Segment.Expr(Var("then"))
-      )//,
-//      Mixfix.Header(
-//        Mixfix.Segment.Expr(Var("if")),
-//        Mixfix.Segment.Expr(Var("then")),
-//        Mixfix.Segment.Expr(Var("else"))
-//      )
+  val registry = Registry(
+    Mixfix.Definition(
+      Operator("(") -> Mixfix.Segment.Expr(),
+      Operator(")") -> Mixfix.Segment.Empty()
+    ),
+    Mixfix.Definition(
+      Var("if") -> Mixfix.Segment.Expr1(),
+      Var("then") -> Mixfix.Segment.Expr1()
+    ),
+    Mixfix.Definition(
+      Var("if") -> Mixfix.Segment.Expr1(),
+      Var("then") -> Mixfix.Segment.Expr1(),
+      Var("else") -> Mixfix.Segment.Expr1()
     )
-    
-    case class Context(tree: Tree[AST,Mixfix.Header], parent: Option[Context]) {
-      def get(t: AST): Option[Tree[AST,Mixfix.Header]] =
-        tree.get(t)
-      
-      @tailrec
-      final def parentCheck(t: AST): Boolean = parent match {
-        case None => false
-        case Some(p) => p.get(t) match {
+  )
+
+  case class Context(tree: Registry.T, parent: Option[Context]) {
+    def get(t: AST): Option[Registry.T] =
+      tree.get(t)
+
+    @tailrec
+    final def parentCheck(t: AST): Boolean = parent match {
+      case None => false
+      case Some(p) =>
+        p.get(t) match {
           case None    => p.parentCheck(t)
           case Some(_) => true
         }
+    }
+  }
+  object Context {
+    def apply(): Context = Context(Tree(), None)
+  }
+
+  def partition(t: AST): AST = {
+
+    class SegmentBuilder(val ast: AST) {
+      import Mixfix._
+
+      var offset: Int                = 0
+      var revBody: List[Spaced[AST]] = List()
+
+      override def toString(): String =
+        s"SegmentBuilder($offset, $revBody)"
+
+      def build(tp: Segment.Type.Any, last: Boolean): Spaced[Segment.Class] = {
+        val optAst = revBody match {
+          case Nil => None
+          case seg1 :: seg2_ =>
+            val tt = partitionToSpacedSegments2(List1(seg1, seg2_))
+            Some(tt.map(runx))
+        }
+        val segment = tp match {
+          case t: Segment.Empty =>
+            val empty = Segment(t, ast, ())
+            if (last) empty
+            else optAst.map(Segment.Empty.NonEmpty).getOrElse(empty)
+          case t: Segment.Expr =>
+            Segment(t, ast, optAst)
+          case t: Segment.Expr1 =>
+            optAst.map(Segment(t, ast, _)).getOrElse(Segment.Expr1.Empty)
+        }
+        Spaced(offset, segment)
       }
     }
-    object Context {
-      def apply(): Context = Context(Tree(), None)
+
+    class MixfixBuilder(ast: AST) {
+      var context: Context                                      = Context()
+      var mixfix: Option[NonEmptyList[Mixfix.Segment.Type.Any]] = None
+      var current: SegmentBuilder                               = new SegmentBuilder(ast)
+      var revSegments: List[SegmentBuilder]                     = List()
     }
-    
-    
-    def partition(t: AST) = {
 
-      class SegmentBuilder() {
-        var offset: Int = 0
-        //        div      : AST,
-        //        rightOff : Int,
-        var revBody: List[Spaced[AST]] = List()
+    var builder: MixfixBuilder = new MixfixBuilder(Wildcard)
+    builder.mixfix = Some(NonEmptyList(Mixfix.Segment.Expr1(), Nil))
+    var builderStack: List[MixfixBuilder] = Nil
 
-        override def toString(): String = 
-          s"SegmentBuilder($offset, $revBody)"
-      }
-      
-      
-      class MixfixBuilder() {
-        var context     : Context               = Context()
-        var mixfix      : Option[Mixfix.Header] = None
-        var current     : SegmentBuilder        = new SegmentBuilder()
-        var revSegments : List[SegmentBuilder]  = List()
-      }
-      
-      var builder: MixfixBuilder = new MixfixBuilder()
-      builder.mixfix = Some(
-        Mixfix.Header(List1(Mixfix.Segment.Expr(Var("module")),Nil)))
-      var builderStack: List[MixfixBuilder] = Nil
-      
-      def pushBuilder(off: Int): Unit = {
-        println(s"pushBuilder($off)")
-        builderStack +:= builder 
-        builder = new MixfixBuilder()
-        builder.current.offset = off
-      }
-      
-      def popBuilder(): Unit = {
-        println("popBuilder")
-        builder = builderStack.head
-        builderStack = builderStack.tail
-      }
-      
-      def pushSegment(off: Int): Unit = {
-        println(s"pushSegment($off)")
-        builder.revSegments ::= builder.current
-        builder.current = new SegmentBuilder()
-        builder.current.offset = off
-      }
-      
-      def getLastBuilderOffset(): Int = {
+    def pushBuilder(ast: AST, off: Int): Unit = {
+//      println(s"pushBuilder($off)")
+      builderStack +:= builder
+      builder                = new MixfixBuilder(ast)
+      builder.current.offset = off
+    }
+
+    def popBuilder(): Unit = {
+//      println("popBuilder")
+      builder      = builderStack.head
+      builderStack = builderStack.tail
+    }
+
+    def pushSegment(ast: AST, off: Int): Unit = {
+//      println(s"pushSegment($off)")
+      builder.revSegments ::= builder.current
+      builder.current        = new SegmentBuilder(ast)
+      builder.current.offset = off
+    }
+
+    def getLastBuilderOffset(): Int = {
 //        val (bldr,off) = builderStack.head
 //        off
-        -999
-      }
-      
-
-      import Mixfix._
-      
-      
-      val root = Context(registry.tree, None)
-      
-      @tailrec
-      def go(input: List[Spaced[AST]]): List[Spaced[AST]] = {
-        
-        def close(): List[Spaced[AST]] = {
-          println(s"\n\n-----------------------------------\n\n")
-          val revSegments = builder.current :: builder.revSegments
-          println(s"revSegments =")
-          pprint.pprintln(revSegments,width = 50,height = 10000)
-          val result = builder.mixfix match {
-            case None => 
-              println(builder.context.tree.dropValues())
-              ???
-            case Some(mfx) =>
-              val revPatterns = mfx.segments.toList.reverse
-              val revSegDefs  = revPatterns.zip(revSegments)
-              val lastPattern = revSegDefs.head
-              val segments    = revSegDefs.reverseMap { case (pattern, segBldr) =>
-                pattern.tp match {
-                  case t: Segment.Type.Expr => segBldr.revBody match {
-                    case seg1 :: seg2_ =>
-                      val Spaced(o,tt) = partitionToSpacedSegments2(List1(seg1, seg2_))
-                      println("TT")
-                      pprint.pprintln(tt,width = 50,height = 10000)
-                      val ast = Spaced(o, runx(tt))
-                      Spaced(segBldr.offset, Segment(t, pattern.head, Some(ast)))
-                  }
-                    case t: Segment.Type.Empty =>
-                      Spaced(segBldr.offset, Segment(t, pattern.head, ()))
-                  
-                }
-              }
-
-
-              val mx = segments match {
-                case s :: ss => Spaced(s.off, Mixfix(SpacedList(s.el, ss)))
-              }
-
-              val suffix: List[Spaced[AST]] = lastPattern match { case (pattern, segBldr) =>
-                pattern.tp match {
-                  case t: Segment.Type.Empty => segBldr.revBody
-                  case _ => List()
-                }
-              }
-              suffix :+ mx
-          }
-          println("Close Result:")
-          pprint.pprintln(result,width = 50,height = 10000)
-          result
-        }
-        
-        def close2() = {
-          println("close2")
-          val subAst = close()
-          popBuilder()
-          builder.current.revBody = subAst ++ builder.current.revBody
-        }
-        
-        input match {
-          case Nil => 
-            if (builderStack.isEmpty) {
-              println("End of input (not in stack)")
-              close()
-            }
-            else {
-              println("End of input (in stack)")
-              close2()
-              go(input)
-            }
-          case t1 :: t2_ =>
-            println(s"> $t1")
-
-            builder.context.get(t1.el) match {
-              case Some(tr) =>
-                println(">> New segment")
-                pushSegment(t1.off)
-                builder.mixfix  = builder.mixfix.map(Some(_)).getOrElse(tr.value)
-                builder.context = builder.context.copy(tree = tr)
-                go(t2_)
-                
-              case None => builder.context.parentCheck(t1.el) match {
-                case true =>
-                  println("Parent close")
-                  close2()
-                  go(input)
-                case false => root.get(t1.el) match {
-                  case Some(tr) =>
-                    println(">> Root")
-                    val context = builder.context
-                    pushBuilder(t1.off)
-                    builder.context = Context(tr, Some(context))
-                    go(t2_)
-                  case None =>
-                    println(">> Add token")
-                    builder.current.revBody ::= t1
-                    go(t2_)
-                }
-              }
-            }
-
-          
-            
-            
-            
-
-        }
-      }
-
-//      go(Context(registry.tree, None), exprList(t).toList(), List())
-      println("START")
-      val elst = exprList(t).toList()
-      pprint.pprintln(elst,width = 50,height = 10000)
-      go(elst)
+      -999
     }
 
+    import Mixfix._
+
+    val root = Context(registry.tree, None)
+
+    def close(): List[Spaced[AST]] = {
+//      println(s"\n\n-----------------------------------\n\n")
+      val revSegments = builder.current :: builder.revSegments
+//      println(s"revSegments =")
+//      pprint.pprintln(revSegments, width = 50, height = 10000)
+      val result = {
+        builder.mixfix match {
+          case None =>
+            val segments = revSegments.reverseMap { segBldr =>
+              segBldr.revBody match {
+                case seg1 :: seg2_ =>
+                  val Spaced(o, tt) =
+                    partitionToSpacedSegments2(List1(seg1, seg2_))
+                  val ast = Spaced(o, runx(tt))
+                  Spaced(
+                    segBldr.offset,
+                    Unmatched.Segment(segBldr.ast, Some(ast))
+                  )
+              }
+            }
+
+            val possiblePaths = builder.context.tree.dropValues()
+            val mx = segments match {
+              case s :: ss =>
+                Spaced(
+                  s.off,
+                  Mixfix.Unmatched(SpacedList(s.el, ss), possiblePaths)
+                )
+            }
+            List(mx)
+
+          case Some(ts) =>
+            val revSegTypes = ts.toList.reverse
+            val revSegDefs  = revSegTypes.zip(revSegments)
+
+            def reverseMap[T, S](t: List[T])(f: (T, Boolean) => S): List[S] = {
+              @tailrec
+              def go[T, S](
+                f: (T, Boolean) => S,
+                lst: List[T],
+                out: List[S]
+              ): List[S] = {
+                lst match {
+                  case Nil     => out
+                  case l :: ls => go(f, ls, f(l, false) :: out)
+                }
+              }
+              t match {
+                case Nil     => Nil
+                case l :: ls => go(f, ls, f(l, true) :: Nil)
+              }
+
+            }
+
+            val segments = reverseMap(revSegDefs) {
+              case ((tp, segBldr), t) => segBldr.build(tp, t)
+            }
+
+            val mx = segments match {
+              case s :: ss => Spaced(s.off, Mixfix(SpacedList(s.el, ss)))
+            }
+
+            val suffix: List[Spaced[AST]] = revSegDefs.head match {
+              case (tp, segBldr) =>
+                tp match {
+                  case t: Segment.Empty => segBldr.revBody
+                  case _                => List()
+                }
+            }
+            suffix :+ mx
+        }
+      }
+
+//      println("Close Result:")
+//      pprint.pprintln(result, width = 50, height = 10000)
+      result
+    }
+
+    def close2() = {
+//      println("close2")
+      val subAst = close()
+      popBuilder()
+      builder.current.revBody = subAst ++ builder.current.revBody
+    }
+
+    @tailrec
+    def go(input: List[Spaced[AST]]): AST = {
+      input match {
+        case Nil =>
+          if (builderStack.isEmpty) {
+//            println("End of input (not in stack)")
+            close() match {
+              case Spaced(
+                    _,
+                    Mixfix(
+                      SpacedList(
+                        Mixfix.Segment(Segment.Expr1(), _, body: Spaced[AST]),
+                        Nil
+                      )
+                    )
+                  ) :: _ =>
+                body.el
+              case _ => throw new Error("Impossible happened.")
+            }
+
+          } else {
+//            println("End of input (in stack)")
+            close2()
+            go(input)
+          }
+        case t1 :: t2_ =>
+//          println(s"> $t1")
+
+          builder.context.get(t1.el) match {
+            case Some(tr) =>
+//              println(">> New segment")
+              pushSegment(t1.el, t1.off)
+//              builder.mixfix  = builder.mixfix.map(Some(_)).getOrElse(tr.value)
+              builder.mixfix  = tr.value.map(Some(_)).getOrElse(builder.mixfix)
+              builder.context = builder.context.copy(tree = tr)
+              go(t2_)
+
+            case None =>
+              builder.context.parentCheck(t1.el) match {
+                case true =>
+//                  println("Parent close")
+                  close2()
+                  go(input)
+                case false =>
+                  root.get(t1.el) match {
+                    case Some(tr) =>
+//                      println(">> Root")
+                      val context = builder.context
+                      pushBuilder(t1.el, t1.off)
+                      builder.context = Context(tr, Some(context))
+                      go(t2_)
+                    case None =>
+//                      println(">> Add token")
+                      builder.current.revBody ::= t1
+                      go(t2_)
+                  }
+              }
+          }
+
+      }
+    }
+
+//      go(Context(registry.tree, None), exprList(t).toList(), List())
+//    println("START")
+    val elst = exprList(t).toList()
+//    pprint.pprintln(elst, width = 50, height = 10000)
+    go(elst)
+  }
 
 //    def partition(t: AST) = {
 //
@@ -280,12 +323,10 @@ object Renamer {
 //
 //      go(Context(registry.tree, None), exprList(t), List())
 //    }
-    
-    
-    
-    
-  }
-  
+
+  // format: off
+
+
 
   //////////////////////////////////////
   //// Spaced / Non-Spaced Segments ////
@@ -495,5 +536,5 @@ object Renamer {
 //  }
   
   def run(module:Module): Module =
-    module.map(_.map(run))
+    module.map(_.map(partition))
 }
