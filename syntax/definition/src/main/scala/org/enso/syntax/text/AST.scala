@@ -31,10 +31,16 @@ case class Tree[K, V](value: Option[V], branches: Map[K, Tree[K, V]]) {
   def getValue(path: List[K]): Option[V] =
     get(path).flatMap(_.value)
 
+  def isEmpty: Boolean =
+    branches.isEmpty
+
 }
 
 object Tree {
-  def apply[K, V](): Tree[K, V] = Tree(None, Map())
+  def apply[K, V](): Tree[K, V] = new Tree(None, Map())
+  def apply[K, V](deps: (List[K], V)*): Tree[K, V] =
+    deps.foldLeft(Tree[K, V]())(_ + _)
+
 }
 
 /////////////////////////
@@ -398,12 +404,6 @@ object AST {
   }
   object Mixfix {
 
-//    def apply(
-//      head: Mixfix.Segment.Class,
-//      tail: Spaced[Mixfix.Segment.Class]*
-//    ): Mixfix =
-//      Mixfix(SpacedList(head, tail.toList))
-
     case class Segment[T: ReprOf](tp: Segment.Type[T], head: AST, body: T)
         extends Segment.Class {
       val repr = R + head + body
@@ -420,8 +420,10 @@ object AST {
 
       final case class Empty() extends Type[Unit]
       object Empty {
-        case class NonEmpty(body: Spaced[AST]) extends Class with Invalid {
-          val repr = R + body
+        case class NonEmpty(head: AST, body: Spaced[AST])
+            extends Class
+            with Invalid {
+          val repr = R + head + body
         }
       }
 
@@ -429,8 +431,8 @@ object AST {
 
       final case class Expr1() extends Type[Spaced[AST]]
       object Expr1 {
-        case object Empty extends Class with Invalid {
-          val repr = R
+        case class Empty(head: AST) extends Class with Invalid {
+          val repr = R + head
         }
       }
 

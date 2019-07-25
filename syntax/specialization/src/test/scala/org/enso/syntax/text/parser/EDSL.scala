@@ -3,6 +3,7 @@ package org.enso.syntax.text.parser
 import org.enso.syntax.text.AST.Mixfix
 import org.enso.syntax.text.AST.stringToRawAST
 import org.enso.syntax.text.AST
+import org.enso.syntax.text.Tree
 import org.enso.syntax.text.Spaced
 import org.enso.syntax.text.SpacedList
 
@@ -77,6 +78,25 @@ object EDSL {
         List(Spaced(i, Mixfix.Segment(stringToRawAST(s))))
       )
     )
+
+    def unmatched(tree: Tree[AST, Unit]): Mixfix.Unmatched =
+      Mixfix.Unmatched(
+        SpacedList(Mixfix.Unmatched.Segment(stringToRawAST(t), None), List()),
+        tree
+      )
+
+    def unmatched(lst: Seq[String]): Mixfix.Unmatched = {
+      val args = lst.map(k => List(stringToRawAST(k)) -> ())
+      val tree = Tree[AST, Unit](args: _*)
+      unmatched(tree)
+    }
+
+    def unmatched_lst(lst: Seq[List[String]]): Mixfix.Unmatched = {
+      val args = lst.map(k => k.map(stringToRawAST) -> ())
+      val tree = Tree[AST, Unit](args: _*)
+      unmatched(tree)
+    }
+
     def II(s: String):          Mixfix = empty(0, s)
     def I_I(s: String):         Mixfix = empty(1, s)
     def I__I(s: String):        Mixfix = empty(2, s)
@@ -87,6 +107,10 @@ object EDSL {
     def I_______I(s: String):   Mixfix = empty(7, s)
     def I________I(s: String):  Mixfix = empty(8, s)
     def I_________I(s: String): Mixfix = empty(9, s)
+
+    def Ix(t: Tree[AST, Unit]): Mixfix.Unmatched = unmatched(t)
+    def Ix(t: String*):         Mixfix.Unmatched = unmatched(t)
+    def Ixx(t: List[String]*):  Mixfix.Unmatched = unmatched_lst(t)
 
     def I(s: AST):          Mixfix = stringToRawAST(t)._addSeg_(0)(s)
     def I_(s: AST):         Mixfix = stringToRawAST(t)._addSeg_(1)(s)
@@ -153,6 +177,33 @@ object EDSL {
 
     def add[T: M](i: Int, s: T)   = implicitly[M[T]].add(t, i, s)
     def add1[T: M1](i: Int, s: T) = implicitly[M1[T]].add1(t, i, s)
+
+    def unmatched(tree: Tree[AST, Unit]): Mixfix.Unmatched = {
+      val segments2 = t.segments.map {
+        case Mixfix.Segment(
+            Mixfix.Segment.Expr(),
+            head,
+            body: Option[Spaced[AST]]
+            ) =>
+          Mixfix.Unmatched.Segment(head, body)
+      }
+      Mixfix.Unmatched(segments2, tree)
+    }
+
+    def unmatched(lst: Seq[String]): Mixfix.Unmatched = {
+      val args = lst.map(k => List(stringToRawAST(k)) -> ())
+      val tree = Tree[AST, Unit](args: _*)
+      unmatched(tree)
+    }
+
+    def unmatched_lst(lst: Seq[List[String]]): Mixfix.Unmatched = {
+      val args = lst.map(k => k.map(stringToRawAST) -> ())
+      val tree = Tree[AST, Unit](args: _*)
+      unmatched(tree)
+    }
+
+    def Ix(t: String*):        Mixfix.Unmatched = unmatched(t)
+    def Ixx(t: List[String]*): Mixfix.Unmatched = unmatched_lst(t)
 
     def I[T: M](s: T)          = add(0, s)
     def I_[T: M](s: T)         = add(1, s)

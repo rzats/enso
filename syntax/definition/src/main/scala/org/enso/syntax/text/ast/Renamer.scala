@@ -68,16 +68,22 @@ object Renamer {
     def get(t: AST): Option[Registry.T] =
       tree.get(t)
 
+    def isEmpty: Boolean =
+      tree.isEmpty
+
     @tailrec
-    final def parentCheck(t: AST): Boolean = parent match {
-      case None => false
-      case Some(p) =>
-        p.get(t) match {
-          case None    => p.parentCheck(t)
-          case Some(_) => true
-        }
+    final def parentCheck(t: AST): Boolean = {
+      parent match {
+        case None => false
+        case Some(p) =>
+          p.get(t) match {
+            case None    => p.parentCheck(t)
+            case Some(_) => true
+          }
+      }
     }
   }
+
   object Context {
     def apply(): Context = Context(Tree(), None)
   }
@@ -93,22 +99,24 @@ object Renamer {
       override def toString(): String =
         s"SegmentBuilder($offset, $revBody)"
 
+      def buildAST() = revBody match {
+        case Nil => None
+        case seg1 :: seg2_ =>
+          val tt = partitionToSpacedSegments2(List1(seg1, seg2_))
+          Some(tt.map(runx))
+      }
+
       def build(tp: Segment.Type.Any, last: Boolean): Spaced[Segment.Class] = {
-        val optAst = revBody match {
-          case Nil => None
-          case seg1 :: seg2_ =>
-            val tt = partitionToSpacedSegments2(List1(seg1, seg2_))
-            Some(tt.map(runx))
-        }
+        val optAst = buildAST()
         val segment = tp match {
           case t: Segment.Empty =>
             val empty = Segment(t, ast, ())
             if (last) empty
-            else optAst.map(Segment.Empty.NonEmpty).getOrElse(empty)
+            else optAst.map(Segment.Empty.NonEmpty(ast, _)).getOrElse(empty)
           case t: Segment.Expr =>
             Segment(t, ast, optAst)
           case t: Segment.Expr1 =>
-            optAst.map(Segment(t, ast, _)).getOrElse(Segment.Expr1.Empty)
+            optAst.map(Segment(t, ast, _)).getOrElse(Segment.Expr1.Empty(ast))
         }
         Spaced(offset, segment)
       }
@@ -145,12 +153,6 @@ object Renamer {
       builder.current.offset = off
     }
 
-    def getLastBuilderOffset(): Int = {
-//        val (bldr,off) = builderStack.head
-//        off
-      -999
-    }
-
     import Mixfix._
 
     val root = Context(registry.tree, None)
@@ -159,21 +161,14 @@ object Renamer {
 //      println(s"\n\n-----------------------------------\n\n")
       val revSegments = builder.current :: builder.revSegments
 //      println(s"revSegments =")
-//      pprint.pprintln(revSegments, width = 50, height = 10000)
+//      pprint.pprintln(revSegments, width    = 50, height = 10000)
+//      pprint.pprintln(builder.mixfix, width = 50, height = 10000)
       val result = {
         builder.mixfix match {
           case None =>
             val segments = revSegments.reverseMap { segBldr =>
-              segBldr.revBody match {
-                case seg1 :: seg2_ =>
-                  val Spaced(o, tt) =
-                    partitionToSpacedSegments2(List1(seg1, seg2_))
-                  val ast = Spaced(o, runx(tt))
-                  Spaced(
-                    segBldr.offset,
-                    Unmatched.Segment(segBldr.ast, Some(ast))
-                  )
-              }
+              val optAst = segBldr.buildAST()
+              Spaced(segBldr.offset, Unmatched.Segment(segBldr.ast, optAst))
             }
 
             val possiblePaths = builder.context.tree.dropValues()
@@ -278,20 +273,28 @@ object Renamer {
               go(t2_)
 
             case None =>
-              builder.context.parentCheck(t1.el) match {
-                case true =>
-//                  println("Parent close")
-                  close2()
-                  go(input)
-                case false =>
-                  root.get(t1.el) match {
-                    case Some(tr) =>
-//                      println(">> Root")
-                      val context = builder.context
-                      pushBuilder(t1.el, t1.off)
-                      builder.context = Context(tr, Some(context))
-                      go(t2_)
-                    case None =>
+              root.get(t1.el) match {
+                case Some(tr) =>
+//                  println(">> Root")
+                  val context = builder.context
+                  pushBuilder(t1.el, t1.off)
+                  builder.context = Context(tr, Some(context))
+                  go(t2_)
+                case None =>
+//                  println(s"PARENT CHECK (${builder.current.ast}, ${t1.el})")
+                  val currentClosed = builder.context.isEmpty
+                  val parentPrecWin = (builder.current.ast, t1.el) match {
+                    case (_: Operator, _) => false
+                    case (_, _: Operator) => true
+                    case _                => false
+                  }
+                  val parentBreak = builder.context.parentCheck(t1.el)
+                  (currentClosed || parentPrecWin) && parentBreak match {
+                    case true =>
+//                      println("Parent close")
+                      close2()
+                      go(input)
+                    case false =>
 //                      println(">> Add token")
                       builder.current.revBody ::= t1
                       go(t2_)

@@ -244,4 +244,12 @@ class ParserSpec extends FlatSpec with Matchers {
 
   //// Invalid ////
 
+  val _then_else = List(List("then"), List("then", "else"))
+
+  "("           ?= "(" Ix ")"
+  "(("          ?= "(" I ("(" Ix ")") Ix ")"
+  "if"          ?= "if" Ixx (_then_else: _*)
+  "(if a) then" ?= "(" I ("if" I_ "a" Ixx (_then_else: _*)) I ")" $_ "then"
+  "if (a then)" ?= "if" I_ ("(" I ("a" $_ "then") I ")") Ixx (_then_else: _*)
+
 }

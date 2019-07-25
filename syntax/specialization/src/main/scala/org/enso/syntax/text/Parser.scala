@@ -78,7 +78,8 @@ object Main extends App {
   val p2 = new Parser()
 
 //  val out = p1.run("t   if  a+b   *    c     then      x")
-  val out = p1.run("if a then b else c")
+//val out = p1.run("if (a then")
+  val out = p1.run("if (a then)")
   //  val out = p1.run("(a")
 //  val out = p1.run("()")
 //  val out = p1.run("if a then x")
