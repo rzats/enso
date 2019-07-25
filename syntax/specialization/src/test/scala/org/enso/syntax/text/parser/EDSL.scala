@@ -70,6 +70,24 @@ object EDSL {
     }
 
   implicit class MixfixBuilder_String(t: String) {
+
+    def empty(i: Int, s: String) = Mixfix(
+      SpacedList(
+        Mixfix.Segment(stringToRawAST(t), None),
+        List(Spaced(i, Mixfix.Segment(stringToRawAST(s))))
+      )
+    )
+    def II(s: String):          Mixfix = empty(0, s)
+    def I_I(s: String):         Mixfix = empty(1, s)
+    def I__I(s: String):        Mixfix = empty(2, s)
+    def I___I(s: String):       Mixfix = empty(3, s)
+    def I____I(s: String):      Mixfix = empty(4, s)
+    def I_____I(s: String):     Mixfix = empty(5, s)
+    def I______I(s: String):    Mixfix = empty(6, s)
+    def I_______I(s: String):   Mixfix = empty(7, s)
+    def I________I(s: String):  Mixfix = empty(8, s)
+    def I_________I(s: String): Mixfix = empty(9, s)
+
     def I(s: AST):          Mixfix = stringToRawAST(t)._addSeg_(0)(s)
     def I_(s: AST):         Mixfix = stringToRawAST(t)._addSeg_(1)(s)
     def I__(s: AST):        Mixfix = stringToRawAST(t)._addSeg_(2)(s)

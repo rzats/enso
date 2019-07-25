@@ -437,6 +437,9 @@ object AST {
       def apply(head: AST, body: Option[Spaced[AST]]): Segment[_] =
         new Segment(Expr(), head, body)
 
+      def apply(head: AST): Segment[_] =
+        new Segment(Empty(), head, ())
+
     }
 
     case class Unmatched(

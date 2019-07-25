@@ -112,12 +112,12 @@ class ParserSpec extends FlatSpec with Matchers {
   "*a+"           ?= ("*" $ "a") $ "+"
   "+a*"           ?= "+" $ ("a" $ "*")
   "+ <$> a <*> b" ?= ("+" $_ "<$>" $_ "a") $_ "<*>" $_ "b"
-  "+ * ^"         ?= App.Right("+", 1, App.Right("*", 1, App.Sides("^")))
-  "+ ^ *"         ?= App.Right("+", 1, App.Left(App.Sides("^"), 1, "*"))
-  "^ * +"         ?= App.Left(App.Left(App.Sides("^"), 1, "*"), 1, "+")
-  "* ^ +"         ?= App.Left(App.Right("*", 1, App.Sides("^")), 1, "+")
-  "^ + *"         ?= App.Infix(App.Sides("^"), 1, "+", 1, App.Sides("*"))
-  "* + ^"         ?= App.Infix(App.Sides("*"), 1, "+", 1, App.Sides("^"))
+  "+ * ^"         ?= App.Right("+", 1, App.Right("*", 1, "^"))
+  "+ ^ *"         ?= App.Right("+", 1, App.Left("^", 1, "*"))
+  "^ * +"         ?= App.Left(App.Left("^", 1, "*"), 1, "+")
+  "* ^ +"         ?= App.Left(App.Right("*", 1, "^"), 1, "+")
+  "^ + *"         ?= App.Infix("^", 1, "+", 1, "*")
+  "* + ^"         ?= App.Infix("*", 1, "+", 1, "^")
 
   //  "a+b"    ?=
   //  "()"        ?= "(" $ ")" // Group()
@@ -221,10 +221,15 @@ class ParserSpec extends FlatSpec with Matchers {
   //  expr("a #= b"         , Var("a") :: DisabledAssignment :: Var("b"))
   //
 
-  //////////////
-  // Mixfixes //
-  //////////////
+  //////////////////
+  //// Mixfixes ////
+  //////////////////
 
+  //// Valid ////
+
+  "()"                 ?= "(" II ")"
+  "( )"                ?= "(" I_I ")"
+  "( (  )   )"         ?= "(" I_ ("(" I__I ")") I___ ")"
   "(a)"                ?= "(" I "a" I ")"
   "((a))"              ?= "(" I ("(" I "a" I ")") I ")"
   "(((a)))"            ?= "(" I ("(" I ("(" I "a" I ")") I ")") I ")"
@@ -232,7 +237,11 @@ class ParserSpec extends FlatSpec with Matchers {
   "if a  then   b"     ?= "if" I1_ "a" I1__ "then" I1___ "b"
   "if a then b else c" ?= "if" I1_ "a" I1_ "then" I1_ "b" I1_ "else" I1_ "c"
   "(if a then  b) c"   ?= "(" I ("if" I1_ "a" I1_ "then" I1__ "b") I ")" $_ "c"
+  "a (b c) d"          ?= "a" $_ ("(" I ("b" $_ "c") I ")") $_ "d"
 
   "(if a then b) else c" ?=
   "(" I ("if" I1_ "a" I1_ "then" I1_ "b") I ")" $_ "else" $_ "c"
+
+  //// Invalid ////
+
 }
