@@ -1,10 +1,11 @@
-package org.enso.syntax.text.parser.precedence
+package org.enso.syntax.text.precedence
 
-import org.enso.syntax.text.AST
-import org.enso.syntax.text.AST._
 import org.enso.data.Compare._
 import org.enso.data.List1
-import org.enso.syntax.text.parser.precedence
+import org.enso.syntax.text.AST._
+import org.enso.syntax.text.AST
+import org.enso.syntax.text.precedence
+
 import scala.annotation.tailrec
 
 // format: off

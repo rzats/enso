@@ -4,7 +4,7 @@ import org.enso.flexer.ParserBase
 import org.enso.syntax.text.AST._
 import org.enso.{flexer => Flexer}
 import org.scalatest._
-import org.enso.syntax.text.parser.EDSL._
+import EDSL._
 
 class ParserSpec extends FlatSpec with Matchers {
 

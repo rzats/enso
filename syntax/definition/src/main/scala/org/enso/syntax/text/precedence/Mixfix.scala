@@ -1,13 +1,15 @@
-package org.enso.syntax.text.ast
+package org.enso.syntax.text.precedence
 
 import org.enso.data.List1
 import org.enso.data.Tree
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST._
-import org.enso.syntax.text.parser.precedence
+
 import scala.annotation.tailrec
 
-object Renamer {
+object Mixfix {
+
+  val Mixfix = AST.Mixfix
 
   def exprList(ast: AST): ShiftedList1[AST] = {
     @tailrec
@@ -83,7 +85,7 @@ object Renamer {
     def buildAST() = revBody match {
       case Nil => None
       case seg1 :: seg2_ =>
-        Some(precedence.Operator.rebuild(List1(seg1, seg2_)))
+        Some(Operator.rebuild(List1(seg1, seg2_)))
     }
 
     def build(tp: Segment.Type.Any, last: Boolean): Shifted[Segment.Class] = {

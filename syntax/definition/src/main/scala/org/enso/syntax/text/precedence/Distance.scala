@@ -1,4 +1,4 @@
-package org.enso.syntax.text.parser.precedence
+package org.enso.syntax.text.precedence
 
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST._

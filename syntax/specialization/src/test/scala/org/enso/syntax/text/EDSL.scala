@@ -1,4 +1,4 @@
-package org.enso.syntax.text.parser
+package org.enso.syntax.text
 
 import org.enso.data.Tree
 import org.enso.syntax.text.AST

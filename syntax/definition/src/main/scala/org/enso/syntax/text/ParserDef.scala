@@ -1,16 +1,15 @@
-package org.enso.syntax.text.parser
+package org.enso.syntax.text
 
 import org.enso.flexer.Pattern.char
 import org.enso.flexer.Pattern.range
 import org.enso.flexer._
-import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Text.QuoteSize
 import org.enso.flexer.Pattern._
 import scala.reflect.runtime.universe._
 
 import scala.annotation.tailrec
 
-case class Definition() extends ParserBase[AST] {
+case class ParserDef() extends ParserBase[AST] {
 
   val ast = AST
 

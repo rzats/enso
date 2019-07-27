@@ -1,18 +1,6 @@
 package org.enso.syntax.text
 import cats.data.NonEmptyList
 import org.enso.data.Tree
-import org.enso.syntax.text.AST.HasRepr
-import org.enso.syntax.text.AST.Mixfix.Segment
-import org.enso.syntax.text.AST.ReprOf
-import org.enso.syntax.text.AST.R
-
-/////////////////////////
-
-// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-trait Invalid
-
-// %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 sealed trait AST extends AST.Symbol {
   import AST._
@@ -80,7 +68,7 @@ object AST {
 
   //////////////////////////////////
 
-  sealed trait Invalid extends AST with org.enso.syntax.text.Invalid
+  sealed trait Invalid extends AST
 
   /////////////////////////////////
 
@@ -568,9 +556,7 @@ object AST {
           val repr = '\\' + int.toString
         }
 
-        case class Invalid(str: String)
-            extends Escape
-            with org.enso.syntax.text.Invalid {
+        case class Invalid(str: String) extends Escape with AST.Invalid {
           val repr = '\\' + str
         }
 
@@ -587,13 +573,13 @@ object AST {
           final case class U21 private (digits: String) extends U("u{", "}")
           final case class InvalidU16 private (digits: String)
               extends U("u", "")
-              with org.enso.syntax.text.Invalid
+              with AST.Invalid
           final case class InvalidU32 private (digits: String)
               extends U("U", "")
-              with org.enso.syntax.text.Invalid
+              with AST.Invalid
           final case class InvalidU21 private (digits: String)
               extends U("u{", "}")
-              with org.enso.syntax.text.Invalid
+              with AST.Invalid
 
           object Validator {
             val hexChars = (('a' to 'f') ++ ('A' to 'F') ++ ('0' to '9')).toSet
