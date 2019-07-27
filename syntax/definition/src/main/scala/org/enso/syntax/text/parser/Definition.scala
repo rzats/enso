@@ -4,7 +4,6 @@ import org.enso.flexer.Pattern.char
 import org.enso.flexer.Pattern.range
 import org.enso.flexer._
 import org.enso.syntax.text.AST
-import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Text.QuoteSize
 import org.enso.flexer.Pattern._
 import scala.reflect.runtime.universe._
@@ -61,17 +60,6 @@ case class Definition() extends ParserBase[AST] {
         val ch2 = ch >> p
         _repeatAlt(p, i - 1, ch2, out | ch2)
     }
-
-  final def replaceGroupSymbols(
-    s: String,
-    lst: List[Group]
-  ): String = {
-    var out = s
-    for ((grp, ix) <- lst.zipWithIndex) {
-      out = out.replaceAll(s"___${ix}___", grp.groupIx.toString)
-    }
-    out
-  }
 
   final def withSome[T, S](opt: Option[T])(f: T => S): S = opt match {
     case None    => throw new Error("Internal Error")
@@ -162,13 +150,13 @@ case class Definition() extends ParserBase[AST] {
   /// IDENTIFIER ///
   //////////////////
 
-  var identBody: Option[AST.Identifier] = None
+  var identBody: Option[AST.Ident] = None
 
-  final def onIdent(cons: String => AST.Identifier): Unit = logger.trace {
+  final def onIdent(cons: String => AST.Ident): Unit = logger.trace {
     onIdent(cons(currentMatch))
   }
 
-  final def onIdent(ast: AST.Identifier): Unit = logger.trace {
+  final def onIdent(ast: AST.Ident): Unit = logger.trace {
     identBody = Some(ast)
     beginGroup(IDENT_SFX_CHECK)
   }
@@ -182,7 +170,7 @@ case class Definition() extends ParserBase[AST] {
 
   final def onIdentErrSfx(): Unit = logger.trace {
     withSome(identBody) { body =>
-      val ast = AST.Identifier.InvalidSuffix(body, currentMatch)
+      val ast = AST.Ident.InvalidSuffix(body, currentMatch)
       app(ast)
       identBody = None
       endGroup()
@@ -210,7 +198,7 @@ case class Definition() extends ParserBase[AST] {
   // format: off
   NORMAL          rule variable    run reify { onIdent(ast.Var) }
   NORMAL          rule constructor run reify { onIdent(ast.Cons) }
-  NORMAL          rule "_"         run reify { onIdent(ast.Wildcard) }
+  NORMAL          rule "_"         run reify { onIdent(ast.Blank) }
   IDENT_SFX_CHECK rule identErrSfx run reify { onIdentErrSfx() }
   IDENT_SFX_CHECK rule pass        run reify { onNoIdentErrSfx() }
   // format: on
@@ -219,27 +207,27 @@ case class Definition() extends ParserBase[AST] {
   /// Operator ///
   ////////////////
 
-  final def onOp(cons: String => AST.Identifier): Unit = logger.trace {
+  final def onOp(cons: String => AST.Ident): Unit = logger.trace {
     onOp(cons(currentMatch))
   }
 
-  final def onNoModOp(cons: String => AST.Identifier): Unit = logger.trace {
+  final def onNoModOp(cons: String => AST.Ident): Unit = logger.trace {
     onNoModOp(cons(currentMatch))
   }
 
-  final def onOp(ast: AST.Identifier): Unit = logger.trace {
+  final def onOp(ast: AST.Ident): Unit = logger.trace {
     identBody = Some(ast)
     beginGroup(OPERATOR_MOD_CHECK)
   }
 
-  final def onNoModOp(ast: AST.Identifier): Unit = logger.trace {
+  final def onNoModOp(ast: AST.Ident): Unit = logger.trace {
     identBody = Some(ast)
     beginGroup(OPERATOR_SFX_CHECK)
   }
 
   final def onModifier(): Unit = logger.trace {
     withSome(identBody) { body =>
-      identBody = Some(AST.Modifier(body.asInstanceOf[AST.Operator].name))
+      identBody = Some(AST.Modifier(body.asInstanceOf[AST.Opr].name))
     }
   }
 
@@ -257,8 +245,8 @@ case class Definition() extends ParserBase[AST] {
   OPERATOR_MOD_CHECK.setParent(OPERATOR_SFX_CHECK)
 
   // format: off
-  NORMAL             rule operator       run reify { onOp(ast.Operator(_)) }
-  NORMAL             rule noModOperator  run reify { onNoModOp(ast.Operator(_)) }
+  NORMAL             rule operator       run reify { onOp(ast.Opr(_)) }
+  NORMAL             rule noModOperator  run reify { onNoModOp(ast.Opr(_)) }
   OPERATOR_MOD_CHECK rule "="            run reify { onModifier() }
   OPERATOR_SFX_CHECK rule operatorErrSfx run reify { onIdentErrSfx() }
   OPERATOR_SFX_CHECK rule pass           run reify { onNoIdentErrSfx() }

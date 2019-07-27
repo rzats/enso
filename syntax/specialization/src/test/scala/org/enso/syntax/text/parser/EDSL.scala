@@ -1,11 +1,8 @@
 package org.enso.syntax.text.parser
 
-import org.enso.syntax.text.AST.Mixfix
-import org.enso.syntax.text.AST.stringToRawAST
+import org.enso.data.Tree
 import org.enso.syntax.text.AST
-import org.enso.syntax.text.Tree
-import org.enso.syntax.text.Spaced
-import org.enso.syntax.text.SpacedList
+import org.enso.syntax.text.AST._
 
 object EDSL {
 
@@ -25,7 +22,7 @@ object EDSL {
 
       def dd() = {
         val seg = Mixfix.Segment(Mixfix.Segment.Empty(), t, ())
-        m.copy(segments = m.segments :+ Spaced(i, seg))
+        m.copy(segments = m.segments :+ Shifted(i, seg))
       }
 
       val tail = m.segments.tail
@@ -33,8 +30,8 @@ object EDSL {
         tail.last.el match {
           case Mixfix.Segment(Mixfix.Segment.Empty(), x, _) => {
             val seg =
-              Mixfix.Segment(Mixfix.Segment.Expr(), x, Some(Spaced(i, t)))
-            val tail2 = tail.init :+ Spaced(tail.last.off, seg)
+              Mixfix.Segment(Mixfix.Segment.Expr(), x, Some(Shifted(i, t)))
+            val tail2 = tail.init :+ Shifted(tail.last.off, seg)
             val segs2 = m.segments.copy(tail = tail2)
             m.copy(segments = segs2)
           }
@@ -52,7 +49,7 @@ object EDSL {
 
       def dd() = {
         val seg = Mixfix.Segment(Mixfix.Segment.Empty(), t, ())
-        m.copy(segments = m.segments :+ Spaced(i, seg))
+        m.copy(segments = m.segments :+ Shifted(i, seg))
       }
 
       val tail = m.segments.tail
@@ -60,8 +57,8 @@ object EDSL {
         tail.last.el match {
           case Mixfix.Segment(Mixfix.Segment.Empty(), x, _) => {
             val seg =
-              Mixfix.Segment(Mixfix.Segment.Expr1(), x, Spaced(i, t))
-            val tail2 = tail.init :+ Spaced(tail.last.off, seg)
+              Mixfix.Segment(Mixfix.Segment.Expr1(), x, Shifted(i, t))
+            val tail2 = tail.init :+ Shifted(tail.last.off, seg)
             val segs2 = m.segments.copy(tail = tail2)
             m.copy(segments = segs2)
           }
@@ -73,15 +70,15 @@ object EDSL {
   implicit class MixfixBuilder_String(t: String) {
 
     def empty(i: Int, s: String) = Mixfix(
-      SpacedList(
+      ShiftedList1(
         Mixfix.Segment(stringToRawAST(t), None),
-        List(Spaced(i, Mixfix.Segment(stringToRawAST(s))))
+        List(Shifted(i, Mixfix.Segment(stringToRawAST(s))))
       )
     )
 
     def unmatched(tree: Tree[AST, Unit]): Mixfix.Unmatched =
       Mixfix.Unmatched(
-        SpacedList(Mixfix.Unmatched.Segment(stringToRawAST(t), None), List()),
+        ShiftedList1(Mixfix.Unmatched.Segment(stringToRawAST(t), None), List()),
         tree
       )
 
@@ -137,14 +134,14 @@ object EDSL {
 
   implicit class MixfixBuilder_AST(t: AST) {
     def _addSeg_(i: Int)(s: AST): Mixfix = Mixfix(
-      SpacedList(
-        Mixfix.Segment(Mixfix.Segment.Expr(), t, Some(Spaced(i, s))),
+      ShiftedList1(
+        Mixfix.Segment(Mixfix.Segment.Expr(), t, Some(Shifted(i, s))),
         Nil
       )
     )
     def _addSeg1_(i: Int)(s: AST): Mixfix = Mixfix(
-      SpacedList(
-        Mixfix.Segment(Mixfix.Segment.Expr1(), t, Spaced(i, s)),
+      ShiftedList1(
+        Mixfix.Segment(Mixfix.Segment.Expr1(), t, Shifted(i, s)),
         Nil
       )
     )
@@ -183,7 +180,7 @@ object EDSL {
         case Mixfix.Segment(
             Mixfix.Segment.Expr(),
             head,
-            body: Option[Spaced[AST]]
+            body: Option[Shifted[AST]]
             ) =>
           Mixfix.Unmatched.Segment(head, body)
       }

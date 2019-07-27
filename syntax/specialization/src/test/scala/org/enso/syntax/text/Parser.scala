@@ -68,10 +68,10 @@ class ParserSpec extends FlatSpec with Matchers {
   "name"   ?= "name"
   "name'"  ?= "name'"
   "name''" ?= "name''"
-  "name'a" ?= Identifier.InvalidSuffix("name'", "a")
+  "name'a" ?= Ident.InvalidSuffix("name'", "a")
   "name_"  ?= "name_"
   "name_'" ?= "name_'"
-  "name'_" ?= Identifier.InvalidSuffix("name'", "_")
+  "name'_" ?= Ident.InvalidSuffix("name'", "_")
   "name`"  ?= "name" $ Unrecognized("`")
 
   ///////////////
@@ -91,10 +91,10 @@ class ParserSpec extends FlatSpec with Matchers {
   "/="   ?= "/="
   "+="   ?= Modifier("+")
   "-="   ?= Modifier("-")
-  "==="  ?= Identifier.InvalidSuffix("==", "=")
-  "...." ?= Identifier.InvalidSuffix("...", ".")
-  ">=="  ?= Identifier.InvalidSuffix(">=", "=")
-  "+=="  ?= Identifier.InvalidSuffix("+", "==")
+  "==="  ?= Ident.InvalidSuffix("==", "=")
+  "...." ?= Ident.InvalidSuffix("...", ".")
+  ">=="  ?= Ident.InvalidSuffix(">=", "=")
+  "+=="  ?= Ident.InvalidSuffix("+", "==")
 
   /////////////////
   // Expressions //
@@ -151,7 +151,7 @@ class ParserSpec extends FlatSpec with Matchers {
   "10_7"  ?= Number(10, 7)
   "16_ff" ?= Number(16, "ff")
   "16_"   ?= Number.DanglingBase("16")
-  "7.5"   ?= App.Infix(7, 0, Operator("."), 0, 5)
+  "7.5"   ?= App.Infix(7, 0, Opr("."), 0, 5)
 
   ////////////////////
   // UTF Surrogates //
