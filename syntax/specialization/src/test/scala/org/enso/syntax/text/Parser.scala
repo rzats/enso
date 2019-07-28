@@ -199,10 +199,10 @@ class ParserSpec extends FlatSpec with Matchers {
 
   //// Interpolation ////
 
-  "'a`b`c'" ?= Text("a", Text.Segment.Interpolated(Some("b")), "c")
+  "'a`b`c'" ?= Text("a", Text.Segment.Interpolation(Some("b")), "c")
   "'a`b 'c`d`e' f`g'" ?= {
-    val bd = "b" $_ Text("c", Text.Segment.Interpolated(Some("d")), "e") $_ "f"
-    Text("a", Text.Segment.Interpolated(Some(bd)), "g")
+    val bd = "b" $_ Text("c", Text.Segment.Interpolation(Some("d")), "e") $_ "f"
+    Text("a", Text.Segment.Interpolation(Some(bd)), "g")
   }
   //  "'`a(`'" ?= Text(Text.Segment.Interpolated(Some("a" $ Group.Unclosed())))
   //  // Comments
@@ -252,5 +252,7 @@ class ParserSpec extends FlatSpec with Matchers {
   "if"          ?= "if" Ixx (_then_else: _*)
   "(if a) then" ?= "(" I ("if" I_ "a" Ixx (_then_else: _*)) I ")" $_ "then"
   "if (a then)" ?= "if" I_ ("(" I ("a" $_ "then") I ")") Ixx (_then_else: _*)
+
+  "import Std.Math" ?= "foo"
 
 }

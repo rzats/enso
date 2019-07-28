@@ -273,54 +273,116 @@ object AST {
   //// Text ////
   //////////////
 
-  final case class Text(quoteSize: Text.Quote, segments: List[Text.Segment])
-      extends AST {
-    val repr = R + quoteSize + segments + quoteSize
-
-    def prepend(segment: Text.Segment) =
-      this.copy(segments = segment :: segments)
-
-    def prependMergeReversed(segment: Text.Segment) =
-      (segment, segments) match {
-        case (Text.Segment.Plain(n), Text.Segment.Plain(t) :: ss) =>
-          this.copy(segments = Text.Segment.Plain(t + n) :: ss)
-        case _ => this.copy(segments = segment :: segments)
-      }
-  }
-
+  sealed trait Text extends AST
   object Text {
-    def apply():                      Text = Text(Quote.Single, Nil)
-    def apply(q: Quote):              Text = Text(q, Nil)
-    def apply(q: Quote, s: Segment*): Text = Text(q, s.to[List])
-    def apply(s: List[Segment]):      Text = Text(Quote.Single, s)
-    def apply(s: Segment*):           Text = Text(s.to[List])
 
-    sealed trait Quote extends Symbol
+    //// Abstraction ////
+
+    sealed abstract class Class[This](val quoteChar: Char) extends Text {
+      type Segment >: Text.Segment.Raw
+      val quote: Quote
+      val segments: List[Segment]
+
+      val quoteRepr = R + quoteChar.toString * quote.asInt
+      val bodyRepr: Repr
+
+      def _dup(quote: Quote, segments: List[Segment]): This
+      def dup(quote: Quote = quote, segments: List[Segment] = segments) =
+        _dup(quote, segments)
+
+      def prepend(segment: Segment): This =
+        this.dup(segments = segment :: segments)
+
+      def prependMergeReversed(segment: Segment): This =
+        (segment, segments) match {
+          case (Text.Segment.Plain(n), Text.Segment.Plain(t) :: ss) =>
+            this.dup(segments = Text.Segment.Plain(t + n) :: ss)
+          case _ => this.dup(segments = segment :: segments)
+        }
+    }
+
+    //// Smart Constructors ////
+
+    private type I = Interpolated
+    private val I = Interpolated
+    def apply():                        I = I()
+    def apply(q: Quote):                I = I(q)
+    def apply(q: Quote, s: I.Segment*): I = I(q, s: _*)
+    def apply(s: List[I.Segment]):      I = I(s)
+    def apply(s: I.Segment*):           I = I(s: _*)
+
+    //// Definition ////
+
+    final case class Interpolated(
+      quote: Text.Quote,
+      segments: List[Interpolated.Segment]
+    ) extends Class[Interpolated]('\'') {
+      type Segment = Interpolated.Segment
+      val bodyRepr = R + segments
+      val repr     = R + quoteRepr + segments + quoteRepr
+      def _dup(quote: Quote, segments: List[Segment]): Interpolated =
+        copy(quote, segments)
+    }
+
+    final case class Raw(quote: Text.Quote, segments: List[Raw.Segment])
+        extends Class[Raw]('"') {
+      type Segment = Raw.Segment
+      val bodyRepr = R + segments
+      val repr     = R + quoteRepr + segments + quoteRepr
+      def _dup(quote: Quote, segments: List[Segment]) =
+        copy(quote, segments)
+    }
+
+    object Raw {
+      trait Segment extends Text.Interpolated.Segment
+    }
+
+    object Interpolated {
+      trait Segment extends Text.Segment
+
+      def apply():                      I = I(Quote.Single, Nil)
+      def apply(q: Quote):              I = I(q, Nil)
+      def apply(q: Quote, s: Segment*): I = I(q, s.to[List])
+      def apply(s: List[Segment]):      I = I(Quote.Single, s)
+      def apply(s: Segment*):           I = I(s.to[List])
+    }
+
+    //// Quote ////
+
+    sealed trait Quote {
+      val asInt: Int
+    }
     object Quote {
-      final case object Single extends Quote { val repr = '\'' }
-      final case object Triple extends Quote { val repr = "'''" }
+      final case object Single extends Quote { val asInt = 1 }
+      final case object Triple extends Quote { val asInt = 3 }
     }
 
-    final case class Unclosed(text: Text) extends AST.Invalid {
-      val repr = R + text.quoteSize + text.segments
-    }
+    //// Segment ////
 
-    trait Segment extends Symbol {
-      def +:(text: Text) = text.prepend(this)
-    }
+    trait Segment extends Symbol
 
     object Segment {
-      final case class Plain(value: String) extends Segment {
+      type Raw          = Text.Raw.Segment
+      type Interpolated = Text.Interpolated.Segment
+
+      final case class Plain(value: String) extends Raw {
         val repr = value
       }
-      implicit def stringToPlain(str: String): Plain = Plain(str)
 
-      final case class Interpolated(value: Option[AST]) extends Segment {
+      final case class Interpolation(value: Option[AST]) extends Interpolated {
         val repr = R + '`' + value + '`'
       }
 
-      trait Escape extends Segment
+      trait Escape extends Interpolated
       val Escape = text.Escape
+
+      implicit def fromString(str: String): Segment.Plain = Segment.Plain(str)
+    }
+
+    //// Unclosed ////
+
+    final case class Unclosed(text: Class[_]) extends AST.Invalid {
+      val repr = R + text.quoteRepr + text.bodyRepr
     }
   }
 
