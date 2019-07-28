@@ -2,6 +2,7 @@ package org.enso.syntax.text.precedence
 
 import org.enso.data.List1
 import org.enso.data.Tree
+import org.enso.data.Shifted
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST._
 
@@ -11,11 +12,11 @@ object Mixfix {
 
   val Mixfix = AST.Mixfix
 
-  def exprList(ast: AST): ShiftedList1[AST] = {
+  def exprList(ast: AST): Shifted.List1[AST] = {
     @tailrec
-    def go(ast: AST, out: List[Shifted[AST]]): ShiftedList1[AST] = ast match {
+    def go(ast: AST, out: List[Shifted[AST]]): Shifted.List1[AST] = ast match {
       case App(fn, off, arg) => go(fn, Shifted(off, arg) :: out)
-      case ast               => ShiftedList1(ast, out)
+      case ast               => Shifted.List1(ast, out)
     }
     go(ast, List())
   }
@@ -179,7 +180,7 @@ object Mixfix {
               case s :: ss =>
                 Shifted(
                   s.off,
-                  Mixfix.Unmatched(ShiftedList1(s.el, ss), possiblePaths)
+                  Mixfix.Unmatched(Shifted.List1(s.el, ss), possiblePaths)
                 )
             }
             List(mx)
@@ -212,7 +213,7 @@ object Mixfix {
             }
 
             val mx = segments match {
-              case s :: ss => Shifted(s.off, Mixfix(ShiftedList1(s.el, ss)))
+              case s :: ss => Shifted(s.off, Mixfix(Shifted.List1(s.el, ss)))
             }
 
             val suffix: List[Shifted[AST]] = revSegDefs.head match {
@@ -248,7 +249,7 @@ object Mixfix {
               case Shifted(
                     _,
                     Mixfix(
-                      ShiftedList1(
+                      Shifted.List1(
                         Mixfix.Segment(Segment.Expr1(), _, body: Shifted[AST]),
                         Nil
                       )

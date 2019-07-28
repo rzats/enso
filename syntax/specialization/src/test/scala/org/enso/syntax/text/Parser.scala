@@ -2,6 +2,7 @@ package org.enso.syntax.text
 
 import org.enso.flexer.ParserBase
 import org.enso.syntax.text.AST._
+import org.enso.syntax.text.ast.Helpers._
 import org.enso.{flexer => Flexer}
 import org.scalatest._
 import EDSL._
@@ -89,8 +90,8 @@ class ParserSpec extends FlatSpec with Matchers {
   ">="   ?= ">="
   "<="   ?= "<="
   "/="   ?= "/="
-  "+="   ?= Modifier("+")
-  "-="   ?= Modifier("-")
+  "+="   ?= Mod("+")
+  "-="   ?= Mod("-")
   "==="  ?= Ident.InvalidSuffix("==", "=")
   "...." ?= Ident.InvalidSuffix("...", ".")
   ">=="  ?= Ident.InvalidSuffix(">=", "=")

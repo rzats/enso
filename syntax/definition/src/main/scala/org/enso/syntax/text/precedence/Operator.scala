@@ -2,6 +2,7 @@ package org.enso.syntax.text.precedence
 
 import org.enso.data.Compare._
 import org.enso.data.List1
+import org.enso.data.Shifted
 import org.enso.syntax.text.AST._
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.precedence
@@ -32,16 +33,16 @@ object Operator {
 
     def rebuildSubExpr(seg: Distance.Segment): AST =
       rebuildExpr(seg) match {
-        case t: App.Sides => t.operator
+        case t: App.Sides => t.opr
         case t => t
       }
 
     def rebuildExpr(seg: Distance.Segment): AST =
-      rebuildExpr(ShiftedList1(seg.head, seg.tail.map(Shifted(_))))
+      rebuildExpr(Shifted.List1(seg.head, seg.tail.map(Shifted(_))))
 
-    def rebuildExpr(seg: ShiftedList1[AST]): AST = {
-      final case class Input(seg: List[Shifted[AST]], stack: ShiftedList1[AST])
-      implicit def _input(t: (List[Shifted[AST]], ShiftedList1[AST])): Input =
+    def rebuildExpr(seg: Shifted.List1[AST]): AST = {
+      final case class Input(seg: List[Shifted[AST]], stack: Shifted.List1[AST])
+      implicit def _input(t: (List[Shifted[AST]], Shifted.List1[AST])): Input =
         Input(t._1, t._2)
 
       @tailrec
@@ -49,7 +50,7 @@ object Operator {
         case Nil => reduceAll(input.stack)
         case seg1 :: seg2_ => 
 
-          val shift  = (seg2_, input.stack.prepend(seg1))
+          val shift  = (seg2_, seg1 +: input.stack)
           val reduce = (input.seg, reduceHead(input.stack))
 
           def handleAssoc(ast1: AST, ast2: AST) = {
@@ -59,8 +60,8 @@ object Operator {
               case GT => shift
               case LT => reduce
               case EQ => (op1.assoc, op2.assoc) match {
-                case (Left, Left) => reduce
-                case _            => shift
+                case (Assoc.Left, Assoc.Left) => reduce
+                case _                        => shift
               }
             }
           }
@@ -77,10 +78,10 @@ object Operator {
           }
       }
 
-      go(seg.tail, ShiftedList1(seg.head))
+      go(seg.tail, Shifted.List1(seg.head))
     }
 
-    def reduceHead(stack: ShiftedList1[AST]): ShiftedList1[AST] = {
+    def reduceHead(stack: Shifted.List1[AST]): Shifted.List1[AST] = {
       stack.head match {
         case s1: Opr => stack.tail match {
           case Nil => (App.Sides(s1), Nil)
@@ -108,7 +109,7 @@ object Operator {
     }
 
     @tailrec
-    def reduceAll(stack: ShiftedList1[AST]): AST = {
+    def reduceAll(stack: Shifted.List1[AST]): AST = {
       stack.tail match {
         case Nil => reduceHead(stack).head
         case _   => reduceAll(reduceHead(stack))

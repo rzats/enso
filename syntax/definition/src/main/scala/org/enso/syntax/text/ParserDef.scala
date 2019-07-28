@@ -226,7 +226,7 @@ case class ParserDef() extends ParserBase[AST] {
 
   final def onModifier(): Unit = logger.trace {
     withSome(identBody) { body =>
-      identBody = Some(AST.Modifier(body.asInstanceOf[AST.Opr].name))
+      identBody = Some(AST.Mod(body.asInstanceOf[AST.Opr].name))
     }
   }
 
@@ -627,7 +627,7 @@ case class ParserDef() extends ParserBase[AST] {
     val el2 = emptyLines.reverse.map(AST.Line(_))
     val firstLines = currentBlock.firstLine match {
       case None            => el
-      case Some(firstLine) => firstLine.to[AST.Line] :: el
+      case Some(firstLine) => firstLine.toOptional :: el
     }
     val lines  = firstLines ++ currentBlock.lines.reverse ++ el2
     val module = AST.Module(lines.head, lines.tail)

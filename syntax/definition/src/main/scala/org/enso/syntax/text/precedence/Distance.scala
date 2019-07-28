@@ -1,8 +1,8 @@
 package org.enso.syntax.text.precedence
 
 import org.enso.syntax.text.AST
-import org.enso.syntax.text.AST._
 import org.enso.data.List1
+import org.enso.data.Shifted
 import scala.annotation.tailrec
 
 object Distance {
@@ -11,15 +11,15 @@ object Distance {
   type Segment = List1[AST]
 
   /** Partition the AST stream to non-spaced segments. */
-  def partition(lst: List1[Shifted[AST]]): Shifted[ShiftedList1[Segment]] = {
+  def partition(lst: List1[Shifted[AST]]): Shifted[Shifted.List1[Segment]] = {
     @tailrec
     def go(
       input: List[Shifted[AST]],
       lastOff: Int,
       current: List1[AST],
       out: List[Shifted[Segment]]
-    ): Shifted[ShiftedList1[Segment]] = input match {
-      case Nil => Shifted(lastOff, ShiftedList1(current, out))
+    ): Shifted[Shifted.List1[Segment]] = input match {
+      case Nil => Shifted(lastOff, Shifted.List1(current, out))
       case ast1 :: ast2_ =>
         val (current2, out2) = lastOff match {
           case 0 => (ast1.el :: current, out)

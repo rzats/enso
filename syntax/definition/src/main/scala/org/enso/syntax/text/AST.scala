@@ -1,262 +1,72 @@
 package org.enso.syntax.text
+
 import cats.data.NonEmptyList
+import org.enso.data.ADT
+import org.enso.data.Shifted
 import org.enso.data.Tree
+import org.enso.syntax.text.ast.Repr.R
+import org.enso.syntax.text.ast.Repr
+import org.enso.syntax.text.ast.opr
 
-sealed trait AST extends AST.Symbol {
-  import AST._
-
-  private def smartApp(off: Int)(r: AST): AST = (this, r) match {
-    case (l, r: App.Sides) => App.Left(l, off, r.operator)
-    case (l: App.Sides, r) => App.Right(l.operator, off, r)
-    case (l, r)            => App(l, off, r)
-  }
-
-  def $(t: AST)    = smartApp(0)(t)
-  def $_(t: AST)   = smartApp(1)(t)
-  def $__(t: AST)  = smartApp(2)(t)
-  def $___(t: AST) = smartApp(3)(t)
-
-  def $$(t: AST)    = smartApp(0)(t)
-  def $$_(t: AST)   = smartApp(1)(t)
-  def $$__(t: AST)  = smartApp(2)(t)
-  def $$___(t: AST) = smartApp(3)(t)
-}
+sealed trait AST extends AST.Symbol
 
 object AST {
 
-  case class Shifted[+T: ReprOf](off: Int, el: T) extends HasRepr {
-    val repr = R + off + implicitly[ReprOf[T]].reprOf(el)
-    def map[S](f: T => S)(implicit ev: ReprOf[S]): Shifted[S] =
-      Shifted(off, f(el))
-  }
-  object Shifted {
-    def apply[T: ReprOf](el: T): Shifted[T] = Shifted(0, el)
-  }
+  ///////////////////
+  //// Reexports ////
+  ///////////////////
 
-  case class ShiftedList1[T: ReprOf](head: T, tail: List[Shifted[T]])
-      extends HasRepr {
-    val repr = R + head + tail.map(_.repr)
+  type Assoc = opr.Assoc
 
-    def map[S: ReprOf](f: T => S): ShiftedList1[S] =
-      ShiftedList1(f(head), tail.map(_.map(f)))
+  val Assoc = opr.Assoc
+  val Prec  = opr.Prec
 
-    def prepend(t: T, off: Int): ShiftedList1[T] =
-      ShiftedList1(t, Shifted(off, head) :: tail)
+  ////////////////////
+  //// Definition ////
+  ////////////////////
 
-    def prepend(t: Shifted[T]): ShiftedList1[T] =
-      ShiftedList1(t.el, Shifted(t.off, head) :: tail)
-
-    def toList(): List[Shifted[T]] =
-      Shifted(0, head) :: tail
-
-    def +(that: ShiftedList1[T]): ShiftedList1[T] =
-      ShiftedList1(head, tail ++ that.toList())
-
-    def +(that: List[Shifted[T]]): ShiftedList1[T] =
-      ShiftedList1(head, tail ++ that)
-
-    def :+(that: Shifted[T]): ShiftedList1[T] =
-      ShiftedList1(head, tail :+ that)
-  }
-  object ShiftedList1 {
-    def apply[T: ReprOf](head: T): ShiftedList1[T] = ShiftedList1(head, Nil)
-
-    implicit def fromTuple[T: ReprOf](
-      t: (T, List[Shifted[T]])
-    ): ShiftedList1[T] = ShiftedList1(t._1, t._2)
-  }
-
-  //////////////////////////////////
-
-  sealed trait Invalid extends AST
-
-  /////////////////////////////////
-
-  trait Association
-  case object Left  extends Association
-  case object Right extends Association
-
-  def assocOf(op: String): Association = {
-    val applicativePat = "<?[+*$]>?".r
-    def isApplicative(s: String) = s match {
-      case applicativePat() => s.length > 1
-      case _                => false
-    }
-    def assocVal(c: Char) = c match {
-      case ',' => -1
-      case '<' => -1
-      case '>' => 1
-      case _   => 0
-    }
-    if (isApplicative(op)) Left
-    else if (op.map(assocVal).sum >= 0) Left
-    else Right
-  }
-
-  val precHierarchy = List(
-    List("->", "<-"),
-    List("~>", "<~"),
-    List("|"),
-    List("&"),
-    List("=", "!", "?", "~"),
-    List("<*", "<*>", "*>", "<$", "<$>", "$>", "<+", "<+>", "+>"),
-    List("<", ">"),
-    List(":", ","),
-    List("+", "-"),
-    List("*", "/", "\\", "%"),
-    List("^"),
-    List("."),
-    List(" ")
-  )
-
-  case class Desc(prec: Int, assoc: Association)
-
-  val descMap = precHierarchy.zipWithIndex.flatMap {
-    case (ops, prec) => ops.map(op => op -> Desc(prec, assocOf(op)))
-  }.toMap
-
-  def descOf(op: String) =
-    descMap.getOrElse(op, Desc(precHierarchy.length, assocOf(op)))
-
-  //////
-
-  import reflect.runtime.universe.TypeTag
-
-  def getAllSeleadObjects[T](implicit ttag: TypeTag[T]) = {
-    val subs = ttag.tpe.typeSymbol.asClass.knownDirectSubclasses
-    subs.map { symbol =>
-      val module = reflect.runtime.currentMirror.staticModule(symbol.fullName)
-      val clazz  = reflect.runtime.currentMirror.reflectModule(module)
-      clazz.instance.asInstanceOf[T]
-    }
+  trait Symbol extends Repr.Provider {
+    def span:   Int    = repr.span
+    def show(): String = repr.show()
   }
 
   /////////////////////
-  //// Abstraction ////
+  //// Conversions ////
   /////////////////////
 
-  trait Convertible[-Source, +Target] {
-    def convert(source: Source): Target
-  }
-
-  trait Showable {
-    def show(): String
-  }
-
-  trait Spanned {
-    def span: Int
-  }
-
-  //////////////
-  //// Repr ////
-  //////////////
-
-  trait HasRepr {
-    val repr: Repr
-  }
-
-  sealed trait Repr extends HasRepr {
-    import Repr._
-
-    val repr = this
-    val span: Int
-
-    def show(out: StringBuilder): Unit
-
-    def +[T: ReprOf](that: T) =
-      Seq(this, implicitly[ReprOf[T]].reprOf(that))
-  }
-
-  object Repr {
-    def apply():                Repr = Empty()
-    def apply[T: ReprOf](t: T): Repr = implicitly[ReprOf[T]].reprOf(t)
-
-    case class Empty() extends Repr {
-      val span                     = 0
-      def show(out: StringBuilder) = {}
+  implicit def fromString(str: String): AST =
+    fromStringRaw(str) match {
+      case opr: Opr => App.Sides(opr)
+      case any      => any
     }
 
-    case class Letter(char: Char) extends Repr {
-      val span                     = 1
-      def show(out: StringBuilder) = out += char
-    }
-
-    case class Text(str: String) extends Repr {
-      val span                     = str.length
-      def show(out: StringBuilder) = out ++= str
-    }
-
-    final case class Seq(first: Repr, second: Repr) extends Repr {
-      val span = first.span + second.span
-      override def show(out: StringBuilder) = {
-        first.show(out)
-        second.show(out)
-      }
-    }
-
-    implicit def stringToRepr(a: String): Repr = Repr(a)
-    implicit def charToRepr(a: Char):     Repr = Repr(a)
+  def fromStringRaw(str: String): AST = {
+    if (str == "") throw new Error("Empty literal")
+    if (str == "_") Blank
+    else if (str.head.isLower) Var(str)
+    else if (str.head.isUpper) Cons(str)
+    else Opr(str)
   }
 
-  val R = Repr.Empty()
-
-  ///// Type Class ////
-
-  trait ReprOf[-T] {
-    def reprOf(a: T): Repr
-  }
-  def reprOf[T](t: T)(implicit ev: ReprOf[T]) = ev.reprOf(t)
-
-  implicit val HasRepr_0: ReprOf[Unit]    = _ => Repr.Empty()
-  implicit val HasRepr_1: ReprOf[String]  = Repr.Text(_)
-  implicit val HasRepr_2: ReprOf[Int]     = i => Repr.Text(" " * i)
-  implicit val HasRepr_3: ReprOf[Char]    = Repr.Letter(_)
-  implicit val HasRepr_4: ReprOf[Repr]    = identity(_)
-  implicit val HasRepr_5: ReprOf[HasRepr] = _.repr
-  implicit def HasRepr_6[T: ReprOf]: ReprOf[List[T]] =
-    _.foldLeft(Repr.Empty(): Repr)((a, b) => Repr.Seq(a, reprOf(b)))
-  implicit def HasRepr_7[T: ReprOf]: ReprOf[NonEmptyList[T]] =
-    _.foldLeft(Repr.Empty(): Repr)((a, b) => Repr.Seq(a, reprOf(b)))
-
-  ////////////////
-  //// Symbol ////
-  ////////////////
-
-  trait Symbol extends HasRepr with Spanned with Showable {
-    def to[A](implicit converter: Convertible[this.type, A]): A =
-      converter.convert(this)
-    def span: Int = repr.span
-    def show() = {
-      val bldr = new StringBuilder()
-      repr.show(bldr)
-      bldr.result()
-    }
-  }
-
-  /////////////
-  //// AST ////
-  /////////////
-
-  implicit final class _OptionAST_(val self: Option[AST]) extends Symbol {
+  implicit final private class OptAST(val self: Option[AST]) extends Symbol {
     val repr = self.map(_.repr).getOrElse(Repr())
   }
 
-  implicit def ReprOfOption[T: ReprOf]: ReprOf[Option[T]] =
-    _.map(reprOf(_)).getOrElse(Repr())
+  /////////////////
+  //// Invalid ////
+  /////////////////
 
-  // FIXME: Why this is needed?
-  implicit def ReprOfOptionAST: ReprOf[Option[AST]] =
-    _.map(_.repr).getOrElse(Repr())
+  sealed trait Invalid extends AST
 
-  //// Unrecognized ////
-
-  final case class Unrecognized(str: String) extends AST.Invalid {
+  final case class Unrecognized(str: String) extends Invalid {
     val repr = str
   }
 
-  //// Identifiers ////
+  ////////////////////
+  //// Identifier ////
+  ////////////////////
 
-  abstract class Named(name: String) extends HasRepr {
+  abstract class Named(name: String) extends Repr.Provider {
     val repr = name
   }
 
@@ -268,7 +78,7 @@ object AST {
         extends AST.Invalid {
       val repr = R + elem + suffix
     }
-    implicit def stringToIdentifier(str: String): Ident = {
+    implicit def fromString(str: String): Ident = {
       if (str == "") throw new Error("Empty literal")
       if (str == "_") Blank
       else if (str.head.isLower) Var(str)
@@ -281,32 +91,26 @@ object AST {
   final case class Var(name: String)  extends Named(name) with Ident
   final case class Cons(name: String) extends Named(name) with Ident
   final case class Opr(name: String) extends Named(name) with Ident {
-    private val desc = descOf(name)
+    private val desc = Opr.Info.of(name)
     val prec         = desc.prec
     val assoc        = desc.assoc
   }
   object Opr {
     val app: Opr = Opr(" ")
+
+    case class Info(prec: Int, assoc: Assoc)
+    object Info {
+      val map: Map[String, Info] = Prec.map.map {
+        case (name, prec) => name -> Info(prec, Assoc.of(name))
+      }
+      def of(op: String) =
+        map.getOrElse(op, Info(Prec.hierarchy.length, Assoc.of(op)))
+    }
+
     implicit def fromString(str: String): Opr = Opr(str)
   }
-  final case class Modifier(name: String) extends Named(name) with Ident {
+  final case class Mod(name: String) extends Named(name) with Ident {
     override val repr = name + '='
-  }
-
-  implicit def stringToAST(str: String): AST = {
-    if (str == "") throw new Error("Empty literal")
-    if (str == "_") Blank
-    else if (str.head.isLower) Var(str)
-    else if (str.head.isUpper) Cons(str)
-    else App.Sides(Opr(str))
-  }
-
-  def stringToRawAST(str: String): AST = {
-    if (str == "") throw new Error("Empty literal")
-    if (str == "_") Blank
-    else if (str.head.isLower) Var(str)
-    else if (str.head.isUpper) Cons(str)
-    else Opr(str)
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -323,47 +127,42 @@ object AST {
     def apply(
       leftArg: AST,
       leftOff: Int,
-      operator: Opr,
+      opr: Opr,
       rightOff: Int,
       rightArg: AST
-    ): Infix = Infix(leftArg, leftOff, operator, rightOff, rightArg)
+    ): Infix = Infix(leftArg, leftOff, opr, rightOff, rightArg)
+
+    final case class Left(arg: AST, off: Int, op: Opr) extends AST {
+      val repr = R + arg + off + op
+    }
+
+    final case class Right(opr: Opr, off: Int, arg: AST) extends AST {
+      val repr = R + opr + off + arg
+    }
+
+    final case class Sides(opr: Opr) extends AST {
+      val repr = R + opr
+    }
 
     final case class Infix(
       leftArg: AST,
       leftOff: Int,
-      operator: Opr,
+      opr: Opr,
       rightOff: Int,
       rightArg: AST
     ) extends AST {
-      val repr = R + leftArg + leftOff + operator + rightOff + rightArg
+      val repr = R + leftArg + leftOff + opr + rightOff + rightArg
     }
-
-    final case class Right(operator: Opr, off: Int, arg: AST) extends AST {
-      val repr = R + operator + off + arg
-    }
-
-    final case class Left(arg: AST, off: Int, op: Opr) extends AST {
-      val repr                  = R + arg + off + op
-      override def $(t: AST)    = Infix(arg, off, op, 0, t)
-      override def $_(t: AST)   = Infix(arg, off, op, 1, t)
-      override def $__(t: AST)  = Infix(arg, off, op, 2, t)
-      override def $___(t: AST) = Infix(arg, off, op, 3, t)
-    }
-
-    final case class Sides(operator: Opr) extends AST {
-      val repr = R + operator
-    }
-
   }
 
   //////////////////////////////////////////////////////////////////////////////
 
-  case class Mixfix(segments: ShiftedList1[Mixfix.Segment.Class]) extends AST {
+  case class Mixfix(segments: Shifted.List1[Mixfix.Segment.Class]) extends AST {
     val repr = R + segments.map(_.repr)
   }
   object Mixfix {
 
-    case class Segment[T: ReprOf](tp: Segment.Type[T], head: AST, body: T)
+    case class Segment[T: Repr.Of](tp: Segment.Type[T], head: AST, body: T)
         extends Segment.Class {
       val repr = R + head + body
     }
@@ -404,7 +203,7 @@ object AST {
     }
 
     case class Unmatched(
-      segments: ShiftedList1[Unmatched.Segment],
+      segments: Shifted.List1[Unmatched.Segment],
       possiblePaths: Tree[AST, Unit]
     ) extends AST {
       val repr = R + segments.map(_.repr)
@@ -631,7 +430,7 @@ object AST {
           case object t extends Simple('\u0009') with Character
           case object v extends Simple('\u000B') with Character
           case object e extends Simple('\u001B') with Character
-          val codes = getAllSeleadObjects[Character]
+          val codes = ADT.constructors[Character]
         }
 
         // Reference: https://en.wikipedia.org/wiki/Control_character
@@ -670,7 +469,7 @@ object AST {
           case object RS  extends Simple(0x1E) with Control
           case object US  extends Simple(0x1F) with Control
           case object DEL extends Simple(0x7F) with Control
-          val codes = getAllSeleadObjects[Control]
+          val codes = ADT.constructors[Control]
         }
       }
     }
@@ -711,10 +510,8 @@ object AST {
 
     final case class Required(elem: AST, offset: Int) extends Symbol {
       val repr = R + elem + offset
-    }
-
-    implicit object Required_to_Optional extends Convertible[Required, Line] {
-      def convert(src: Required): Line = Line(Some(src.elem), src.offset)
+      def toOptional: Line =
+        Line(Some(elem), offset)
     }
   }
 
