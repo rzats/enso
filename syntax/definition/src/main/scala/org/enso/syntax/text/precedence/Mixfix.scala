@@ -156,6 +156,9 @@ object Mixfix {
         Var("if") -> Mixfix.Segment.Expr1(),
         Var("then") -> Mixfix.Segment.Expr1(),
         Var("else") -> Mixfix.Segment.Expr1()
+      ),
+      Mixfix.Definition(
+        Var("import") -> Mixfix.Segment.Expr1()
       )
     )
 
@@ -282,6 +285,7 @@ object Mixfix {
 //                  println(">> Root")
                   val context = builder.context
                   pushBuilder(t1.el, t1.off)
+                  builder.mixfix  = tr.value
                   builder.context = Context(tr, Some(context))
                   go(t2_)
                 case None =>
