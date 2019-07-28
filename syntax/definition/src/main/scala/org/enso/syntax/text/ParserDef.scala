@@ -3,7 +3,7 @@ package org.enso.syntax.text
 import org.enso.flexer.Pattern.char
 import org.enso.flexer.Pattern.range
 import org.enso.flexer._
-import org.enso.syntax.text.AST.Text.QuoteSize
+import org.enso.syntax.text.AST.Text.Quote
 import org.enso.flexer.Pattern._
 import scala.reflect.runtime.universe._
 
@@ -226,7 +226,7 @@ case class ParserDef() extends ParserBase[AST] {
 
   final def onModifier(): Unit = logger.trace {
     withSome(identBody) { body =>
-      identBody = Some(AST.Mod(body.asInstanceOf[AST.Opr].name))
+      identBody = Some(AST.Opr.Mod(body.asInstanceOf[AST.Opr].name))
     }
   }
 
@@ -313,7 +313,7 @@ case class ParserDef() extends ParserBase[AST] {
   final def withCurrentText(f: AST.Text => AST.Text) =
     textStateStack = f(textStateStack.head) :: textStateStack.tail
 
-  final def pushTextState(quoteSize: QuoteSize): Unit = logger.trace {
+  final def pushTextState(quoteSize: Quote): Unit = logger.trace {
     textStateStack +:= AST.Text(quoteSize)
   }
 
@@ -324,7 +324,7 @@ case class ParserDef() extends ParserBase[AST] {
   final def insideOfText: Boolean =
     textStateStack.nonEmpty
 
-  final def submitEmptyText(quoteNum: QuoteSize): Unit = logger.trace {
+  final def submitEmptyText(quoteNum: Quote): Unit = logger.trace {
     app(AST.Text(quoteNum))
   }
 
@@ -344,7 +344,7 @@ case class ParserDef() extends ParserBase[AST] {
     app(AST.Text.Unclosed(finishCurrentTextBuilding()))
   }
 
-  final def onTextBegin(quoteSize: QuoteSize): Unit = logger.trace {
+  final def onTextBegin(quoteSize: Quote): Unit = logger.trace {
     pushTextState(quoteSize)
     beginGroup(TEXT)
   }
@@ -363,13 +363,13 @@ case class ParserDef() extends ParserBase[AST] {
     submitPlainTextSegment(AST.Text.Segment.Plain(currentMatch))
   }
 
-  final def onTextQuote(quoteSize: QuoteSize): Unit = logger.trace {
-    if (currentText.quoteSize == AST.Text.TripleQuote
-        && quoteSize == AST.Text.SingleQuote) onPlainTextSegment()
-    else if (currentText.quoteSize == AST.Text.SingleQuote
-             && quoteSize == AST.Text.TripleQuote) {
+  final def onTextQuote(quoteSize: Quote): Unit = logger.trace {
+    if (currentText.quoteSize == AST.Text.Quote.Triple
+        && quoteSize == AST.Text.Quote.Single) onPlainTextSegment()
+    else if (currentText.quoteSize == AST.Text.Quote.Single
+             && quoteSize == AST.Text.Quote.Triple) {
       submitText()
-      submitEmptyText(AST.Text.SingleQuote)
+      submitEmptyText(AST.Text.Quote.Single)
     } else {
       submitText()
     }
@@ -448,7 +448,7 @@ case class ParserDef() extends ParserBase[AST] {
 
   final def fixme_onTextDoubleQuote(): Unit = logger.trace {
     currentMatch = "'"
-    onTextQuote(AST.Text.SingleQuote)
+    onTextQuote(AST.Text.Quote.Single)
     rewind(1)
   }
 
@@ -463,14 +463,14 @@ case class ParserDef() extends ParserBase[AST] {
   INTERPOLATE.setParent(NORMAL)
 
   // format: off
-  NORMAL rule "'"           run reify { onTextBegin(ast.Text.SingleQuote) }
-  NORMAL rule "''"          run reify { submitEmptyText(ast.Text.SingleQuote) } // FIXME: Remove after fixing DFA Gen
-  NORMAL rule "'''"         run reify { onTextBegin(ast.Text.TripleQuote) }
+  NORMAL rule "'"           run reify { onTextBegin(ast.Text.Quote.Single) }
+  NORMAL rule "''"          run reify { submitEmptyText(ast.Text.Quote.Single) } // FIXME: Remove after fixing DFA Gen
+  NORMAL rule "'''"         run reify { onTextBegin(ast.Text.Quote.Triple) }
   NORMAL rule '`'           run reify { onInterpolateEnd() }
   TEXT   rule '`'           run reify { onInterpolateBegin() }
-  TEXT   rule "'"           run reify { onTextQuote(ast.Text.SingleQuote) }
+  TEXT   rule "'"           run reify { onTextQuote(ast.Text.Quote.Single) }
   TEXT   rule "''"          run reify { fixme_onTextDoubleQuote() } // FIXME: Remove after fixing DFA Gen
-  TEXT   rule "'''"         run reify { onTextQuote(ast.Text.TripleQuote) }
+  TEXT   rule "'''"         run reify { onTextQuote(ast.Text.Quote.Triple) }
   TEXT   rule stringSegment run reify { onPlainTextSegment() }
   TEXT   rule eof           run reify { onTextEOF() }
 
@@ -578,8 +578,8 @@ case class ParserDef() extends ParserBase[AST] {
     var isValid: Boolean,
     var indent: Int,
     var emptyLines: List[Int],
-    var firstLine: Option[AST.Line.Required],
-    var lines: List[AST.Line]
+    var firstLine: Option[AST.Block.Line.Required],
+    var lines: List[AST.Block.Line]
   )
   var blockStack: List[BlockState] = Nil
   var emptyLines: List[Int]        = Nil
@@ -623,8 +623,8 @@ case class ParserDef() extends ParserBase[AST] {
 
   final def submitModule(): Unit = logger.trace {
     submitLine()
-    val el  = currentBlock.emptyLines.reverse.map(AST.Line(_))
-    val el2 = emptyLines.reverse.map(AST.Line(_))
+    val el  = currentBlock.emptyLines.reverse.map(AST.Block.Line(_))
+    val el2 = emptyLines.reverse.map(AST.Block.Line(_))
     val firstLines = currentBlock.firstLine match {
       case None            => el
       case Some(firstLine) => firstLine.toOptional :: el
@@ -641,12 +641,12 @@ case class ParserDef() extends ParserBase[AST] {
       case Some(r) =>
         currentBlock.firstLine match {
           case None =>
-            val line = AST.Line.Required(r, useLastOffset())
+            val line = AST.Block.Line.Required(r, useLastOffset())
             currentBlock.emptyLines = emptyLines
             currentBlock.firstLine  = Some(line)
           case Some(_) =>
-            emptyLines.foreach(currentBlock.lines +:= AST.Line(None, _))
-            currentBlock.lines +:= AST.Line(result, useLastOffset())
+            emptyLines.foreach(currentBlock.lines +:= AST.Block.Line(None, _))
+            currentBlock.lines +:= AST.Block.Line(result, useLastOffset())
         }
         emptyLines = Nil
     }

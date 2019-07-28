@@ -1,12 +1,9 @@
 package org.enso.syntax.text
 
-import org.enso.flexer.Macro.compile
-import org.enso.flexer.Success
-import org.enso.syntax.text.precedence.Mixfix
 import org.enso.flexer
+import org.enso.flexer.Macro.compile
 import org.enso.syntax.text
-import org.enso.syntax.text.AST
-import org.enso.syntax.text.precedence.Mixfix.partition
+import org.enso.syntax.text.precedence.Mixfix
 
 ////////////////
 //// Parser ////

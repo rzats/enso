@@ -41,4 +41,6 @@ object Helpers {
     def $$___(t: AST) = (self: AST) $$___ t
   }
 
+  implicit def intToNumber(int: Int): Number = Number(int)
+
 }

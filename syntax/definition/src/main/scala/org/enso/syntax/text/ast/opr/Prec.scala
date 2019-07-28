@@ -21,4 +21,6 @@ object Prec {
     hierarchy.zipWithIndex.flatMap {
       case (ops, prec) => ops.map(_ -> prec)
     }.toMap
+
+  val default = map.getOrElse("^", 0)
 }

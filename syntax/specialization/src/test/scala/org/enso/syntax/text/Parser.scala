@@ -60,9 +60,9 @@ class ParserSpec extends FlatSpec with Matchers {
     def ?=(out: Module) = testBase in { assertModule(input, out) }
   }
 
-  /////////////////
-  // Identifiers //
-  /////////////////
+  /////////////////////
+  //// Identifiers ////
+  /////////////////////
 
   "_"      ?= "_"
   "Name"   ?= "Name"
@@ -75,9 +75,9 @@ class ParserSpec extends FlatSpec with Matchers {
   "name'_" ?= Ident.InvalidSuffix("name'", "_")
   "name`"  ?= "name" $ Unrecognized("`")
 
-  ///////////////
-  // Operators //
-  ///////////////
+  ///////////////////
+  //// Operators ////
+  ///////////////////
 
   "++"   ?= "++"
   "="    ?= "="
@@ -90,16 +90,16 @@ class ParserSpec extends FlatSpec with Matchers {
   ">="   ?= ">="
   "<="   ?= "<="
   "/="   ?= "/="
-  "+="   ?= Mod("+")
-  "-="   ?= Mod("-")
+  "+="   ?= Opr.Mod("+")
+  "-="   ?= Opr.Mod("-")
   "==="  ?= Ident.InvalidSuffix("==", "=")
   "...." ?= Ident.InvalidSuffix("...", ".")
   ">=="  ?= Ident.InvalidSuffix(">=", "=")
   "+=="  ?= Ident.InvalidSuffix("+", "==")
 
-  /////////////////
-  // Expressions //
-  /////////////////
+  /////////////////////
+  //// Expressions ////
+  /////////////////////
 
   "a b"           ?= ("a" $_ "b")
   "a +  b"        ?= ("a" $_ "+") $__ "b"
@@ -131,21 +131,21 @@ class ParserSpec extends FlatSpec with Matchers {
   //  "a ( b c )" ?= "a" $_ "(" $_ "b" $_ "c" $_ ")" // ("a" $_ Group(1, "b" $_ "c", 1))
   //  "(a (b c))" ?= "(" $ "a" $_ "(" $ "b" $_ "c" $ ")" $ ")" // Group("a" $_ Group("b" $_ "c"))
 
-  ////////////
-  // Layout //
-  ////////////
+  ////////////////
+  //// Layout ////
+  ////////////////
 
-  ""      ?= Module(Line())
-  "\n"    ?= Module(Line(), Line())
-  "  \n " ?= Module(Line(2), Line(1))
-  "\n\n"  ?= Module(Line(), Line(), Line())
+  ""      ?= Module(Block.Line())
+  "\n"    ?= Module(Block.Line(), Block.Line())
+  "  \n " ?= Module(Block.Line(2), Block.Line(1))
+  "\n\n"  ?= Module(Block.Line(), Block.Line(), Block.Line())
   //  test module "(a)"  ==? GroupBegin  :: Var("a") :: GroupEnd
   //  test module "[a]"  ==? ListBegin   :: Var("a") :: ListEnd
   //  test module "{a}"  ==? RecordBegin :: Var("a") :: RecordEnd
 
-  /////////////
-  // Numbers //
-  /////////////
+  /////////////////
+  //// Numbers ////
+  /////////////////
 
   "7"     ?= 7
   "07"    ?= Number("07")
@@ -154,35 +154,35 @@ class ParserSpec extends FlatSpec with Matchers {
   "16_"   ?= Number.DanglingBase("16")
   "7.5"   ?= App.Infix(7, 0, Opr("."), 0, 5)
 
-  ////////////////////
-  // UTF Surrogates //
-  ////////////////////
+  ////////////////////////
+  //// UTF Surrogates ////
+  ////////////////////////
 
   "\uD800\uDF1E" ?= Unrecognized("\uD800\uDF1E")
 
-  /////////////////
-  // Large Input //
-  /////////////////
+  /////////////////////
+  //// Large Input ////
+  /////////////////////
 
   "BIG_INPUT_" * ParserBase.BUFFERSIZE ?= "BIG_INPUT_" * ParserBase.BUFFERSIZE
 
-  //////////
-  // Text //
-  //////////
+  //////////////
+  //// Text ////
+  //////////////
 
   "'"    ?= Text.Unclosed(Text())
   "''"   ?= Text()
-  "'''"  ?= Text.Unclosed(Text(Text.TripleQuote))
-  "''''" ?= Text.Unclosed(Text(Text.TripleQuote, "'"))
-//  "'''''"   ?= Text.Unclosed(Text(Text.TripleQuote, "''")) // FIXME
-  "''''''"  ?= Text(Text.TripleQuote)
-  "'''''''" ?= Text(Text.TripleQuote) $ Text.Unclosed(Text())
+  "'''"  ?= Text.Unclosed(Text(Text.Quote.Triple))
+  "''''" ?= Text.Unclosed(Text(Text.Quote.Triple, "'"))
+//  "'''''"   ?= Text.Unclosed(Text(Text.Quote.Triple, "''")) // FIXME
+  "''''''"  ?= Text(Text.Quote.Triple)
+  "'''''''" ?= Text(Text.Quote.Triple) $ Text.Unclosed(Text())
   "'a'"     ?= Text("a")
   "'a"      ?= Text.Unclosed(Text("a"))
   "'a'''"   ?= Text("a") $ Text()
-  "'''a'''" ?= Text(Text.TripleQuote, "a")
-  "'''a'"   ?= Text.Unclosed(Text(Text.TripleQuote, "a'"))
-  //  "'''a''"  ?= Text.Unclosed(Text(Text.TripleQuote, "a''")) // FIXME
+  "'''a'''" ?= Text(Text.Quote.Triple, "a")
+  "'''a'"   ?= Text.Unclosed(Text(Text.Quote.Triple, "a'"))
+  //  "'''a''"  ?= Text.Unclosed(Text(Text.Quote.Triple, "a''")) // FIXME
 
   //// Escapes ////
 
