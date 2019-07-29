@@ -209,9 +209,25 @@ object AST {
         type Any = Type[_]
       }
 
-      final case class Empty() extends Type[Unit]
-      final case class Expr()  extends Type[Option[Shifted[AST]]]
-      final case class Expr1() extends Type[Shifted[AST]]
+      final case class Expr() extends Type[Option[Shifted[AST]]]
+
+      case class Empty() extends Type[Unit]
+      case class Expr1() extends Type[Shifted[AST]]
+
+      case class Opt[S](el: Type[S])               extends Type[Option[S]]
+      case class Many[S](el: Type[S])              extends Type[List[S]]
+      case class Many1[S](el: Type[S])             extends Type[List1[S]]
+      case class Seq[L, R](l: Type[L], r: Type[R]) extends Type[(L, R)]
+
+//      object Def {
+//        trait Selector
+//        final case class Many1[T](elems: T) extends Selector
+//        final case class Option[T](elem: T) extends Selector
+//        final case class
+//      }
+//      final case class XList1(elems: List1[Selector]) extends Selector
+//      final case class XExpr()                        extends Type[Option[Shifted[AST]]]
+//      final case class XExpr1()                       extends Type[Shifted[AST]]
 
       object Empty {
         final case class NonEmpty(head: AST, body: Shifted[AST])

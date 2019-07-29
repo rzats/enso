@@ -253,6 +253,6 @@ class ParserSpec extends FlatSpec with Matchers {
   "(if a) then" ?= "(" I ("if" I_ "a" Ixx (_then_else: _*)) I ")" $_ "then"
   "if (a then)" ?= "if" I_ ("(" I ("a" $_ "then") I ")") Ixx (_then_else: _*)
 
-  "import Std.Math" ?= "foo"
+//  "import Std.Math" ?= "foo"
 
 }
