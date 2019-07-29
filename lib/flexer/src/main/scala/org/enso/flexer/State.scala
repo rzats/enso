@@ -14,13 +14,13 @@ class State {
 
   var start  = false
   var end    = false
-  var code   = q""
+  var rule = TermName("")
   val links2 = RangeMap[Int, Int, Ordering.Int.type]()
 }
 
 object State {
 
-  case class StateDesc(priority: Int, code: Tree)
+  case class StateDesc(priority: Int, rule: TermName)
 
   trait IsoComputeState
 

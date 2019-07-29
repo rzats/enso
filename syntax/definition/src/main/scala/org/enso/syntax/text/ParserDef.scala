@@ -444,12 +444,6 @@ case class ParserDef() extends ParserBase[AST] {
     rewind()
   }
 
-  final def fixme_onTextDoubleQuote(): Unit = logger.trace {
-    currentMatch = "'"
-    onTextQuote(Text.Quote.Single)
-    rewind(1)
-  }
-
   val stringChar    = noneOf("'`\"\n\\")
   val stringSegment = stringChar.many1
   val escape_int    = "\\" >> decimal
@@ -462,12 +456,10 @@ case class ParserDef() extends ParserBase[AST] {
 
   // format: off
   NORMAL rule "'"           run reify { onTextBegin(ast.Text.Quote.Single) }
-  NORMAL rule "''"          run reify { submitEmptyText(ast.Text.Quote.Single) } // FIXME: Remove after fixing DFA Gen
   NORMAL rule "'''"         run reify { onTextBegin(ast.Text.Quote.Triple) }
   NORMAL rule '`'           run reify { onInterpolateEnd() }
   TEXT   rule '`'           run reify { onInterpolateBegin() }
   TEXT   rule "'"           run reify { onTextQuote(ast.Text.Quote.Single) }
-  TEXT   rule "''"          run reify { fixme_onTextDoubleQuote() } // FIXME: Remove after fixing DFA Gen
   TEXT   rule "'''"         run reify { onTextQuote(ast.Text.Quote.Triple) }
   TEXT   rule stringSegment run reify { onPlainTextSegment() }
   TEXT   rule eof           run reify { onTextEOF() }

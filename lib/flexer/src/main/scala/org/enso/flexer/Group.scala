@@ -45,9 +45,8 @@ class Group(val groupIx: Int, val finish: () => Unit) {
 
   def buildRuleAutomata(nfa: NFA, last: Int, ruleIx: Int, rule: Rule): Int = {
     val end          = buildExprAutomata(nfa, last, rule.expr)
-    val currentMatch = q"currentMatch = matchBuilder.result()"
     nfa.state(end).end  = true
-    nfa.state(end).code = q"{$currentMatch; ${ruleName(ruleIx)}()}"
+    nfa.state(end).rule = ruleName(ruleIx)
     end
   }
 

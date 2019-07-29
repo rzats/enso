@@ -175,7 +175,7 @@ class ParserSpec extends FlatSpec with Matchers {
   "''"   ?= Text()
   "'''"  ?= Text.Unclosed(Text(Text.Quote.Triple))
   "''''" ?= Text.Unclosed(Text(Text.Quote.Triple, "'"))
-//  "'''''"   ?= Text.Unclosed(Text(Text.Quote.Triple, "''")) // FIXME
+  "'''''" ?= Text.Unclosed(Text(Text.Quote.Triple, "''"))
   "''''''"  ?= Text(Text.Quote.Triple)
   "'''''''" ?= Text(Text.Quote.Triple) $ Text.Unclosed(Text())
   "'a'"     ?= Text("a")
@@ -183,7 +183,7 @@ class ParserSpec extends FlatSpec with Matchers {
   "'a'''"   ?= Text("a") $ Text()
   "'''a'''" ?= Text(Text.Quote.Triple, "a")
   "'''a'"   ?= Text.Unclosed(Text(Text.Quote.Triple, "a'"))
-  //  "'''a''"  ?= Text.Unclosed(Text(Text.Quote.Triple, "a''")) // FIXME
+  "'''a''" ?= Text.Unclosed(Text(Text.Quote.Triple, "a''"))
 
   //// Escapes ////
 

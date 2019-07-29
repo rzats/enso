@@ -141,14 +141,21 @@ trait ParserBase[T] {
     codePoint = getNextCodePoint()
   }
 
-  final def rewindToLastRule(): Unit = logger.trace {
-    logger.log(s"RETREAT $charsToLastRule")
-    rewind(charsToLastRule)
+  final def rewindThenCall(rule: () => Unit): Int = {
+    rewind(charsToLastRule + 1)
+    matchBuilder.setLength(matchBuilder.length - charsToLastRule)
+    call(rule)
+  }
+
+  final def call(rule: () => Unit): Int = {
+    currentMatch = matchBuilder.result()
     charsToLastRule = 0
+    rule()
+    -1
   }
 
   final def charSize: Int =
-    if (buffer(offset).isHighSurrogate) 2 else 1
+    if (offset >= 0 && buffer(offset).isHighSurrogate) 2 else 1
 
   def debugGeneratedOutput: Seq[Tree] = groupsx.map(_.generate())
 }

@@ -19,11 +19,10 @@ case class CodeGen(dfa: DFA) {
     trgState: Int,
     maybeState: Option[StateDesc],
     rulesOverlap: Boolean
-  ): Tree = {
-    (trgState, maybeState, rulesOverlap) match {
+                   ): Tree = (trgState, maybeState, rulesOverlap) match {
       case (-1, None, _)            => q"-2"
-      case (-1, Some(state), false) => q"..${state.code}; -1"
-      case (-1, Some(state), true)  => q"rewindToLastRule(); ..${state.code}; -1"
+      case (-1, Some(state), false) => q"call(${state.rule})"
+      case (-1, Some(state), true) => q"rewindThenCall(${state.rule})"
 
       case (targetState, _, _) =>
         val rulesOverlap_ = maybeState match {
@@ -38,7 +37,6 @@ case class CodeGen(dfa: DFA) {
         else
           q"${Literal(Constant(targetState))}"
     }
-  }
 
   def genSwitch(branchs: Seq[Branch]): Seq[CaseDef] = {
     branchs.map {
