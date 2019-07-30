@@ -5,6 +5,7 @@ import org.enso.data.Tree
 import org.enso.data.Shifted
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST._
+import org.enso.syntax.text.ast.Repr
 
 import scala.annotation.tailrec
 
@@ -14,7 +15,7 @@ object Mixfix {
 
   def exprList(ast: AST): Shifted.List1[AST] = {
     @tailrec
-    def go(ast: AST, out: List[Shifted[AST]]): Shifted.List1[AST] = ast match {
+    def go(ast: AST, out: AST.Stream): Shifted.List1[AST] = ast match {
       case App(fn, off, arg) => go(fn, Shifted(off, arg) :: out)
       case ast               => Shifted.List1(ast, out)
     }
@@ -26,7 +27,7 @@ object Mixfix {
   //////////////////
 
   final case class Registry() {
-    var tree = Tree[AST, List1[Mixfix.Segment.Type.Any]]()
+    var tree = Tree[AST, List1[Mixfix.Segment.Pattern.Any]]()
 
     override def toString: String =
       tree.toString
@@ -36,7 +37,7 @@ object Mixfix {
   }
 
   object Registry {
-    type T = Tree[AST, List1[Mixfix.Segment.Type.Any]]
+    type T = Tree[AST, List1[Mixfix.Segment.Pattern.Any]]
     def apply(ts: Mixfix.Definition*): Registry = {
       val registry = new Registry()
       ts.foreach(registry.insert)
@@ -79,46 +80,102 @@ object Mixfix {
 
   class SegmentBuilder(val ast: AST) {
     import Mixfix._
+    import Mixfix.Segment.Pattern
 
-    var offset: Int                 = 0
-    var revBody: List[Shifted[AST]] = List()
+    var offset: Int         = 0
+    var revBody: AST.Stream = List()
 
     def buildAST() = revBody match {
-      case Nil => None
-      case seg1 :: seg2_ =>
-        Some(Operator.rebuild(List1(seg1, seg2_)))
+      case Nil           => None
+      case seg1 :: seg2_ => Some(Operator.rebuild(List1(seg1, seg2_)))
     }
 
-    def build(tp: Segment.Type.Any, last: Boolean): Shifted[Segment.Class] = {
+    def buildAST2(revLst: AST.Stream): Option[Shifted[AST]] =
+      revLst match {
+        case Nil           => None
+        case seg1 :: seg2_ => Some(Operator.rebuild(List1(seg1, seg2_)))
+      }
+
+    def build(
+      tp: Pattern.Any,
+      last: Boolean
+    ): Shifted[Segment.Class] = {
+      resolveStep(tp, revBody.reverse)
+
+//      val segment2 = resolve(ast,tp,revBody.reverse)
+
       val optAst = buildAST()
       val segment = tp match {
-        case t: Segment.Empty =>
+        case t: Pattern.Empty =>
           val empty = Segment(t, ast, ())
           if (last) empty
           else optAst.map(Segment.Empty.NonEmpty(ast, _)).getOrElse(empty)
-        case t: Segment.Expr =>
+        case t: Pattern.Expr0 =>
           Segment(t, ast, optAst)
-        case t: Segment.Expr1 =>
-          optAst.map(Segment(t, ast, _)).getOrElse(Segment.Expr1.Empty(ast))
+        case t: Pattern.Expr =>
+          optAst.map(Segment(t, ast, _)).getOrElse(Segment.Expr.Empty(ast))
       }
       Shifted(offset, segment)
     }
+
+    def resolveList[T](
+      p: Pattern[T],
+      stream: AST.Stream
+    ): (List[T], AST.Stream) = {
+      @tailrec
+      def go(stream: AST.Stream, out: List[T]): (List[T], AST.Stream) =
+        resolveStep(p, stream) match {
+          case None               => (out, stream)
+          case Some((t, stream2)) => go(stream2, t :: out)
+        }
+      go(stream, Nil)
+    }
+
+    def resolveStep[T](
+      p: Pattern[T],
+      stream: AST.Stream
+    ): Option[(T, AST.Stream)] = p match {
+      case Pattern.Empty() => Some(((), stream))
+      case Pattern.Expr0() => Some((buildAST2(stream.reverse), Nil))
+      case Pattern.Expr()  => buildAST2(stream.reverse).map((_, Nil))
+      case Pattern.List(p2) =>
+        resolveStep(p2, stream) match {
+          case None => None
+          case Some((head, stream2)) =>
+            val (tail, stream3) = resolveList(p2, stream2)
+            Some(List1(head, tail), stream3)
+        }
+    }
+
+    def resolve[T: Repr.Of](
+      head: AST,
+      p: Pattern[T],
+      stream: AST.Stream
+    ): Segment.Class =
+      resolveStep(p, stream) match {
+        case None => Segment.Unmatched(p, head, stream)
+        case Some((body, stream2)) =>
+          stream2 match {
+            case Nil => Segment(p, head, body)
+            case _   => Segment.Unsaturated(p, head, body, stream2)
+          }
+      }
 
     override def toString: String =
       s"SegmentBuilder($offset, $revBody)"
   }
 
   class MixfixBuilder(ast: AST) {
-    var context: Context                               = Context()
-    var mixfix: Option[List1[Mixfix.Segment.Type.Any]] = None
-    var current: SegmentBuilder                        = new SegmentBuilder(ast)
-    var revSegments: List[SegmentBuilder]              = List()
+    var context: Context                                  = Context()
+    var mixfix: Option[List1[Mixfix.Segment.Pattern.Any]] = None
+    var current: SegmentBuilder                           = new SegmentBuilder(ast)
+    var revSegments: List[SegmentBuilder]                 = List()
   }
 
   def partition(t: AST): AST = {
 
     var builder: MixfixBuilder = new MixfixBuilder(Blank)
-    builder.mixfix = Some(List1(Mixfix.Segment.Expr1(), Nil))
+    builder.mixfix = Some(List1(Mixfix.Segment.Pattern.Expr(), Nil))
     var builderStack: List[MixfixBuilder] = Nil
 
     def pushBuilder(ast: AST, off: Int): Unit = {
@@ -145,26 +202,26 @@ object Mixfix {
 
     val hardcodedRegistry = Registry(
       Mixfix.Definition(
-        Opr("(") -> Mixfix.Segment.Expr(),
-        Opr(")") -> Mixfix.Segment.Empty()
+        Opr("(") -> Mixfix.Segment.Pattern.Expr0(),
+        Opr(")") -> Mixfix.Segment.Pattern.Empty()
       ),
       Mixfix.Definition(
-        Var("if") -> Mixfix.Segment.Expr1(),
-        Var("then") -> Mixfix.Segment.Expr1()
+        Var("if") -> Mixfix.Segment.Pattern.Expr(),
+        Var("then") -> Mixfix.Segment.Pattern.Expr()
       ),
       Mixfix.Definition(
-        Var("if") -> Mixfix.Segment.Expr1(),
-        Var("then") -> Mixfix.Segment.Expr1(),
-        Var("else") -> Mixfix.Segment.Expr1()
+        Var("if") -> Mixfix.Segment.Pattern.Expr(),
+        Var("then") -> Mixfix.Segment.Pattern.Expr(),
+        Var("else") -> Mixfix.Segment.Pattern.Expr()
       ),
       Mixfix.Definition(
-        Var("import") -> Mixfix.Segment.Expr1()
+        Var("import") -> Mixfix.Segment.Pattern.Expr()
       )
     )
 
     val root = Context(hardcodedRegistry.tree)
 
-    def close(): List[Shifted[AST]] = {
+    def close(): AST.Stream = {
 //      println(s"\n\n-----------------------------------\n\n")
       val revSegments = builder.current :: builder.revSegments
 //      println(s"revSegments =")
@@ -219,11 +276,11 @@ object Mixfix {
               case s :: ss => Shifted(s.off, Mixfix(Shifted.List1(s.el, ss)))
             }
 
-            val suffix: List[Shifted[AST]] = revSegDefs.head match {
+            val suffix: AST.Stream = revSegDefs.head match {
               case (tp, segBldr) =>
                 tp match {
-                  case t: Segment.Empty => segBldr.revBody
-                  case _                => List()
+                  case t: Segment.Pattern.Empty => segBldr.revBody
+                  case _                        => List()
                 }
             }
             suffix :+ mx
@@ -243,7 +300,7 @@ object Mixfix {
     }
 
     @tailrec
-    def go(input: List[Shifted[AST]]): AST = {
+    def go(input: AST.Stream): AST = {
       input match {
         case Nil =>
           if (builderStack.isEmpty) {
@@ -253,7 +310,11 @@ object Mixfix {
                     _,
                     Mixfix(
                       Shifted.List1(
-                        Mixfix.Segment(Segment.Expr1(), _, body: Shifted[AST]),
+                        Mixfix.Segment(
+                          Segment.Pattern.Expr(),
+                          _,
+                          body: Shifted[AST]
+                        ),
                         Nil
                       )
                     )

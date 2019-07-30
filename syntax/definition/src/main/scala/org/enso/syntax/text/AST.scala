@@ -25,6 +25,8 @@ object AST {
   //// Definition ////
   ////////////////////
 
+  type Stream = List[Shifted[AST]]
+
   trait Symbol extends Repr.Provider {
     def span:   Int    = repr.span
     def show(): String = repr.show()
@@ -174,6 +176,10 @@ object AST {
     ) extends AST {
       val repr = R + leftArg + leftOff + opr + rightOff + rightArg
     }
+
+    final case class MissingArgument() extends Invalid {
+      val repr = R
+    }
   }
 
   ////////////////
@@ -188,7 +194,7 @@ object AST {
   object Mixfix {
 
     final case class Segment[T: Repr.Of](
-      tp: Segment.Type[T],
+      tp: Segment.Pattern[T],
       head: AST,
       body: T
     ) extends Segment.Class {
@@ -197,37 +203,49 @@ object AST {
 
     object Segment {
 
-      def apply(head: AST): Segment[_] = new Segment(Empty(), head, ())
+      def apply(head: AST): Segment[_] = new Segment(Pattern.Empty(), head, ())
       def apply(head: AST, body: Option[Shifted[AST]]): Segment[_] =
-        new Segment(Expr(), head, body)
+        new Segment(Pattern.Expr0(), head, body)
+
+      //// Segment Types ////
 
       sealed trait Class extends Symbol
-      type Any = Segment[_]
 
-      trait Type[+T]
-      object Type {
-        type Any = Type[_]
+      case class Unmatched[T: Repr.Of](
+        tp: Segment.Pattern[T],
+        head: AST,
+        stream: AST.Stream
+      ) extends Class {
+        val repr = R + head + stream
       }
 
-      final case class Expr() extends Type[Option[Shifted[AST]]]
+      case class Unsaturated[T: Repr.Of](
+        tp: Segment.Pattern[T],
+        head: AST,
+        body: T,
+        stream: AST.Stream
+      ) extends Class {
+        val repr = R + head + body + stream
+      }
 
-      case class Empty() extends Type[Unit]
-      case class Expr1() extends Type[Shifted[AST]]
+      sealed trait Pattern[+T]
+      object Pattern {
+        import org.enso.data
 
-      case class Opt[S](el: Type[S])               extends Type[Option[S]]
-      case class Many[S](el: Type[S])              extends Type[List[S]]
-      case class Many1[S](el: Type[S])             extends Type[List1[S]]
-      case class Seq[L, R](l: Type[L], r: Type[R]) extends Type[(L, R)]
+        type Any = Pattern[_]
 
-//      object Def {
-//        trait Selector
-//        final case class Many1[T](elems: T) extends Selector
-//        final case class Option[T](elem: T) extends Selector
-//        final case class
-//      }
-//      final case class XList1(elems: List1[Selector]) extends Selector
-//      final case class XExpr()                        extends Type[Option[Shifted[AST]]]
-//      final case class XExpr1()                       extends Type[Shifted[AST]]
+        final case class Expr0() extends Pattern[scala.Option[Shifted[AST]]]
+
+        private type T[S] = Pattern[S]
+        case class Empty()                     extends T[Unit]
+        case class Expr()                      extends T[Shifted[AST]]
+        case class Option[S](el: T[S])         extends T[scala.Option[S]]
+        case class List[S](el: T[S])           extends T[data.List1[S]]
+        case class App[L, R](l: T[L], r: T[R]) extends T[(L, R)]
+
+      }
+
+      ////////////
 
       object Empty {
         final case class NonEmpty(head: AST, body: Shifted[AST])
@@ -237,7 +255,7 @@ object AST {
         }
       }
 
-      object Expr1 {
+      object Expr {
         case class Empty(head: AST) extends Class with Invalid {
           val repr = R + head
         }
@@ -258,7 +276,7 @@ object AST {
 
     case class Definition(segments: List1[Definition.Input])
     object Definition {
-      type Input = (AST, Segment.Type[_])
+      type Input = (AST, Segment.Pattern[_])
       def apply(t1: Input, ts: Input*): Definition =
         Definition(List1(t1, ts.to[List]))
     }
