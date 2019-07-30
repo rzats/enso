@@ -327,13 +327,16 @@ case class ParserDef() extends ParserBase[AST] {
   final def insideOfText: Boolean =
     textStateStack.nonEmpty
 
-  final def submitEmptyText(quoteNum: Quote): Unit = logger.trace {
-    app(Text.Interpolated(quoteNum))
+  final def submitEmptyText(groupIx: Int, quoteNum: Quote): Unit = logger.trace {
+    if (groupIx == RAWTEXT.groupIx)
+      app(Text.Raw(quoteNum))
+    else
+      app(Text.Interpolated(quoteNum))
   }
 
-  final def finishCurrentTextBuilding(): Text.Interpolated = logger.trace {
+  final def finishCurrentTextBuilding(): Text.Class[_] = logger.trace {
     withCurrentText(t => t.copy(segments = t.segments.reverse))
-    val txt = currentText
+    val txt = if (group == RAWTEXT.groupIx) currentText.raw else currentText
     popTextState()
     endGroup()
     txt
@@ -347,9 +350,9 @@ case class ParserDef() extends ParserBase[AST] {
     app(Text.Unclosed(finishCurrentTextBuilding()))
   }
 
-  final def onTextBegin(quoteSize: Quote): Unit = logger.trace {
+  final def onTextBegin(group: Group, quoteSize: Quote): Unit = logger.trace {
     pushTextState(quoteSize)
-    beginGroup(TEXT)
+    beginGroup(group)
   }
 
   final def submitPlainTextSegment(segment: Text.Interpolated.Segment): Unit =
@@ -367,11 +370,11 @@ case class ParserDef() extends ParserBase[AST] {
         && quoteSize == Text.Quote.Single) onPlainTextSegment()
     else if (currentText.quote == Text.Quote.Single
              && quoteSize == Text.Quote.Triple) {
+      val groupIx = group
       submitText()
-      submitEmptyText(Text.Quote.Single)
-    } else {
+      submitEmptyText(groupIx, Text.Quote.Single)
+    } else
       submitText()
-    }
   }
 
   final def onTextEscape(code: Text.Segment.Escape): Unit = logger.trace {
@@ -451,41 +454,51 @@ case class ParserDef() extends ParserBase[AST] {
   val escape_u32    = "\\U" >> repeat(stringChar, 0, 8)
 
   val TEXT: Group        = defineGroup("Text")
+  val RAWTEXT: Group     = defineGroup("RawText")
   val INTERPOLATE: Group = defineGroup("Interpolate")
   INTERPOLATE.setParent(NORMAL)
 
   // format: off
-  NORMAL rule "'"           run reify { onTextBegin(ast.Text.Quote.Single) }
-  NORMAL rule "'''"         run reify { onTextBegin(ast.Text.Quote.Triple) }
-  NORMAL rule '`'           run reify { onInterpolateEnd() }
-  TEXT   rule '`'           run reify { onInterpolateBegin() }
-  TEXT   rule "'"           run reify { onTextQuote(ast.Text.Quote.Single) }
-  TEXT   rule "'''"         run reify { onTextQuote(ast.Text.Quote.Triple) }
-  TEXT   rule stringSegment run reify { onPlainTextSegment() }
-  TEXT   rule eof           run reify { onTextEOF() }
+
+  NORMAL  rule "'"           run reify { onTextBegin(TEXT, ast.Text.Quote.Single) }
+  NORMAL  rule "'''"         run reify { onTextBegin(TEXT, ast.Text.Quote.Triple) }
+  NORMAL  rule '`'           run reify { onInterpolateEnd() }
+  TEXT    rule '`'           run reify { onInterpolateBegin() }
+  TEXT    rule "'"           run reify { onTextQuote(ast.Text.Quote.Single) }
+  TEXT    rule "'''"         run reify { onTextQuote(ast.Text.Quote.Triple) }
+  TEXT    rule stringSegment run reify { onPlainTextSegment() }
+  TEXT    rule eof           run reify { onTextEOF() }
+
+  NORMAL  rule "\""          run reify { onTextBegin(RAWTEXT, ast.Text.Quote.Single) }
+  NORMAL  rule "\"\"\""      run reify { onTextBegin(RAWTEXT, ast.Text.Quote.Triple) }
+  RAWTEXT rule "\""          run reify { onTextQuote(ast.Text.Quote.Single) }
+  RAWTEXT rule "\"\"\""      run reify { onTextQuote(ast.Text.Quote.Triple) }
+  RAWTEXT rule noneOf("'\n") run reify { onPlainTextSegment() }
+  RAWTEXT rule eof           run reify { onTextEOF() }
 
   Text.Segment.Escape.Character.codes.foreach { ctrl =>
     import scala.reflect.runtime.universe._
-  val name = TermName(ctrl.toString)
+    val name = TermName(ctrl.toString)
     val func = q"onTextEscape(ast.Text.Segment.Escape.Character.$name)"
     TEXT rule s"\\$ctrl" run func
   }
 
   Text.Segment.Escape.Control.codes.foreach { ctrl =>
     import scala.reflect.runtime.universe._
-  val name = TermName(ctrl.toString)
+    val name = TermName(ctrl.toString)
     val func = q"onTextEscape(ast.Text.Segment.Escape.Control.$name)"
     TEXT rule s"\\$ctrl" run func
   }
 
-  TEXT rule escape_u16           run reify { onTextEscapeU16() }
-  TEXT rule escape_u32           run reify { onTextEscapeU32() }
-  TEXT rule escape_int           run reify { onTextEscapeInt() }
-  TEXT rule "\\\\"               run reify { onEscapeSlash() }
-  TEXT rule "\\'"                run reify { onEscapeQuote() }
-  TEXT rule "\\\""               run reify { onEscapeRawQuote() }
-  TEXT rule ("\\" >> stringChar) run reify { onInvalidEscape() }
-  TEXT rule "\\"                 run reify { onPlainTextSegment() }
+  TEXT    rule escape_u16           run reify { onTextEscapeU16() }
+  TEXT    rule escape_u32           run reify { onTextEscapeU32() }
+  TEXT    rule escape_int           run reify { onTextEscapeInt() }
+  TEXT    rule "\\\\"               run reify { onEscapeSlash() }
+  TEXT    rule "\\'"                run reify { onEscapeQuote() }
+  TEXT    rule "\\\""               run reify { onEscapeRawQuote() }
+  TEXT    rule ("\\" >> stringChar) run reify { onInvalidEscape() }
+  TEXT    rule "\\"                 run reify { onPlainTextSegment() }
+
   // format: on
 
 //  //////////////

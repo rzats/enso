@@ -367,6 +367,9 @@ object AST {
       val repr     = R + quoteRepr + segments + quoteRepr
       def _dup(quote: Quote, segments: List[Segment]): Interpolated =
         copy(quote, segments)
+
+      def raw: Text.Raw =
+        Raw(quote, segments.map(s => Segment.Plain(s.repr.show())))
     }
 
     final case class Raw(quote: Text.Quote, segments: List[Raw.Segment])
@@ -380,6 +383,12 @@ object AST {
 
     object Raw {
       trait Segment extends Text.Interpolated.Segment
+
+      def apply():                      Raw = Raw(Quote.Single, Nil)
+      def apply(q: Quote):              Raw = Raw(q, Nil)
+      def apply(q: Quote, s: Segment*): Raw = Raw(q, s.to[List])
+      def apply(s: List[Segment]):      Raw = Raw(Quote.Single, s)
+      def apply(s: Segment*):           Raw = Raw(s.to[List])
     }
 
     object Interpolated {
@@ -410,7 +419,7 @@ object AST {
       type Raw          = Text.Raw.Segment
       type Interpolated = Text.Interpolated.Segment
 
-      final case class Plain(value: String) extends Raw {
+      final case class Plain private (value: String) extends Raw {
         val repr = value
       }
 
@@ -421,7 +430,7 @@ object AST {
       trait Escape extends Interpolated
       val Escape = text.Escape
 
-      implicit def fromString(str: String): Segment.Plain = Segment.Plain(str)
+      implicit def fromString(str: String): Plain = Plain(str)
     }
 
     //// Unclosed ////

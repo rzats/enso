@@ -171,11 +171,11 @@ class ParserSpec extends FlatSpec with Matchers {
   //// Text ////
   //////////////
 
-  "'"    ?= Text.Unclosed(Text())
-  "''"   ?= Text()
-  "'''"  ?= Text.Unclosed(Text(Text.Quote.Triple))
-  "''''" ?= Text.Unclosed(Text(Text.Quote.Triple, "'"))
-  "'''''" ?= Text.Unclosed(Text(Text.Quote.Triple, "''"))
+  "'"       ?= Text.Unclosed(Text())
+  "''"      ?= Text()
+  "'''"     ?= Text.Unclosed(Text(Text.Quote.Triple))
+  "''''"    ?= Text.Unclosed(Text(Text.Quote.Triple, "'"))
+  "'''''"   ?= Text.Unclosed(Text(Text.Quote.Triple, "''"))
   "''''''"  ?= Text(Text.Quote.Triple)
   "'''''''" ?= Text(Text.Quote.Triple) $ Text.Unclosed(Text())
   "'a'"     ?= Text("a")
@@ -183,7 +183,22 @@ class ParserSpec extends FlatSpec with Matchers {
   "'a'''"   ?= Text("a") $ Text()
   "'''a'''" ?= Text(Text.Quote.Triple, "a")
   "'''a'"   ?= Text.Unclosed(Text(Text.Quote.Triple, "a'"))
-  "'''a''" ?= Text.Unclosed(Text(Text.Quote.Triple, "a''"))
+  "'''a''"  ?= Text.Unclosed(Text(Text.Quote.Triple, "a''"))
+
+
+  "\""             ?= Text.Unclosed(Text.Raw())
+  "\"\""           ?= Text.Raw()
+  "\"\"\""         ?= Text.Unclosed(Text.Raw(Text.Quote.Triple))
+  "\"\"\"\""       ?= Text.Unclosed(Text.Raw(Text.Quote.Triple, "\""))
+  "\"\"\"\"\""     ?= Text.Unclosed(Text.Raw(Text.Quote.Triple, "\"\""))
+  "\"\"\"\"\"\""   ?= Text.Raw(Text.Quote.Triple)
+  "\"\"\"\"\"\"\"" ?= Text.Raw(Text.Quote.Triple) $ Text.Unclosed(Text.Raw())
+  "\"a\""          ?= Text.Raw("a")
+  "\"a"            ?= Text.Unclosed(Text.Raw("a"))
+  "\"a\"\"\""      ?= Text.Raw("a") $ Text.Raw()
+  "\"\"\"a\"\"\""  ?= Text.Raw(Text.Quote.Triple, "a")
+  "\"\"\"a\""      ?= Text.Unclosed(Text.Raw(Text.Quote.Triple, "a\""))
+  "\"\"\"a\"\""    ?= Text.Unclosed(Text.Raw(Text.Quote.Triple, "a\"\""))
 
   //// Escapes ////
 
