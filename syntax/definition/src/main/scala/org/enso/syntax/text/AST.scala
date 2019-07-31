@@ -3,6 +3,7 @@ package org.enso.syntax.text
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.data.Tree
+import org.enso.flexer.Utils._
 import org.enso.syntax.text.ast.Repr.R
 import org.enso.syntax.text.ast.Repr
 import org.enso.syntax.text.ast.opr
@@ -323,13 +324,16 @@ object AST {
 
     //// Abstraction ////
 
-    sealed abstract class Class[This](val quoteChar: Char) extends Text {
-      type Segment >: Text.Segment.Raw
+    trait Class[This] extends Text {
+      type Segment <: Text.Segment
+
+      val quoteChar: Char
       val quote: Quote
       val segments: List[Segment]
 
-      val quoteRepr = R + quoteChar.toString * quote.asInt
-      val bodyRepr: Repr
+      lazy val quoteRepr = R + (quoteChar.toString * quote.asInt)
+      lazy val bodyRepr  = R + segments
+      lazy val repr      = R + quoteRepr + segments + quoteRepr
 
       def _dup(quote: Quote, segments: List[Segment]): This
       def dup(quote: Quote = quote, segments: List[Segment] = segments) =
@@ -338,7 +342,9 @@ object AST {
       def prepend(segment: Segment): This =
         this.dup(segments = segment :: segments)
 
-      def prependMergeReversed(segment: Segment): This =
+      def prependMergeReversed(
+        segment: Segment
+      )(implicit p: Text.Segment.Raw <:< Segment): This =
         (segment, segments) match {
           case (Text.Segment.Plain(n), Text.Segment.Plain(t) :: ss) =>
             this.dup(segments = Text.Segment.Plain(t + n) :: ss)
@@ -358,13 +364,14 @@ object AST {
 
     //// Definition ////
 
+    import Segment._
+
     final case class Interpolated(
       quote: Text.Quote,
       segments: List[Interpolated.Segment]
-    ) extends Class[Interpolated]('\'') {
+    ) extends Class[Interpolated] {
       type Segment = Interpolated.Segment
-      val bodyRepr = R + segments
-      val repr     = R + quoteRepr + segments + quoteRepr
+      val quoteChar = '\''
       def _dup(quote: Quote, segments: List[Segment]): Interpolated =
         copy(quote, segments)
 
@@ -373,12 +380,46 @@ object AST {
     }
 
     final case class Raw(quote: Text.Quote, segments: List[Raw.Segment])
-        extends Class[Raw]('"') {
+        extends Class[Raw] {
       type Segment = Raw.Segment
-      val bodyRepr = R + segments
-      val repr     = R + quoteRepr + segments + quoteRepr
+      val quoteChar = '"'
       def _dup(quote: Quote, segments: List[Segment]) =
         copy(quote, segments)
+    }
+
+    final case class MultiLine(
+      indent: Int,
+      quoteChar: Char,
+      quote: Text.Quote,
+      segments: List[Segment]
+    ) extends Class[MultiLine] {
+      type Segment = Text.Segment
+      override lazy val bodyRepr = R + segments.flatMap {
+          case EOL(true) => List(EOL(), Plain(" " * indent))
+          case s         => List(s)
+        }
+
+      def _dup(quote: Quote, segments: List[Segment]) =
+        copy(indent, quoteChar, quote, segments)
+    }
+
+    object MultiLine {
+
+      def preprocess(indent: Int, rawSegments: List[Segment]): List[Segment] = {
+        if (rawSegments.isEmpty) return rawSegments
+        var last = rawSegments.head
+        for (s <- rawSegments.tail :+ EOL()) yield (last, s) match {
+          case (EOL(_), Plain(txt))
+              if txt.takeWhile(_ == ' ').length >= indent =>
+            last = Plain(txt.drop(indent))
+            EOL()
+          case (EOL(_), segment) =>
+            last = segment
+            EOL(validIndent = false)
+          case (_, segment) =>
+            last.thenDo { last = segment }
+        }
+      }
     }
 
     object Raw {
@@ -419,8 +460,16 @@ object AST {
       type Raw          = Text.Raw.Segment
       type Interpolated = Text.Interpolated.Segment
 
-      final case class Plain private (value: String) extends Raw {
+      final case class Plain(value: String) extends Raw {
         val repr = value
+      }
+
+      final case class EOL(validIndent: Boolean = true) extends Raw {
+        val repr = "\n"
+      }
+
+      final case class Line(segments: List[Segment]) extends Raw {
+        val repr = R + segments + "\n"
       }
 
       final case class Interpolation(value: Option[AST]) extends Interpolated {

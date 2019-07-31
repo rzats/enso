@@ -5,6 +5,7 @@ import org.enso.flexer.Pattern.range
 import org.enso.flexer.Pattern._
 import org.enso.flexer._
 import org.enso.syntax.text.AST.Text.Quote
+import org.enso.syntax.text.AST.Text.Segment.EOL
 import org.enso.syntax.text.AST._
 
 import scala.annotation.tailrec
@@ -327,19 +328,26 @@ case class ParserDef() extends ParserBase[AST] {
   final def insideOfText: Boolean =
     textStateStack.nonEmpty
 
-  final def submitEmptyText(groupIx: Int, quoteNum: Quote): Unit = logger.trace {
-    if (groupIx == RAWTEXT.groupIx)
-      app(Text.Raw(quoteNum))
-    else
-      app(Text.Interpolated(quoteNum))
-  }
+  final def submitEmptyText(groupIx: Int, quoteNum: Quote): Unit =
+    logger.trace {
+      if (groupIx == RAWTEXT.groupIx)
+        app(Text.Raw(quoteNum))
+      else
+        app(Text.Interpolated(quoteNum))
+    }
 
   final def finishCurrentTextBuilding(): Text.Class[_] = logger.trace {
     withCurrentText(t => t.copy(segments = t.segments.reverse))
     val txt = if (group == RAWTEXT.groupIx) currentText.raw else currentText
     popTextState()
     endGroup()
-    txt
+    val singleLine = !txt.segments.contains(EOL())
+    if (singleLine || currentBlock.firstLine.isDefined || result.isDefined)
+      txt
+    else {
+      val segs = Text.MultiLine.preprocess(currentBlock.indent, txt.segments)
+      Text.MultiLine(currentBlock.indent, txt.quoteChar, txt.quote, segs)
+    }
   }
 
   final def submitText(): Unit = logger.trace {
@@ -447,7 +455,11 @@ case class ParserDef() extends ParserBase[AST] {
     rewind()
   }
 
-  val stringChar    = noneOf("'`\"\n\\")
+  final def onTextEOL(): Unit = logger.trace {
+    submitPlainTextSegment(Text.Segment.EOL())
+  }
+
+  val stringChar    = noneOf("'`\"\\\n")
   val stringSegment = stringChar.many1
   val escape_int    = "\\" >> decimal
   val escape_u16    = "\\u" >> repeat(stringChar, 0, 4)
@@ -459,22 +471,24 @@ case class ParserDef() extends ParserBase[AST] {
   INTERPOLATE.setParent(NORMAL)
 
   // format: off
+  NORMAL  rule '`'            run reify { onInterpolateEnd() }
+  TEXT    rule '`'            run reify { onInterpolateBegin() }
+  
+  NORMAL  rule "'"            run reify { onTextBegin(TEXT, ast.Text.Quote.Single) }
+  NORMAL  rule "'''"          run reify { onTextBegin(TEXT, ast.Text.Quote.Triple) }
+  TEXT    rule "'"            run reify { onTextQuote(ast.Text.Quote.Single) }
+  TEXT    rule "'''"          run reify { onTextQuote(ast.Text.Quote.Triple) }
+  TEXT    rule stringSegment  run reify { onPlainTextSegment() }
+  TEXT    rule eof            run reify { onTextEOF() }
+  TEXT    rule '\n'           run reify { onTextEOL() }
 
-  NORMAL  rule "'"           run reify { onTextBegin(TEXT, ast.Text.Quote.Single) }
-  NORMAL  rule "'''"         run reify { onTextBegin(TEXT, ast.Text.Quote.Triple) }
-  NORMAL  rule '`'           run reify { onInterpolateEnd() }
-  TEXT    rule '`'           run reify { onInterpolateBegin() }
-  TEXT    rule "'"           run reify { onTextQuote(ast.Text.Quote.Single) }
-  TEXT    rule "'''"         run reify { onTextQuote(ast.Text.Quote.Triple) }
-  TEXT    rule stringSegment run reify { onPlainTextSegment() }
-  TEXT    rule eof           run reify { onTextEOF() }
-
-  NORMAL  rule "\""          run reify { onTextBegin(RAWTEXT, ast.Text.Quote.Single) }
-  NORMAL  rule "\"\"\""      run reify { onTextBegin(RAWTEXT, ast.Text.Quote.Triple) }
-  RAWTEXT rule "\""          run reify { onTextQuote(ast.Text.Quote.Single) }
-  RAWTEXT rule "\"\"\""      run reify { onTextQuote(ast.Text.Quote.Triple) }
-  RAWTEXT rule noneOf("'\n") run reify { onPlainTextSegment() }
-  RAWTEXT rule eof           run reify { onTextEOF() }
+  NORMAL  rule "\""           run reify { onTextBegin(RAWTEXT, ast.Text.Quote.Single) }
+  NORMAL  rule "\"\"\""       run reify { onTextBegin(RAWTEXT, ast.Text.Quote.Triple) }
+  RAWTEXT rule "\""           run reify { onTextQuote(ast.Text.Quote.Single) }
+  RAWTEXT rule "\"\"\""       run reify { onTextQuote(ast.Text.Quote.Triple) }
+  RAWTEXT rule noneOf("\"\n") run reify { onPlainTextSegment() }
+  RAWTEXT rule eof            run reify { onTextEOF() }
+  RAWTEXT rule '\n'           run reify { onTextEOL() }
 
   Text.Segment.Escape.Character.codes.foreach { ctrl =>
     import scala.reflect.runtime.universe._
