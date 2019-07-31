@@ -68,6 +68,8 @@ object Repr {
   implicit def fromString(a: String): Repr = Repr(a)
   implicit def fromChar(a: Char):     Repr = Repr(a)
 
+  implicit def _Provider_[T: Repr.Of](t: T): Provider = of(t)
+
   /////////////////////////////
   ///// Repr.Of Type Class ////
   /////////////////////////////
@@ -76,6 +78,10 @@ object Repr {
     def of(a: T): Repr
   }
   def of[T](t: T)(implicit ev: Repr.Of[T]) = ev.of(t)
+
+  trait Of2[T] {
+    def of(a: T): Repr
+  }
 
   ///// Instances ////
 

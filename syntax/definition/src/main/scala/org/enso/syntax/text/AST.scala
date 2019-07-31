@@ -8,6 +8,8 @@ import org.enso.syntax.text.ast.Repr
 import org.enso.syntax.text.ast.opr
 import org.enso.syntax.text.ast.text
 
+import scala.annotation.tailrec
+
 sealed trait AST extends AST.Symbol
 
 object AST {
@@ -232,7 +234,7 @@ object AST {
       object Pattern {
         import org.enso.data
 
-        type Any = Pattern[_]
+        type Class = Pattern[_]
 
         final case class Expr0() extends Pattern[scala.Option[Shifted[AST]]]
 
@@ -243,7 +245,50 @@ object AST {
         case class List[S](el: T[S])           extends T[data.List1[S]]
         case class App[L, R](l: T[L], r: T[R]) extends T[(L, R)]
 
+//        val t: scala.Option[Shifted[AST]] = None
+//        val tt                            = t.repr
+//        println("!!!!!!!!!!!!!!!!!!!!!")
+//        println(tt)
       }
+
+//      case class PatternWithRepr[T](pat: Pattern[T])(
+//        implicit repr: Repr.Of[T]
+//      ) {
+//        def segment: Segment[T] = Segment(pat)
+//      }
+//      type AnyPat = PAtternWithRepr[_]
+//      def make(p: AnyPat): AnySegment = p.segment
+//
+//      val anyPats: List[AnyPat] =
+//        List(PAtternWithRepr(Pat1()), PAtternWithRepr(Pat2()))
+//      val segments: List[AnySegment] = anyPats.map(make)
+
+//      object Test {
+//        trait HasRepr {
+//          def repr(): String
+//        }
+//        trait ReprOf[-T] {
+//          def reprOf(a: T): String
+//        }
+//        def reprOf[T](t: T)(implicit ev: ReprOf[T]) = ev.reprOf(t)
+//        implicit def _Repr_[T: ReprOf](t: T): HasRepr = () => reprOf(t)
+//
+//        implicit val reprOfInt: ReprOf[Int]    = _.toString
+//        implicit val reprOfStr: ReprOf[String] = t => t
+//
+//        type AnyPat = Pat[_ <: HasRepr]
+//        sealed trait Pat[+T]
+//        case class Pat1() extends Pat[Int]
+//        case class Pat2() extends Pat[String]
+//
+//        trait AnySegment
+//        case class Segment[T: ReprOf](body: Pat[T]) extends AnySegment
+//
+//        val pats: List[AnyPat] = List(Pat1(), Pat2())
+//
+//        def make(p: AnyPat): AnySegment = Segment(p)
+//
+//      }
 
       ////////////
 
@@ -276,7 +321,7 @@ object AST {
 
     case class Definition(segments: List1[Definition.Input])
     object Definition {
-      type Input = (AST, Segment.Pattern[_])
+      type Input = (AST, Segment.Pattern.Class)
       def apply(t1: Input, ts: Input*): Definition =
         Definition(List1(t1, ts.to[List]))
     }

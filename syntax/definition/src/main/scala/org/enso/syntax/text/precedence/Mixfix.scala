@@ -4,6 +4,7 @@ import org.enso.data.List1
 import org.enso.data.Tree
 import org.enso.data.Shifted
 import org.enso.syntax.text.AST
+import org.enso.syntax.text.AST.Mixfix.Segment
 import org.enso.syntax.text.AST._
 import org.enso.syntax.text.ast.Repr
 
@@ -27,7 +28,7 @@ object Mixfix {
   //////////////////
 
   final case class Registry() {
-    var tree = Tree[AST, List1[Mixfix.Segment.Pattern.Any]]()
+    var tree = Tree[AST, List1[Mixfix.Segment.Pattern.Class]]()
 
     override def toString: String =
       tree.toString
@@ -37,7 +38,7 @@ object Mixfix {
   }
 
   object Registry {
-    type T = Tree[AST, List1[Mixfix.Segment.Pattern.Any]]
+    type T = Tree[AST, List1[Mixfix.Segment.Pattern.Class]]
     def apply(ts: Mixfix.Definition*): Registry = {
       val registry = new Registry()
       ts.foreach(registry.insert)
@@ -97,10 +98,10 @@ object Mixfix {
       }
 
     def build(
-      tp: Pattern.Any,
+      tp: Pattern.Class,
       last: Boolean
     ): Shifted[Segment.Class] = {
-      resolveStep(tp, revBody.reverse)
+//      resolveStep(tp, revBody.reverse)
 
 //      val segment2 = resolve(ast,tp,revBody.reverse)
 
@@ -147,29 +148,186 @@ object Mixfix {
         }
     }
 
-    def resolve[T: Repr.Of](
+    def resolve(
       head: AST,
-      p: Pattern[T],
+      p: Pattern[Repr.Provider],
       stream: AST.Stream
     ): Segment.Class =
       resolveStep(p, stream) match {
-        case None => Segment.Unmatched(p, head, stream)
+        //        case None => Segment.Unmatched(p, head, stream)
         case Some((body, stream2)) =>
           stream2 match {
             case Nil => Segment(p, head, body)
-            case _   => Segment.Unsaturated(p, head, body, stream2)
+            //            case Nil => Segment(p, head, body)
+            //            case _   => Segment.Unsaturated(p, head, body, stream2)
           }
       }
+
+//    val lst: List[Repr.Provider] = List(Pattern.Expr(), Pattern.Empty)
+
+//    val testt = lst.map(resolve(AST.Blank, _, List()))
+
+//    final case class Segment[T: Repr.Of](
+//      tp: Segment.Pattern[T],
+//      head: AST,
+//      body: T
+//    ) extends Segment.Class {
+//      val repr = R + head + body
+//    }
+
+//    sealed trait Pat[T] {
+//      implicit val repr: Repr.Of[T]
+//    }
+
+//    case class Printer[-T]()
+//    case class Pattern[+T](implicit val printer: Printer[T])
+
+    abstract class Pat[T]()(implicit repr: Repr.Of[T]) {
+      def resStep(
+        stream: AST.Stream
+      ): Option[(T, AST.Stream)] = resolveStep(this, stream)
+
+      def resolve(
+        head: AST,
+        stream: AST.Stream
+      ): Seg[T] =
+        resolveStep(this, stream) match {
+          //        case None => Segment.Unmatched(p, head, stream)
+          case Some((body, stream2)) =>
+            stream2 match {
+              case Nil => Seg(this, head, body)
+              //            case Nil => Segment(p, head, body)
+              //            case _   => Segment.Unsaturated(p, head, body, stream2)
+            }
+        }
+
+    }
+
+    object Pat {
+
+      import org.enso.data
+
+      type Class = Pat[_]
+      final case class Expr0() extends Pat[scala.Option[Shifted[AST]]]
+      private type T[S] = Pat[S]
+      case class Empty()                      extends T[Unit]
+      case class Expr()                       extends T[Shifted[AST]]
+      case class Option[S: Repr.Of](el: T[S]) extends T[scala.Option[S]]
+      case class List[S: Repr.Of](el: T[S])   extends T[data.List1[S]]
+//      case class App[L, R](l: T[L], r: T[R])  extends T[(L, R)]
+    }
+
+    final case class Seg[T: Repr.Of](
+      tp: Pat[T],
+      head: AST,
+      body: T
+    )
+
+    def resolveList[T](
+      p: Pat[T],
+      stream: AST.Stream
+    ): (List[T], AST.Stream) = {
+      @tailrec
+      def go(stream: AST.Stream, out: List[T]): (List[T], AST.Stream) =
+        resolveStep(p, stream) match {
+          case None               => (out, stream)
+          case Some((t, stream2)) => go(stream2, t :: out)
+        }
+      go(stream, Nil)
+    }
+
+    def resolveStep[T](
+      p: Pat[T],
+      stream: AST.Stream
+    ): Option[(T, AST.Stream)] = p match {
+      case Pat.Empty() => Some(((), stream))
+      case Pat.Expr0() => Some((buildAST2(stream.reverse), Nil))
+      case Pat.Expr()  => buildAST2(stream.reverse).map((_, Nil))
+      case Pat.List(p2) =>
+        resolveStep(p2, stream) match {
+          case None => None
+          case Some((head, stream2)) =>
+            val (tail, stream3) = resolveList(p2, stream2)
+            Some(List1(head, tail), stream3)
+        }
+    }
+
+//    def resolve(
+//      head: AST,
+//      p: Pat[_],
+//      stream: AST.Stream
+//    ): Segment.Class =
+//      resolveStep(p, stream) match {
+//        //        case None => Segment.Unmatched(p, head, stream)
+//        case Some((body, stream2)) =>
+//          stream2 match {
+//            case Nil => p.seg(head, body)
+//            //            case Nil => Segment(p, head, body)
+//            //            case _   => Segment.Unsaturated(p, head, body, stream2)
+//          }
+//      }
+
+//    abstract class PatternWithRepr[T]()(
+//      implicit val repr: Repr.Of[T]
+//    ) {
+////      def resolveList(stream: AST.Stream): (List[T], AST.Stream) = {
+////        @tailrec
+////        def go(stream: AST.Stream, out: List[T]): (List[T], AST.Stream) =
+////          resolveStep(stream) match {
+////            case None               => (out, stream)
+////            case Some((t, stream2)) => go(stream2, t :: out)
+////          }
+////        go(stream, Nil)
+////      }
+////
+//      def resolveStep(stream: AST.Stream): Option[(T, AST.Stream)] =
+//        this match {
+//          case Pat.Empty() => Some(((), stream))
+////          case Pat.Expr0() => Some((buildAST2(stream.reverse), Nil))
+////          case Pat.Expr()  => buildAST2(stream.reverse).map((_, Nil))
+////          case Pat.List(p2) =>
+////            resolveStep(p2, stream) match {
+////              case None => None
+////              case Some((head, stream2)) =>
+////                val (tail, stream3) = resolveList(p2, stream2)
+////                Some(List1(head, tail), stream3)
+////            }
+//        }
+////      def segment(head: AST, body: T): Seg[T] = Seg(pat, head, body)
+//    }
+
+//    val ttt = PatternWithRepr(Pattern.Expr())
+//    println(ttt.repr)
+//
+//    def resolve(
+//      head: AST,
+//      p: PatternWithRepr[_],
+//      stream: AST.Stream
+//    ): Segment.Class =
+//      resolveStep(p.pat, stream) match {
+////        case None => Segment.Unmatched(p, head, stream)
+//        case Some((body, stream2)) =>
+//          stream2 match {
+//            case Nil => p.segment(head, body.asInstanceOf)
+////            case Nil => Segment(p, head, body)
+////            case _   => Segment.Unsaturated(p, head, body, stream2)
+//          }
+//      }
+
+//    def resolve(head: AST, p: Pattern[_], stream: AST.Stream): Segment.Class =
+//      p match {
+//        case s: Repr.Provider => resolve_x(head, s, stream)
+//      }
 
     override def toString: String =
       s"SegmentBuilder($offset, $revBody)"
   }
 
   class MixfixBuilder(ast: AST) {
-    var context: Context                                  = Context()
-    var mixfix: Option[List1[Mixfix.Segment.Pattern.Any]] = None
-    var current: SegmentBuilder                           = new SegmentBuilder(ast)
-    var revSegments: List[SegmentBuilder]                 = List()
+    var context: Context                                    = Context()
+    var mixfix: Option[List1[Mixfix.Segment.Pattern.Class]] = None
+    var current: SegmentBuilder                             = new SegmentBuilder(ast)
+    var revSegments: List[SegmentBuilder]                   = List()
   }
 
   def partition(t: AST): AST = {
