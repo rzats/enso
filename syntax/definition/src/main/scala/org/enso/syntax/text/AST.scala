@@ -8,10 +8,6 @@ import org.enso.syntax.text.ast.Repr
 import org.enso.syntax.text.ast.opr
 import org.enso.syntax.text.ast.text
 
-import scala.annotation.tailrec
-
-import org.enso.syntax.text.precedence.Mixfix
-
 sealed trait AST extends AST.Symbol
 
 trait CompanionOf[T]
@@ -63,9 +59,9 @@ object AST {
     else Opr(str)
   }
 
-  implicit final private class OptAST(val self: Option[AST]) extends Symbol {
-    val repr = self.map(_.repr).getOrElse(Repr())
-  }
+//  implicit final private class OptAST(val self: Option[AST]) extends Symbol {
+//    val repr = self.map(_.repr).getOrElse(Repr())
+//  }
 
   /////////////////
   //// Invalid ////
@@ -144,7 +140,7 @@ object AST {
 
     object Info {
       val map: Map[String, (Int, Assoc)] = Prec.map.map {
-        case (name, prec) => name -> (prec, Assoc.of(name))
+        case (name, prec) => name -> ((prec, Assoc.of(name)))
       }
       def of(op: String) =
         map.getOrElse(op, (Prec.default, Assoc.of(op)))
@@ -279,8 +275,8 @@ object AST {
           * any input. The `_1` type describes patterns guaranteed to consume
           * at least one input token.
           */
-        trait _0[+T] extends Pattern[T]
-        trait _1[+T] extends _0[T]
+        sealed trait _0[T] extends Pattern[T]
+        sealed trait _1[T] extends _0[T]
 
         private type C[T] = Repr.Of[T]
         case object Empty                  extends _0[Unit]
@@ -289,7 +285,7 @@ object AST {
         case class List[S: C](el: _1[S])   extends _0[scala.List[S]]
         case class List1[S: C](el: _1[S])  extends _1[data.List1[S]]
 
-        case class Token[T <: AST: C](implicit val tag: ClassTag[T])
+        case class Token[T <: AST: C]()(implicit val tag: ClassTag[T])
             extends _1[Shifted[T]]
 
         trait App[L, R] {

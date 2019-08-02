@@ -16,7 +16,7 @@ case class ParserDef() extends ParserBase[AST] {
 
   val any: Pattern  = range(5, Int.MaxValue) // FIXME 5 -> 0
   val pass: Pattern = Pass
-  val eof: Pattern  = char('\0')
+  val eof: Pattern  = char('\u0000')
   val none: Pattern = None_
 
   final def anyOf(chars: String): Pattern =

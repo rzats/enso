@@ -1,15 +1,12 @@
 package org.enso.syntax.text.precedence
 
 import org.enso.data.List1
-import org.enso.data.Tree
 import org.enso.data.Shifted
+import org.enso.data.Tree
 import org.enso.syntax.text.AST
-import org.enso.syntax.text.AST.Mixfix.Segment
 import org.enso.syntax.text.AST._
-import org.enso.syntax.text.ast.Repr
 
 import scala.annotation.tailrec
-import scala.reflect.ClassTag
 
 object Mixfix {
 
@@ -81,8 +78,8 @@ object Mixfix {
   /////////////////
 
   class SegmentBuilder(val ast: AST) {
-    import Mixfix._
     import Mixfix.Segment.Pattern
+    import Mixfix._
 
     var offset: Int         = 0
     var revBody: AST.Stream = List()
@@ -140,8 +137,6 @@ object Mixfix {
       go(stream, Nil)
     }
 
-    def manOf[T: Manifest](t: T): Manifest[T] = manifest[T]
-
     def resolveStep[T](
       p: Pattern[T],
       stream: AST.Stream
@@ -162,14 +157,15 @@ object Mixfix {
           case None => None
           case Some(t) =>
             val (tail, stream2) = resolveList(p2, t.stream)
-            Some(List1(t.elem, tail), stream2)
+            Some((List1(t.elem, tail), stream2))
         }
       case p: Pattern.Token[_] => {
         stream match {
-          case Shifted(off, p.tag(t: T)) :: ss => Some(((t), ss))
-          case _                               => None
+          case Shifted(off, p.tag(t)) :: ss => Some((Shifted(off, t), ss))
+          case _                            => None
         }
       }
+      case _ => ??? // FIXME
 
     }
 
@@ -324,13 +320,15 @@ object Mixfix {
                       Mixfix.Segment(
                         Segment.Pattern.Expr,
                         _,
-                        body: Shifted[AST]
+                        body
                       ),
                       Nil
                     )
                   )
                   ) =>
-                body.el
+                body
+                  .asInstanceOf[Shifted[AST]]
+                  .el // FIXME: How to do it better?
               case _ => throw new Error("Impossible happened.")
             }
 
