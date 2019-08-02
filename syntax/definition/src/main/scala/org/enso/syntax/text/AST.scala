@@ -8,17 +8,11 @@ import org.enso.syntax.text.ast.Repr
 import org.enso.syntax.text.ast.opr
 import org.enso.syntax.text.ast.text
 
+import scala.reflect.ClassTag
+
 sealed trait AST extends AST.Symbol
 
-trait CompanionOf[T]
-
 object AST {
-
-//  object Token {
-//    trait Selector {
-//      type Class
-//    }
-//  }
 
   ///////////////////
   //// Reexports ////
@@ -82,7 +76,7 @@ object AST {
     val name: String
   }
 
-  object Ident extends CompanionOf[Ident] {
+  object Ident {
     type Class = Ident
     final case class InvalidSuffix(elem: Ident, suffix: String)
         extends AST.Invalid {
@@ -109,20 +103,14 @@ object AST {
   final case class Var(name: String) extends Ident {
     val repr = name
   }
-  object Var extends CompanionOf[Var] {
-    type Class = Var
-  }
 
   final case class Cons(name: String) extends Ident {
     val repr = name
   }
-  object Cons extends CompanionOf[Cons] {
-    type Class = Cons
-  }
 
-  //////////////////
-  //// Operator ////
-  //////////////////
+  /////////////
+  //// Opr ////
+  /////////////
 
   final case class Opr(name: String) extends Opr.Class {
     val (prec, assoc) = Opr.Info.of(name)
@@ -202,12 +190,12 @@ object AST {
   //// Mixfix ////
   ////////////////
 
-  final case class Mixfix(segments: Shifted.List1[Mixfix.Segment.Class])
+  final case class Template(segments: Shifted.List1[Template.Segment.Class])
       extends AST {
     val repr = R + segments.map(_.repr)
   }
 
-  object Mixfix {
+  object Template {
 
     final case class Segment[+T: Repr.Of](
       tp: Segment.Pattern[T],
@@ -215,6 +203,7 @@ object AST {
       body: T
     ) extends Segment.Class {
       val repr = R + head + body
+      def stripped(): (Segment[T], AST.Stream) = (this, List())
     }
 
     object Segment {
@@ -225,7 +214,9 @@ object AST {
 
       //// Segment Types ////
 
-      sealed trait Class extends Symbol
+      sealed trait Class extends Symbol {
+        def stripped(): (Class, AST.Stream)
+      }
 
       case class Unmatched[T: Repr.Of](
         tp: Segment.Pattern[T],
@@ -233,6 +224,8 @@ object AST {
         stream: AST.Stream
       ) extends Class {
         val repr = R + head + stream
+        def stripped(): (Unmatched[T], AST.Stream) =
+          (Unmatched(tp, head, List()), stream)
       }
 
       case class Unsaturated[T: Repr.Of](
@@ -242,9 +235,11 @@ object AST {
         stream: AST.Stream1
       ) extends Class {
         val repr = R + head + body + stream
-        def stripped(): (Segment[T], AST.Stream1) =
-          (Segment(tp, head, body), stream)
+        def stripped(): (Segment[T], AST.Stream) =
+          (Segment(tp, head, body), stream.toList)
       }
+
+      //// Pattern ////
 
       sealed abstract class Pattern[+T: Repr.Of] {
         def resolve(
@@ -263,11 +258,9 @@ object AST {
           }
 
       }
-      import scala.reflect.ClassTag
 
       object Pattern {
         import org.enso.data
-
         type Class = Pattern[_]
 
         /**
@@ -311,66 +304,6 @@ object AST {
             pat: Pattern[T],
             stream: AST.Stream
           ): scala.Option[(T, AST.Stream)]
-        }
-
-//        val t: scala.Option[Shifted[AST]] = None
-//        val tt                            = t.repr
-//        println("!!!!!!!!!!!!!!!!!!!!!")
-//        println(tt)
-      }
-
-//      case class PatternWithRepr[T](pat: Pattern[T])(
-//        implicit repr: Repr.Of[T]
-//      ) {
-//        def segment: Segment[T] = Segment(pat)
-//      }
-//      type AnyPat = PAtternWithRepr[_]
-//      def make(p: AnyPat): AnySegment = p.segment
-//
-//      val anyPats: List[AnyPat] =
-//        List(PAtternWithRepr(Pat1()), PAtternWithRepr(Pat2()))
-//      val segments: List[AnySegment] = anyPats.map(make)
-
-//      object Test {
-//        trait HasRepr {
-//          def repr(): String
-//        }
-//        trait ReprOf[-T] {
-//          def reprOf(a: T): String
-//        }
-//        def reprOf[T](t: T)(implicit ev: ReprOf[T]) = ev.reprOf(t)
-//        implicit def _Repr_[T: ReprOf](t: T): HasRepr = () => reprOf(t)
-//
-//        implicit val reprOfInt: ReprOf[Int]    = _.toString
-//        implicit val reprOfStr: ReprOf[String] = t => t
-//
-//        type AnyPat = Pat[_ <: HasRepr]
-//        sealed trait Pat[+T]
-//        case class Pat1() extends Pat[Int]
-//        case class Pat2() extends Pat[String]
-//
-//        trait AnySegment
-//        case class Segment[T: ReprOf](body: Pat[T]) extends AnySegment
-//
-//        val pats: List[AnyPat] = List(Pat1(), Pat2())
-//
-//        def make(p: AnyPat): AnySegment = Segment(p)
-//
-//      }
-
-      ////////////
-
-      object Empty {
-        final case class NonEmpty(head: AST, body: Shifted[AST])
-            extends Class
-            with Invalid {
-          val repr = R + head + body
-        }
-      }
-
-      object Expr {
-        case class Empty(head: AST) extends Class with Invalid {
-          val repr = R + head
         }
       }
     }

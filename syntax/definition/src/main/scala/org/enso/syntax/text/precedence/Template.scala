@@ -8,9 +8,9 @@ import org.enso.syntax.text.AST._
 
 import scala.annotation.tailrec
 
-object Mixfix {
+object Template {
 
-  val Mixfix = AST.Mixfix
+  val Template = AST.Template
 
   def exprList(ast: AST): Shifted.List1[AST] = {
     @tailrec
@@ -26,18 +26,18 @@ object Mixfix {
   //////////////////
 
   final case class Registry() {
-    var tree = Tree[AST, List1[Mixfix.Segment.Pattern.Class]]()
+    var tree = Tree[AST, List1[Template.Segment.Pattern.Class]]()
 
     override def toString: String =
       tree.toString
 
-    def insert(t: Mixfix.Definition): Unit =
+    def insert(t: Template.Definition): Unit =
       tree += t.segments.toList.map(_._1) -> t.segments.map(_._2)
   }
 
   object Registry {
-    type T = Tree[AST, List1[Mixfix.Segment.Pattern.Class]]
-    def apply(ts: Mixfix.Definition*): Registry = {
+    type T = Tree[AST, List1[Template.Segment.Pattern.Class]]
+    def apply(ts: Template.Definition*): Registry = {
       val registry = new Registry()
       ts.foreach(registry.insert)
       registry
@@ -78,8 +78,8 @@ object Mixfix {
   /////////////////
 
   class SegmentBuilder(val ast: AST) {
-    import Mixfix.Segment.Pattern
-    import Mixfix._
+    import Template.Segment.Pattern
+    import Template._
 
     var offset: Int         = 0
     var revBody: AST.Stream = List()
@@ -181,16 +181,16 @@ object Mixfix {
   }
 
   class MixfixBuilder(ast: AST) {
-    var context: Context                                    = Context()
-    var mixfix: Option[List1[Mixfix.Segment.Pattern.Class]] = None
-    var current: SegmentBuilder                             = new SegmentBuilder(ast)
-    var revSegs: List[SegmentBuilder]                       = List()
+    var context: Context                                      = Context()
+    var mixfix: Option[List1[Template.Segment.Pattern.Class]] = None
+    var current: SegmentBuilder                               = new SegmentBuilder(ast)
+    var revSegs: List[SegmentBuilder]                         = List()
   }
 
   def partition(t: AST): AST = {
 
     var builder: MixfixBuilder = new MixfixBuilder(Blank)
-    builder.mixfix = Some(List1(Mixfix.Segment.Pattern.Expr, Nil))
+    builder.mixfix = Some(List1(Template.Segment.Pattern.Expr, Nil))
     var builderStack: List[MixfixBuilder] = Nil
 
     def pushBuilder(ast: AST, off: Int): Unit = {
@@ -213,29 +213,29 @@ object Mixfix {
       builder.current.offset = off
     }
 
-    import Mixfix._
+    import Template._
 
     def buildHardcodedRegistry(): Registry = {
-      import Mixfix.Segment.Pattern._
+      import Template.Segment.Pattern._
 
       Registry(
-        Mixfix.Definition(
+        Template.Definition(
           Opr("(") -> Option(Expr),
           Opr(")") -> Empty
         ),
-        Mixfix.Definition(
+        Template.Definition(
           Var("if") -> Expr,
           Var("then") -> Expr
         ),
-        Mixfix.Definition(
+        Template.Definition(
           Var("if") -> Expr,
           Var("then") -> Expr,
           Var("else") -> Expr
         ),
-        Mixfix.Definition(
+        Template.Definition(
           Var("import") -> Expr
         ),
-        Mixfix.Definition(
+        Template.Definition(
           Var("type") -> Token[AST.Ident]
         )
       )
@@ -246,16 +246,12 @@ object Mixfix {
     val root = Context(hardcodedRegistry.tree)
 
     def stripLastSegment(
-      revSegs: List1[Shifted[Mixfix.Segment.Class]]
-    ): (List1[Shifted[Mixfix.Segment.Class]], AST.Stream) = {
-      val lastSeg = revSegs.head
-      val (revSegments, revStream) = lastSeg.el match {
-        case s: Segment.Unsaturated[_] =>
-          val (lastSegEl2, stream) = s.stripped()
-          val lastSeg2             = Shifted(lastSeg.off, lastSegEl2)
-          (List1(lastSeg2, revSegs.tail), stream.toList)
-        case _ => (revSegs, List())
-      }
+      revSegs: List1[Shifted[Template.Segment.Class]]
+    ): (List1[Shifted[Template.Segment.Class]], AST.Stream) = {
+      val lastSeg                = revSegs.head
+      val (lastSegEl, revStream) = lastSeg.el.stripped()
+      val lastSeg2               = Shifted(lastSeg.off, lastSegEl)
+      val revSegments            = List1(lastSeg2, revSegs.tail)
       (revSegments.reverse, revStream.reverse)
     }
 
@@ -276,15 +272,16 @@ object Mixfix {
             val head     = segments.head
             val tail     = segments.tail
             val paths    = builder.context.tree.dropValues()
-            val template = Mixfix.Unmatched(Shifted.List1(head.el, tail), paths)
-            val newTok   = Shifted(head.off, template)
+            val template =
+              Template.Unmatched(Shifted.List1(head.el, tail), paths)
+            val newTok = Shifted(head.off, template)
             List1(newTok)
 
           case Some(ts) =>
             val revSegTps      = ts.reverse
             val revSegs        = revSegBldrs.zipWith(revSegTps)(_.build(_))
             val (segs, stream) = stripLastSegment(revSegs)
-            val template       = Mixfix(Shifted.List1(segs.head.el, segs.tail))
+            val template       = Template(Shifted.List1(segs.head.el, segs.tail))
             val newTok         = Shifted(segs.head.off, template)
 
             stream match {
@@ -315,9 +312,9 @@ object Mixfix {
             close().head match {
               case Shifted(
                   _,
-                  Mixfix(
+                  Template(
                     Shifted.List1(
-                      Mixfix.Segment(
+                      Template.Segment(
                         Segment.Pattern.Expr,
                         _,
                         body
