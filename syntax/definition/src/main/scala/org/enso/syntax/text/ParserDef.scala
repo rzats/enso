@@ -196,8 +196,8 @@ case class ParserDef() extends ParserBase[AST] {
   val IDENT_SFX_CHECK = defineGroup("Identifier Suffix Check")
 
   // format: off
-  NORMAL          rule variable    run reify { onIdent(ast.Var) }
-  NORMAL          rule constructor run reify { onIdent(ast.Cons) }
+  NORMAL          rule variable    run reify { onIdent(ast.Var(_)) }
+  NORMAL          rule constructor run reify { onIdent(ast.Cons(_)) }
   NORMAL          rule "_"         run reify { onIdent(ast.Blank) }
   IDENT_SFX_CHECK rule identErrSfx run reify { onIdentErrSfx() }
   IDENT_SFX_CHECK rule pass        run reify { onNoIdentErrSfx() }

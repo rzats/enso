@@ -21,17 +21,17 @@ object EDSL {
     (m: Mixfix, i: Int, t: AST) => {
 
       def dd() = {
-        val seg = Mixfix.Segment(Mixfix.Segment.Pattern.Empty(), t, ())
+        val seg = Mixfix.Segment(Mixfix.Segment.Pattern.Empty, t, ())
         m.copy(segments = m.segments :+ Shifted(i, seg))
       }
 
       val tail = m.segments.tail
       if (tail.nonEmpty) {
         tail.last.el match {
-          case Mixfix.Segment(Mixfix.Segment.Pattern.Empty(), x, _) => {
+          case Mixfix.Segment(Mixfix.Segment.Pattern.Empty, x, _) => {
             val seg =
               Mixfix.Segment(
-                Mixfix.Segment.Pattern.Expr0(),
+                Mixfix.Segment.Pattern.Option(Mixfix.Segment.Pattern.Expr),
                 x,
                 Some(Shifted(i, t))
               )
@@ -52,16 +52,16 @@ object EDSL {
     (m: Mixfix, i: Int, t: AST) => {
 
       def dd() = {
-        val seg = Mixfix.Segment(Mixfix.Segment.Pattern.Empty(), t, ())
+        val seg = Mixfix.Segment(Mixfix.Segment.Pattern.Empty, t, ())
         m.copy(segments = m.segments :+ Shifted(i, seg))
       }
 
       val tail = m.segments.tail
       if (tail.nonEmpty) {
         tail.last.el match {
-          case Mixfix.Segment(Mixfix.Segment.Pattern.Empty(), x, _) => {
+          case Mixfix.Segment(Mixfix.Segment.Pattern.Empty, x, _) => {
             val seg =
-              Mixfix.Segment(Mixfix.Segment.Pattern.Expr(), x, Shifted(i, t))
+              Mixfix.Segment(Mixfix.Segment.Pattern.Expr, x, Shifted(i, t))
             val tail2 = tail.init :+ Shifted(tail.last.off, seg)
             val segs2 = m.segments.copy(tail = tail2)
             m.copy(segments = segs2)
@@ -140,13 +140,17 @@ object EDSL {
   implicit class MixfixBuilder_AST(t: AST) {
     def _addSeg_(i: Int)(s: AST): Mixfix = Mixfix(
       Shifted.List1(
-        Mixfix.Segment(Mixfix.Segment.Pattern.Expr0(), t, Some(Shifted(i, s))),
+        Mixfix.Segment(
+          Mixfix.Segment.Pattern.Option(Mixfix.Segment.Pattern.Expr),
+          t,
+          Some(Shifted(i, s))
+        ),
         Nil
       )
     )
     def _addSeg1_(i: Int)(s: AST): Mixfix = Mixfix(
       Shifted.List1(
-        Mixfix.Segment(Mixfix.Segment.Pattern.Expr(), t, Shifted(i, s)),
+        Mixfix.Segment(Mixfix.Segment.Pattern.Expr, t, Shifted(i, s)),
         Nil
       )
     )
@@ -183,7 +187,7 @@ object EDSL {
     def unmatched(tree: Tree[AST, Unit]): Mixfix.Unmatched = {
       val segments2 = t.segments.map {
         case Mixfix.Segment(
-            Mixfix.Segment.Pattern.Expr0(),
+            Mixfix.Segment.Pattern.Option(Mixfix.Segment.Pattern.Expr),
             head,
             body: Option[Shifted[AST]]
             ) =>
