@@ -197,7 +197,7 @@ object AST {
 
   object Template {
 
-    final case class Segment[+T: Repr.Of](
+    final case class Segment[T: Repr.Of](
       tp: Segment.Pattern[T],
       head: AST,
       body: T
@@ -241,7 +241,7 @@ object AST {
 
       //// Pattern ////
 
-      sealed abstract class Pattern[+T: Repr.Of] {
+      sealed abstract class Pattern[T: Repr.Of] {
         def resolve(
           head: AST,
           stream: AST.Stream,
@@ -281,22 +281,27 @@ object AST {
         case class Token[T <: AST: C]()(implicit val tag: ClassTag[T])
             extends _1[Shifted[T]]
 
-        trait App[L, R] {
+        trait Seq[L, R] {
           val l: Pattern[L]
           val r: Pattern[R]
         }
         // format: off
-        case class App_11[L: C, R: C](l: _1[L], r: _1[R]) extends _1[(L, R)] with App[L, R]
-        case class App_10[L: C, R: C](l: _1[L], r: _0[R]) extends _1[(L, R)] with App[L, R]
-        case class App_01[L: C, R: C](l: _0[L], r: _1[R]) extends _1[(L, R)] with App[L, R]
-        case class App_00[L: C, R: C](l: _0[L], r: _0[R]) extends _0[(L, R)] with App[L, R]
+        case class Seq_11[L: C, R: C](l: _1[L], r: _1[R]) extends _1[(L, R)] with Seq[L, R]
+        case class Seq_10[L: C, R: C](l: _1[L], r: _0[R]) extends _1[(L, R)] with Seq[L, R]
+        case class Seq_01[L: C, R: C](l: _0[L], r: _1[R]) extends _1[(L, R)] with Seq[L, R]
+        case class Seq_00[L: C, R: C](l: _0[L], r: _0[R]) extends _0[(L, R)] with Seq[L, R]
         // format: on
 
-        object App {
-          def apply[L: C, R: C](l: _1[L], r: _1[R]): App_11[L, R] = App_11(l, r)
-          def apply[L: C, R: C](l: _1[L], r: _0[R]): App_10[L, R] = App_10(l, r)
-          def apply[L: C, R: C](l: _0[L], r: _1[R]): App_01[L, R] = App_01(l, r)
-          def apply[L: C, R: C](l: _0[L], r: _0[R]): App_00[L, R] = App_00(l, r)
+        object Seq {
+          def apply[L: C, R: C](l: _1[L], r: _1[R]): Seq_11[L, R] = Seq_11(l, r)
+          def apply[L: C, R: C](l: _1[L], r: _0[R]): Seq_10[L, R] = Seq_10(l, r)
+          def apply[L: C, R: C](l: _0[L], r: _1[R]): Seq_01[L, R] = Seq_01(l, r)
+          def apply[L: C, R: C](l: _0[L], r: _0[R]): Seq_00[L, R] = Seq_00(l, r)
+
+          def unapply[L, R](
+            t: Seq[L, R]
+          ): scala.Option[(Pattern[L], Pattern[R])] =
+            Some((t.l, t.r))
         }
 
         trait Resolver {

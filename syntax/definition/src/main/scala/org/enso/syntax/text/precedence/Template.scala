@@ -129,10 +129,10 @@ object Template {
       stream: AST.Stream
     ): (List[T], AST.Stream) = {
       @tailrec
-      def go(stream: AST.Stream, out: List[T]): (List[T], AST.Stream) =
+      def go(stream: AST.Stream, revOut: List[T]): (List[T], AST.Stream) =
         resolveStep(p, stream) match {
-          case None    => (out, stream)
-          case Some(t) => go(t.stream, t.elem :: out)
+          case None    => (revOut.reverse, stream)
+          case Some(t) => go(t.stream, t.elem :: revOut)
         }
       go(stream, Nil)
     }
@@ -165,9 +165,25 @@ object Template {
           case _                            => None
         }
       }
-      case _ => ??? // FIXME
+      case seq: Pattern.Seq_00[_, _] => resolveSeq(seq, stream)
+      case seq: Pattern.Seq_01[_, _] => resolveSeq(seq, stream)
+      case seq: Pattern.Seq_10[_, _] => resolveSeq(seq, stream)
+      case seq: Pattern.Seq_11[_, _] => resolveSeq(seq, stream)
 
     }
+
+    def resolveSeq[L, R](
+      seq: Pattern.Seq[L, R],
+      stream: AST.Stream
+    ): Option[ResolveResult[(L, R)]] =
+      resolveStep(seq.l, stream) match {
+        case None => None
+        case Some(t) =>
+          resolveStep(seq.r, t.stream) match {
+            case None    => None
+            case Some(s) => Some(ResolveResult((t.elem, s.elem), s.stream))
+          }
+      }
 
     val resolver: Pattern.Resolver = new Pattern.Resolver {
       def resolve[T](pat: Pattern[T], stream: Stream) = {
@@ -236,7 +252,7 @@ object Template {
           Var("import") -> Expr
         ),
         Template.Definition(
-          Var("type") -> Token[AST.Ident]
+          Var("type") -> Seq(Option(Token[AST.Ident]), List(Token[AST.Var]))
         )
       )
     }
@@ -302,30 +318,23 @@ object Template {
       popBuilder()
       builder.current.revBody = subAst.concat(builder.current.revBody).toList
     }
-
     @tailrec
     def go(input: AST.Stream): AST = {
       input match {
         case Nil =>
           if (builderStack.isEmpty) {
 //            println("End of input (not in stack)")
-            close().head match {
-              case Shifted(
-                  _,
-                  Template(
-                    Shifted.List1(
-                      Template.Segment(
-                        Segment.Pattern.Expr,
-                        _,
-                        body
-                      ),
-                      Nil
-                    )
-                  )
-                  ) =>
-                body
-                  .asInstanceOf[Shifted[AST]]
-                  .el // FIXME: How to do it better?
+            close().head.el match {
+              case Template(segs) =>
+                segs.head match {
+                  case seg: Template.Segment[_] =>
+                    seg.tp match {
+                      case Template.Segment.Pattern.Expr => seg.body.el
+
+                      case _ => throw new Error("Impossible happened.")
+                    }
+                  case _ => throw new Error("Impossible happened.")
+                }
               case _ => throw new Error("Impossible happened.")
             }
 
