@@ -7,16 +7,16 @@ scalaVersion in ThisBuild := "2.12.8"
 scalacOptions in ThisBuild ++= Seq(
   "-deprecation", // Emit warning and location for usages of deprecated APIs.
   "-encoding",
-  "utf-8",                            // Specify character encoding used by source files.
-  "-explaintypes",                    // Explain type errors in more detail.
-  "-feature",                         // Emit warning and location for usages of features that should be imported explicitly.
-  "-language:existentials",           // Existential types (besides wildcard types) can be written and inferred
-  "-language:experimental.macros",    // Allow macro definition (besides implementation and application)
-  "-language:higherKinds",            // Allow higher-kinded types
-  "-language:implicitConversions",    // Allow definition of implicit functions called views
-  "-unchecked",                       // Enable additional warnings where generated code depends on assumptions.
-  "-Xcheckinit",                      // Wrap field accessors to throw an exception on uninitialized access.
-  "-Xfatal-warnings",                 // Fail the compilation if there are any warnings.
+  "utf-8",                         // Specify character encoding used by source files.
+  "-explaintypes",                 // Explain type errors in more detail.
+  "-feature",                      // Emit warning and location for usages of features that should be imported explicitly.
+  "-language:existentials",        // Existential types (besides wildcard types) can be written and inferred
+  "-language:experimental.macros", // Allow macro definition (besides implementation and application)
+  "-language:higherKinds",         // Allow higher-kinded types
+  "-language:implicitConversions", // Allow definition of implicit functions called views
+  "-unchecked",                    // Enable additional warnings where generated code depends on assumptions.
+  "-Xcheckinit",                   // Wrap field accessors to throw an exception on uninitialized access.
+//  "-Xfatal-warnings",                 // Fail the compilation if there are any warnings.
   "-Xfuture",                         // Turn on future language features.
   "-Xlint:adapted-args",              // Warn if an argument list is modified to match the receiver.
   "-Xlint:by-name-right-associative", // By-name parameter of right associative operator.
@@ -111,19 +111,7 @@ lazy val unused = (project in file("lib/unused"))
 lazy val syntax_definition = (project in file("syntax/definition"))
   .settings(
     scalacOptions ++= Seq(
-      "-Xmacro-settings:-logging@org.enso",
-      "-target:jvm-1.8",
-      "-encoding",
-      "UTF-8",
-      "-unchecked",
-      "-deprecation",
-      "-feature",
-      "-Xfuture",
-      "-Ywarn-dead-code",
-      "-Ywarn-numeric-widen",
-      "-Ywarn-value-discard",
-      "-Ywarn-unused",
-      "-Xfatal-warnings"
+      "-Xmacro-settings:-logging@org.enso"
     ),
     libraryDependencies ++= Seq(
       "org.typelevel"      %% "cats-core"     % "1.6.0",

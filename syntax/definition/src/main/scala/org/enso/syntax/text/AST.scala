@@ -496,7 +496,10 @@ object AST {
       val repr = R + block
     }
 
-    final case class Line(elem: Option[AST], offset: Int) extends Symbol {
+    final case class Line(elem: Option[AST], offset: Int)
+        extends Symbol
+        with TTT {
+      type Target[T] = Line.Target[T]
       val repr = R + elem + offset
       def map(f: AST => AST): Line =
         Line(elem.map(f), offset)
@@ -511,23 +514,208 @@ object AST {
         def toOptional: Line =
           Line(Some(elem), offset)
       }
+
+      case class Offset[S](zipper: Zipper[S, Line])
+          extends AST.ReqZipper[Line, Int] {
+        val get = _.offset
+        val set = v => t => t.copy(t.elem, v)
+      }
+
+      implicit class Target[S](val zipper: Zipper[S, Line])
+          extends AST.Target[S, Line] {
+        val offset = target(Offset(zipper))
+      }
+
     }
   }
+
+  trait TTT {
+    type Target[_]
+  }
+
+  import Block.Line
+
+  def target[S, T](
+    zipper: Zipper[S, T]
+  )(implicit ev: ZipperTarget[S, T]): ev.TT =
+    ev.target(zipper)
 
   ////////////////
   //// Module ////
   ////////////////
 
-  import Block.Line
-  final case class Module(firstLine: Line, lines: List[Line]) extends AST {
-    val repr = R + firstLine + lines.map(R + '\n' + _)
+  final case class Module(lines: List1[Line]) extends AST {
+    val repr = R + lines.map(R + '\n' + _)
 
     def map(f: Line => Line): Module =
-      Module(f(firstLine), lines.map(f))
+      Module(lines.map(f))
   }
 
   object Module {
-    def apply(l: Line):            Module = Module(l, Nil)
-    def apply(l: Line, ls: Line*): Module = Module(l, ls.to[List])
+    def apply(l: Line):                 Module = Module(List1(l))
+    def apply(l: Line, ls: Line*):      Module = Module(List1(l, ls.to[List]))
+    def apply(l: Line, ls: List[Line]): Module = Module(List1(l, ls))
+
+    object Zipper {
+      case class Lines() extends AST.ReqZipper[Module, List1[Line]] {
+        val get = _.lines
+        val set = v => _.copy(v)
+      }
+
+      val lines          = target(Lines())
+      def line(idx: Int) = lines.index(idx)
+    }
   }
+
+  trait Target[Begin, End] {
+    val zipper: Zipper[Begin, End]
+  }
+
+  trait ZipperTarget[Begin, End] {
+    type TT
+    def target: Zipper[Begin, End] => TT
+  }
+
+  trait InferredZipperTarget[Begin, End <: TTT]
+      extends ZipperTarget[Begin, End] {
+    type TT = End#Target[Begin]
+  }
+
+  trait TerminatedZipperTarget[Begin, End] extends ZipperTarget[Begin, End] {
+    type TT = Terminator[Begin, End]
+  }
+
+  case class Terminator[S, T](zipper: Zipper[S, T]) extends AST.Target[S, T]
+
+  implicit def knownTarget[S, T <: TTT](
+    implicit ev: Zipper[S, T] => T#Target[S]
+  ): InferredZipperTarget[S, T] = new InferredZipperTarget[S, T] {
+    val target = ev(_)
+  }
+
+  implicit def uuu[S]: TerminatedZipperTarget[S, Int] =
+    unknownTarget[S, Int]
+
+  def unknownTarget[S, T]: TerminatedZipperTarget[S, T] =
+    new TerminatedZipperTarget[S, T] {
+      val target = Terminator(_)
+    }
+
+//  trait Zipper2[Begin, End]
+
+  trait ReqZipper[Begin, End] extends Zipper[Begin, End] {
+    val get: Begin => End
+    val set: End => Begin => Begin
+
+    val getOpt = t => Some(get(t))
+    val setOpt = v => t => Some(set(v)(t))
+  }
+
+  trait Zipper[Begin, End] {
+    val getOpt: Begin => Option[End]          // = t => Some(_get(t))
+    val setOpt: End => Begin => Option[Begin] // = v => t => Some(_set(v)(t))
+
+//    protected val _get: Begin => End = _ =>
+//      throw new Error("Implementation missing")
+//    protected val _set: End => Begin => Begin = _ =>
+//      _ => throw new Error("Implementation missing")
+  }
+  object Zipper {
+    case class Seq[Begin, Trans, End](
+      z1: Zipper[Begin, Trans],
+      z2: Zipper[Trans, End]
+    ) extends Zipper[Begin, End] {
+      val getOpt = (t: Begin) => z1.getOpt(t).flatMap(z2.getOpt)
+      val setOpt = (v: End) =>
+        (t: Begin) =>
+          z1.getOpt(t).flatMap(z2.setOpt(v)(_).flatMap(z1.setOpt(_)(t)))
+    }
+  }
+
+  implicit def ZipperTarget_List1[S, T]
+    : ZipperTarget[S, List1[T]] { type TT = List1Target[S, T] } =
+    new ZipperTarget[S, List1[T]] {
+      type TT = List1Target[S, T]
+      def target = List1Target(_)
+    }
+
+  case class List1Target[S, T](zipper: AST.Zipper[S, List1[T]])
+      extends AST.Target[S, List1[T]] {
+    def index(idx: Int)(implicit ev: ZipperTarget[List1[T], T]): ev.TT = {
+      val zzz: AST.Zipper[List1[T], T] = List1Zipper[S, T](zipper, idx)
+      val tgt                          = target(zzz)
+      tgt
+    }
+  }
+
+  case class List1Zipper[S, T](zipper: AST.Zipper[S, List1[T]], idx: Int)
+      extends AST.Zipper[List1[T], T] {
+    val getOpt = (t: List1[T]) =>
+      idx match {
+        case 0 => Some(t.head)
+        case i => t.tail.lift(i - 1)
+      }
+    val setOpt = (s: T) =>
+      (t: List1[T]) =>
+        idx match {
+          case 0 => Some(t.copy(head = s))
+          case _ =>
+            val i = idx - 1
+            if ((i >= t.tail.length) || (i < 0)) None
+            else {
+              val (front, back) = t.tail.splitAt(i)
+              val tail2         = front ++ (s :: back.tail)
+              Some(List1(t.head, tail2))
+            }
+        }
+  }
+
+  val z1 = Module.Zipper.lines.index(5).offset.zipper
+
+  println("-------------")
+  println(z1)
+
+//  val zip = List1Zipper[Int](5)
+//  val lst = List1(10, List(11, 12, 13, 14, 15))
+//
+//  println("!!!!!!!")
+//  println(zip.set(7, lst))
+
+//
+//  def Zipper_List1[T]: Zipper2[List1[T],T] =
+//    (t:List1[T]):T
+
+  object Test {
+
+    trait ZipperTarget[T] {
+      type Target
+      def target(t: T): Target
+    }
+
+    case class TA() {
+      def foo(): Int = 5
+    }
+
+    case class A()
+    implicit def ZipperTarget_A: ZipperTarget[A] { type Target = TA } =
+      new ZipperTarget[A] {
+        type Target = TA
+        def target(t: A): Target = TA()
+      }
+
+    def target[T](t: T)(
+      implicit ev: ZipperTarget[T]
+    ): ev.Target =
+      ev.target(t)
+
+    val a  = A()
+    val tt = target(a)
+    println(tt)
+    val tt2 = tt.foo()
+
+  }
+
+  println("------------------")
+  println(Test.tt)
+
 }
