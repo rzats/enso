@@ -329,7 +329,8 @@ object Template {
                 segs.head match {
                   case seg: Template.Segment[_] =>
                     seg.tp match {
-                      case Template.Segment.Pattern.Expr => seg.body.el
+                      case Template.Segment.Pattern.Expr =>
+                        seg.body.el
 
                       case _ => throw new Error("Impossible happened.")
                     }

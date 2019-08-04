@@ -16,6 +16,7 @@ class Parser {
   def run(input: String): Result[AST.Module] = engine.run(input).map { module =>
     val module2 = module.asInstanceOf[AST.Module] // FIXME
     Template.run(module2)
+//    module2
   }
 
 }
@@ -35,7 +36,7 @@ object Main extends App {
 
 //  val out = p1.run("t   if  a+b   *    c     then      x")
 //val out = p1.run("if (a then")
-  val out = p1.run("type Maybe  a   b")
+  val out = p1.run("foo\nbar")
   //  val out = p1.run("(a")
 //  val out = p1.run("()")
 //  val out = p1.run("if a then x")

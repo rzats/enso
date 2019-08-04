@@ -53,7 +53,8 @@ scalacOptions in ThisBuild ++= Seq(
   "-Ywarn-unused:patvars",            // Warn if a variable bound in a pattern is unused.
   "-Ywarn-unused:privates",           // Warn if a private member is unused.
   "-Ywarn-value-discard",             // Warn when non-Unit expression results are unused.
-  "-language:implicitConversions"
+  "-language:implicitConversions",
+  "-Xmacro-settings:-logging@org.enso.flexer"
 )
 
 // Benchmark Configuration
@@ -87,7 +88,6 @@ lazy val flexer = (project in file("lib/flexer"))
   .settings(
     version := "0.1",
     scalacOptions += "-language:experimental.macros",
-    scalacOptions += "-Xmacro-settings:-logging@org.enso.flexer",
     scalacOptions -= "-deprecation",    // FIXME
     scalacOptions -= "-Xfatal-warnings" // FIXME
   )
@@ -112,9 +112,6 @@ lazy val unused = (project in file("lib/unused"))
 
 lazy val syntax_definition = (project in file("syntax/definition"))
   .settings(
-    scalacOptions ++= Seq(
-      "-Xmacro-settings:-logging@org.enso"
-    ),
     libraryDependencies ++= Seq(
       "org.typelevel"      %% "cats-core"     % "1.6.0",
       "com.lihaoyi"        %% "pprint"        % "0.5.3",

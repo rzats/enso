@@ -259,7 +259,6 @@ object AST {
                   Segment.Unsaturated(this, head, body, List1(s, ss))
               }
           }
-
       }
 
       object Pattern {
@@ -314,6 +313,7 @@ object AST {
           ): scala.Option[(T, AST.Stream)]
         }
       }
+
     }
 
     case class Unmatched(
@@ -543,9 +543,18 @@ object AST {
   //// Module ////
   ////////////////
 
+  def intersperse[T](t: T, lst: List[T]): List[T] = lst match {
+    case Nil             => Nil
+    case s1 :: s2 :: Nil => s1 :: t :: intersperse(t, s2 :: Nil)
+    case s1 :: Nil       => s1 :: Nil
+  }
+
+  def intersperse2[T](t: T, lst: List1[T]): List1[T] =
+    List1(lst.head, lst.tail.flatMap(s => List(t, s)))
+
   import Block.Line
   final case class Module(lines: List1[Line]) extends AST {
-    val repr = R + lines.map(R + '\n' + _)
+    val repr = R + intersperse2(R + '\n', lines.map(R + _))
 
     def map(f: Line => Line): Module =
       Module(lines.map(f))

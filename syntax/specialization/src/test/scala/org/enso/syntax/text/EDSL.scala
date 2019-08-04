@@ -27,18 +27,24 @@ object EDSL {
 
       val tail = m.segments.tail
       if (tail.nonEmpty) {
+        val sss = tail.last.el
         tail.last.el match {
-          case Template.Segment(Template.Segment.Pattern.Empty, x, _) => {
-            val seg =
-              Template.Segment(
-                Template.Segment.Pattern.Option(Template.Segment.Pattern.Expr),
-                x,
-                Some(Shifted(i, t))
-              )
-            val tail2 = tail.init :+ Shifted(tail.last.off, seg)
-            val segs2 = m.segments.copy(tail = tail2)
-            m.copy(segments = segs2)
-          }
+          case seg: Template.Segment[_] =>
+            seg.tp match {
+              case Template.Segment.Pattern.Empty => {
+                val seg2 =
+                  Template.Segment(
+                    Template.Segment.Pattern
+                      .Option(Template.Segment.Pattern.Expr),
+                    seg.head,
+                    Some(Shifted(i, t))
+                  )
+                val tail2 = tail.init :+ Shifted(tail.last.off, seg2)
+                val segs2 = m.segments.copy(tail = tail2)
+                m.copy(segments = segs2)
+              }
+              case _ => dd()
+            }
           case _ => dd()
         }
       } else dd()
@@ -59,13 +65,21 @@ object EDSL {
       val tail = m.segments.tail
       if (tail.nonEmpty) {
         tail.last.el match {
-          case Template.Segment(Template.Segment.Pattern.Empty, x, _) => {
-            val seg =
-              Template.Segment(Template.Segment.Pattern.Expr, x, Shifted(i, t))
-            val tail2 = tail.init :+ Shifted(tail.last.off, seg)
-            val segs2 = m.segments.copy(tail = tail2)
-            m.copy(segments = segs2)
-          }
+          case seg: Template.Segment[_] =>
+            seg.tp match {
+              case Template.Segment.Pattern.Empty => {
+                val seg2 =
+                  Template.Segment(
+                    Template.Segment.Pattern.Expr,
+                    seg.head,
+                    Shifted(i, t)
+                  )
+                val tail2 = tail.init :+ Shifted(tail.last.off, seg2)
+                val segs2 = m.segments.copy(tail = tail2)
+                m.copy(segments = segs2)
+              }
+              case _ => dd()
+            }
           case _ => dd()
         }
       } else dd()
@@ -88,13 +102,13 @@ object EDSL {
       )
 
     def unmatched(lst: Seq[String]): Template.Unmatched = {
-      val args = lst.map(k => List(fromStringRaw(k)) -> ())
+      val args = lst.map(k => List(fromStringRaw(k)) -> (()))
       val tree = Tree[AST, Unit](args: _*)
       unmatched(tree)
     }
 
     def unmatched_lst(lst: Seq[List[String]]): Template.Unmatched = {
-      val args = lst.map(k => k.map(fromStringRaw) -> ())
+      val args = lst.map(k => k.map(fromStringRaw) -> (()))
       val tree = Tree[AST, Unit](args: _*)
       unmatched(tree)
     }
@@ -186,24 +200,26 @@ object EDSL {
 
     def unmatched(tree: Tree[AST, Unit]): Template.Unmatched = {
       val segments2 = t.segments.map {
-        case Template.Segment(
-            Template.Segment.Pattern.Option(Template.Segment.Pattern.Expr),
-            head,
-            body: Option[Shifted[AST]]
-            ) =>
-          Template.Unmatched.Segment(head, body)
+        case seg: Template.Segment[_] =>
+          seg.tp match {
+            case tp: Template.Segment.Pattern.Option[_] =>
+              tp.el match {
+                case Template.Segment.Pattern.Expr =>
+                  Template.Unmatched.Segment(seg.head, seg.body)
+              }
+          }
       }
       Template.Unmatched(segments2, tree)
     }
 
     def unmatched(lst: Seq[String]): Template.Unmatched = {
-      val args = lst.map(k => List(fromStringRaw(k)) -> ())
+      val args = lst.map(k => List(fromStringRaw(k)) -> (()))
       val tree = Tree[AST, Unit](args: _*)
       unmatched(tree)
     }
 
     def unmatched_lst(lst: Seq[List[String]]): Template.Unmatched = {
-      val args = lst.map(k => k.map(fromStringRaw) -> ())
+      val args = lst.map(k => k.map(fromStringRaw) -> (()))
       val tree = Tree[AST, Unit](args: _*)
       unmatched(tree)
     }

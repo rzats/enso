@@ -29,9 +29,9 @@ class ParserSpec extends FlatSpec with Matchers {
     tt match {
       case Flexer.Success(value, offset) =>
         val module = value.asInstanceOf[Module]
-        module.lines match {
+        module.lines.tail match {
           case Nil =>
-            module.firstLine.elem match {
+            module.lines.head.elem match {
               case None => fail("Empty expression")
               case Some(e) =>
                 assert(e == result)
