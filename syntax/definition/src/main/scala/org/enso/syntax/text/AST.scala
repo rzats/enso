@@ -498,8 +498,8 @@ object AST {
 
     final case class Line(elem: Option[AST], offset: Int)
         extends Symbol
-        with TTT {
-      type Target[T] = Line.Target[T]
+        with Zipper.Has {
+      type Zipper[T] = Line.Zipper[T]
       val repr = R + elem + offset
       def map(f: AST => AST): Line =
         Line(elem.map(f), offset)
@@ -515,35 +515,24 @@ object AST {
           Line(Some(elem), offset)
       }
 
-      case class Offset[S](zipper: Zipper[S, Line])
-          extends AST.ReqZipper[Line, Int] {
+      case class Offset[S](lens: LensOpt[S, Line]) extends AST.Lens[Line, Int] {
         val get = _.offset
         val set = v => t => t.copy(t.elem, v)
       }
 
-      implicit class Target[S](val zipper: Zipper[S, Line])
-          extends AST.Target[S, Line] {
-        val offset = target(Offset(zipper))
+      implicit class Zipper[S](val lens: LensOpt[S, Line])
+          extends AST.Zipper[S, Line] {
+        val offset = zipper(Offset(lens))
       }
 
     }
   }
 
-  trait TTT {
-    type Target[_]
-  }
-
-  import Block.Line
-
-  def target[S, T](
-    zipper: Zipper[S, T]
-  )(implicit ev: ZipperTarget[S, T]): ev.TT =
-    ev.target(zipper)
-
   ////////////////
   //// Module ////
   ////////////////
 
+  import Block.Line
   final case class Module(lines: List1[Line]) extends AST {
     val repr = R + lines.map(R + '\n' + _)
 
@@ -557,53 +546,58 @@ object AST {
     def apply(l: Line, ls: List[Line]): Module = Module(List1(l, ls))
 
     object Zipper {
-      case class Lines() extends AST.ReqZipper[Module, List1[Line]] {
+      case class Lines() extends AST.Lens[Module, List1[Line]] {
         val get = _.lines
         val set = v => _.copy(v)
       }
 
-      val lines          = target(Lines())
+      val lines          = zipper(Lines())
       def line(idx: Int) = lines.index(idx)
     }
   }
 
-  trait Target[Begin, End] {
-    val zipper: Zipper[Begin, End]
-  }
+  ////////////////
+  //// Zipper ////
+  ////////////////
 
-  trait ZipperTarget[Begin, End] {
-    type TT
-    def target: Zipper[Begin, End] => TT
-  }
+  trait Zipper[Begin, End]
+  object Zipper {
+    trait Has { type Zipper[_] }
 
-  trait InferredZipperTarget[Begin, End <: TTT]
-      extends ZipperTarget[Begin, End] {
-    type TT = End#Target[Begin]
-  }
-
-  trait TerminatedZipperTarget[Begin, End] extends ZipperTarget[Begin, End] {
-    type TT = Terminator[Begin, End]
-  }
-
-  case class Terminator[S, T](zipper: Zipper[S, T]) extends AST.Target[S, T]
-
-  implicit def knownTarget[S, T <: TTT](
-    implicit ev: Zipper[S, T] => T#Target[S]
-  ): InferredZipperTarget[S, T] = new InferredZipperTarget[S, T] {
-    val target = ev(_)
-  }
-
-  implicit def uuu[S]: TerminatedZipperTarget[S, Int] =
-    unknownTarget[S, Int]
-
-  def unknownTarget[S, T]: TerminatedZipperTarget[S, T] =
-    new TerminatedZipperTarget[S, T] {
-      val target = Terminator(_)
+    trait Provider[Begin, End] {
+      type Zipper
+      def focus: LensOpt[Begin, End] => Zipper
     }
+    object Provider {
+      trait Inferred[Begin, End <: Has] extends Provider[Begin, End] {
+        type Zipper = End#Zipper[Begin]
 
-//  trait Zipper2[Begin, End]
+      }
+      trait Terminated[Begin, End] extends Provider[Begin, End] {
+        type Zipper = Terminator[Begin, End]
+      }
 
-  trait ReqZipper[Begin, End] extends Zipper[Begin, End] {
+      implicit def default[S, T]: Terminated[S, T] =
+        new Terminated[S, T] {
+          val focus = Terminator(_)
+        }
+    }
+  }
+
+  implicit def inferredZipperProvider[S, T <: Zipper.Has](
+    implicit ev: LensOpt[S, T] => T#Zipper[S]
+  ): Zipper.Provider.Inferred[S, T] = new Zipper.Provider.Inferred[S, T] {
+    val focus = ev(_)
+  }
+
+  def zipper[S, T](
+    lens: LensOpt[S, T]
+  )(implicit ev: Zipper.Provider[S, T]): ev.Zipper =
+    ev.focus(lens)
+
+  case class Terminator[S, T](zipper: LensOpt[S, T]) extends AST.Zipper[S, T]
+
+  trait Lens[Begin, End] extends LensOpt[Begin, End] {
     val get: Begin => End
     val set: End => Begin => Begin
 
@@ -611,45 +605,29 @@ object AST {
     val setOpt = v => t => Some(set(v)(t))
   }
 
-  trait Zipper[Begin, End] {
+  trait LensOpt[Begin, End] {
     val getOpt: Begin => Option[End]          // = t => Some(_get(t))
     val setOpt: End => Begin => Option[Begin] // = v => t => Some(_set(v)(t))
-
-//    protected val _get: Begin => End = _ =>
-//      throw new Error("Implementation missing")
-//    protected val _set: End => Begin => Begin = _ =>
-//      _ => throw new Error("Implementation missing")
-  }
-  object Zipper {
-    case class Seq[Begin, Trans, End](
-      z1: Zipper[Begin, Trans],
-      z2: Zipper[Trans, End]
-    ) extends Zipper[Begin, End] {
-      val getOpt = (t: Begin) => z1.getOpt(t).flatMap(z2.getOpt)
-      val setOpt = (v: End) =>
-        (t: Begin) =>
-          z1.getOpt(t).flatMap(z2.setOpt(v)(_).flatMap(z1.setOpt(_)(t)))
-    }
   }
 
   implicit def ZipperTarget_List1[S, T]
-    : ZipperTarget[S, List1[T]] { type TT = List1Target[S, T] } =
-    new ZipperTarget[S, List1[T]] {
-      type TT = List1Target[S, T]
-      def target = List1Target(_)
+    : Zipper.Provider[S, List1[T]] { type Zipper = List1Target[S, T] } =
+    new Zipper.Provider[S, List1[T]] {
+      type Zipper = List1Target[S, T]
+      def focus = List1Target(_)
     }
 
-  case class List1Target[S, T](zipper: AST.Zipper[S, List1[T]])
-      extends AST.Target[S, List1[T]] {
-    def index(idx: Int)(implicit ev: ZipperTarget[List1[T], T]): ev.TT = {
-      val zzz: AST.Zipper[List1[T], T] = List1Zipper[S, T](zipper, idx)
-      val tgt                          = target(zzz)
-      tgt
+  case class List1Target[S, T](lens: AST.LensOpt[S, List1[T]])
+      extends AST.Zipper[S, List1[T]] {
+    def index(
+      idx: Int
+    )(implicit ev: Zipper.Provider[List1[T], T]): ev.Zipper = {
+      zipper(List1Zipper[S, T](lens, idx))
     }
   }
 
-  case class List1Zipper[S, T](zipper: AST.Zipper[S, List1[T]], idx: Int)
-      extends AST.Zipper[List1[T], T] {
+  case class List1Zipper[S, T](zipper: AST.LensOpt[S, List1[T]], idx: Int)
+      extends AST.LensOpt[List1[T], T] {
     val getOpt = (t: List1[T]) =>
       idx match {
         case 0 => Some(t.head)
