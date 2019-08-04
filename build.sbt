@@ -3,6 +3,8 @@ import sbt.Keys.scalacOptions
 organization := "org.enso"
 scalaVersion in ThisBuild := "2.12.8"
 
+val monocleVersion = "1.6.0"
+
 // Compiler Options
 scalacOptions in ThisBuild ++= Seq(
   "-deprecation", // Emit warning and location for usages of deprecated APIs.
@@ -121,6 +123,11 @@ lazy val syntax_definition = (project in file("syntax/definition"))
       "org.feijoas"        %% "mango"         % "0.14",
       "org.apache.commons" % "commons-text"   % "1.6",
       "org.scalameta"      %% "scalameta"     % "4.2.0"
+    ),
+    libraryDependencies ++= Seq(
+      "com.github.julien-truffaut" %% "monocle-core"  % monocleVersion,
+      "com.github.julien-truffaut" %% "monocle-macro" % monocleVersion,
+      "com.github.julien-truffaut" %% "monocle-law"   % monocleVersion % "test"
     ),
     resolvers ++= Seq(
       "Sonatype OSS Snapshots" at
