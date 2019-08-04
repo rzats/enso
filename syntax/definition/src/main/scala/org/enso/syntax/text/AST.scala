@@ -639,19 +639,6 @@ object AST {
     val setOpt = (s: T) =>
       (t: List1[T]) =>
         idx match {
-          case 0 => Some(t.copy(head = s))
-          case _ =>
-            val i = idx - 1
-            if ((i >= t.tail.length) || (i < 0)) None
-            else {
-              val (front, back) = t.tail.splitAt(i)
-              val tail2         = front ++ (s :: back.tail)
-              Some(List1(t.head, tail2))
-            }
-        }
-    val setOpt2 = (s: T) =>
-      (t: List1[T]) =>
-        idx match {
           case 0 => t.copy(head = s)
           case _ =>
             val i = idx - 1
@@ -662,7 +649,7 @@ object AST {
               List1(t.head, tail2)
             }
         }
-    val path = monocle.Optional[List1[T], T](getOpt)(setOpt2)
+    val path = monocle.Optional[List1[T], T](getOpt)(setOpt)
   }
 
   val z1 = Module.Zipper.lines.index(5).offset.zipper
