@@ -409,6 +409,9 @@ object AST {
         if (rawSegments.isEmpty) return rawSegments
         var last = rawSegments.head
         for (s <- rawSegments.tail :+ EOL()) yield (last, s) match {
+          case (EOL(_), segment) if indent == 0 =>
+            last = segment
+            EOL()
           case (EOL(_), Plain(txt))
               if txt.takeWhile(_ == ' ').length >= indent =>
             last = Plain(txt.drop(indent))
@@ -466,10 +469,6 @@ object AST {
 
       final case class EOL(validIndent: Boolean = true) extends Raw {
         val repr = "\n"
-      }
-
-      final case class Line(segments: List[Segment]) extends Raw {
-        val repr = R + segments + "\n"
       }
 
       final case class Interpolation(value: Option[AST]) extends Interpolated {

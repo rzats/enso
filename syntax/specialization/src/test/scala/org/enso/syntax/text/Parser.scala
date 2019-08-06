@@ -6,6 +6,7 @@ import org.enso.syntax.text.ast.Helpers._
 import org.enso.{flexer => Flexer}
 import org.scalatest._
 import EDSL._
+import org.enso.syntax.text.AST.Text.Segment.{EOL, Plain}
 
 class ParserSpec extends FlatSpec with Matchers {
 
@@ -199,6 +200,9 @@ class ParserSpec extends FlatSpec with Matchers {
   "\"\"\"a\"\"\""  ?= Text.Raw(Text.Quote.Triple, "a")
   "\"\"\"a\""      ?= Text.Unclosed(Text.Raw(Text.Quote.Triple, "a\""))
   "\"\"\"a\"\""    ?= Text.Unclosed(Text.Raw(Text.Quote.Triple, "a\"\""))
+
+
+  "'''\nX\n Y\n'''" ?= Text.MultiLine(0, '\'', Text.Quote.Triple, List(EOL(), Plain("X"), EOL(), Plain(" Y"), EOL()))
 
   //// Escapes ////
 
