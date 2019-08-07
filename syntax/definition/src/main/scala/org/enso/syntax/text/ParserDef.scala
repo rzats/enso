@@ -82,6 +82,7 @@ case class ParserDef() extends ParserBase[AST] {
   var astStack: List[Option[AST]] = Nil
 
   final def pushAST(): Unit = logger.trace {
+    logger.log(s"Pushed: $result")
     astStack +:= result
     result = None
   }
@@ -89,6 +90,7 @@ case class ParserDef() extends ParserBase[AST] {
   final def popAST(): Unit = logger.trace {
     result   = astStack.head
     astStack = astStack.tail
+    logger.log(s"New result: $result")
   }
 
   final def app(fn: String => AST): Unit =
@@ -152,7 +154,7 @@ case class ParserDef() extends ParserBase[AST] {
 
   var identBody: Option[Ident] = None
 
-  final def onIdent(cons: String => Ident): Unit = logger.trace {
+  final def onIdent(cons: String => Ident): Unit = logger.trace_ {
     onIdent(cons(currentMatch))
   }
 
@@ -183,7 +185,7 @@ case class ParserDef() extends ParserBase[AST] {
   }
 
   final def finalizeIdent(): Unit = logger.trace {
-    if (identBody != None) submitIdent()
+    if (identBody.isDefined) submitIdent()
   }
 
   val indentChar: Pattern  = alphaNum | '_'
@@ -597,6 +599,7 @@ case class ParserDef() extends ParserBase[AST] {
 
   final def buildBlock(): Block = logger.trace {
     submitLine()
+    println(result)
     withSome(currentBlock.firstLine) { firstLine =>
       Block(
         currentBlock.indent,
@@ -662,18 +665,19 @@ case class ParserDef() extends ParserBase[AST] {
   }
 
   final def onEmptyLine(): Unit = logger.trace {
-    onWhitespace(-1)
     pushEmptyLine()
+    onWhitespace(-1)
   }
 
   final def onEOFLine(): Unit = logger.trace {
+    submitLine()
     endGroup()
     onWhitespace(-1)
     onEOF()
   }
 
   final def onNewLine(): Unit = logger.trace {
-    submitLine()
+//    submitLine()
     beginGroup(NEWLINE)
   }
 

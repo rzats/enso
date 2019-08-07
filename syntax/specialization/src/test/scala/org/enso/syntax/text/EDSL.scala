@@ -3,6 +3,7 @@ package org.enso.syntax.text
 import org.enso.data.Tree
 import org.enso.syntax.text.AST._
 import org.enso.data.Shifted
+import org.enso.syntax.text.ast.Repr.R
 
 object EDSL {
 
@@ -21,7 +22,7 @@ object EDSL {
     (m: Template, i: Int, t: AST) => {
 
       def dd() = {
-        val seg = Template.Segment(Template.Segment.Pattern.Empty, t, ())
+        val seg = Template.Segment(t, Template.Segment.Body.Empty)
         m.copy(segments = m.segments :+ Shifted(i, seg))
       }
 
@@ -29,15 +30,13 @@ object EDSL {
       if (tail.nonEmpty) {
         val sss = tail.last.el
         tail.last.el match {
-          case seg: Template.Segment[_] =>
-            seg.tp match {
-              case Template.Segment.Pattern.Empty => {
+          case seg: Template.Segment =>
+            seg.body match {
+              case Template.Segment.Body.Empty => {
                 val seg2 =
                   Template.Segment(
-                    Template.Segment.Pattern
-                      .Option(Template.Segment.Pattern.Expr),
                     seg.head,
-                    Some(Shifted(i, t))
+                    Template.Segment.Body.Expr(Shifted(i, t))
                   )
                 val tail2 = tail.init :+ Shifted(tail.last.off, seg2)
                 val segs2 = m.segments.copy(tail = tail2)
@@ -58,21 +57,20 @@ object EDSL {
     (m: Template, i: Int, t: AST) => {
 
       def dd() = {
-        val seg = Template.Segment(Template.Segment.Pattern.Empty, t, ())
+        val seg = Template.Segment(t, Template.Segment.Body.Empty)
         m.copy(segments = m.segments :+ Shifted(i, seg))
       }
 
       val tail = m.segments.tail
       if (tail.nonEmpty) {
         tail.last.el match {
-          case seg: Template.Segment[_] =>
-            seg.tp match {
-              case Template.Segment.Pattern.Empty => {
+          case seg: Template.Segment =>
+            seg.body match {
+              case Template.Segment.Body.Empty => {
                 val seg2 =
                   Template.Segment(
-                    Template.Segment.Pattern.Expr,
                     seg.head,
-                    Shifted(i, t)
+                    Template.Segment.Body.Expr(Shifted(i, t))
                   )
                 val tail2 = tail.init :+ Shifted(tail.last.off, seg2)
                 val segs2 = m.segments.copy(tail = tail2)
@@ -89,7 +87,7 @@ object EDSL {
 
     def empty(i: Int, s: String) = Template(
       Shifted.List1(
-        Template.Segment(fromStringRaw(t), None),
+        Template.Segment(fromStringRaw(t), Template.Segment.Body.Empty),
         List(Shifted(i, Template.Segment(fromStringRaw(s))))
       )
     )
@@ -155,16 +153,15 @@ object EDSL {
     def _addSeg_(i: Int)(s: AST): Template = Template(
       Shifted.List1(
         Template.Segment(
-          Template.Segment.Pattern.Option(Template.Segment.Pattern.Expr),
           t,
-          Some(Shifted(i, s))
+          Template.Segment.Body.Expr(Shifted(i, s))
         ),
         Nil
       )
     )
     def _addSeg1_(i: Int)(s: AST): Template = Template(
       Shifted.List1(
-        Template.Segment(Template.Segment.Pattern.Expr, t, Shifted(i, s)),
+        Template.Segment(t, Template.Segment.Body.Expr(Shifted(i, s))),
         Nil
       )
     )
@@ -200,13 +197,11 @@ object EDSL {
 
     def unmatched(tree: Tree[AST, Unit]): Template.Unmatched = {
       val segments2 = t.segments.map {
-        case seg: Template.Segment[_] =>
-          seg.tp match {
-            case tp: Template.Segment.Pattern.Option[_] =>
-              tp.el match {
-                case Template.Segment.Pattern.Expr =>
-                  Template.Unmatched.Segment(seg.head, seg.body)
-              }
+        case seg: Template.Segment =>
+          seg.body match {
+            case Template.Segment.Body.Expr(e) =>
+              Template.Unmatched.Segment(seg.head, Some(e))
+            case _ => Template.Unmatched.Segment(seg.head, None)
           }
       }
       Template.Unmatched(segments2, tree)

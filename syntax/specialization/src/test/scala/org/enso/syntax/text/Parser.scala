@@ -135,10 +135,11 @@ class ParserSpec extends FlatSpec with Matchers {
   //// Layout ////
   ////////////////
 
-  ""      ?= Module(Block.Line())
-  "\n"    ?= Module(Block.Line(), Block.Line())
-  "  \n " ?= Module(Block.Line(2), Block.Line(1))
-  "\n\n"  ?= Module(Block.Line(), Block.Line(), Block.Line())
+  ""           ?= Module(Block.Line())
+  "\n"         ?= Module(Block.Line(), Block.Line())
+  "  \n "      ?= Module(Block.Line(2), Block.Line(1))
+  "\n\n"       ?= Module(Block.Line(), Block.Line(), Block.Line())
+  " \n  \n   " ?= Module(Block.Line(1), Block.Line(2), Block.Line(3))
   //  test module "(a)"  ==? GroupBegin  :: Var("a") :: GroupEnd
   //  test module "[a]"  ==? ListBegin   :: Var("a") :: ListEnd
   //  test module "{a}"  ==? RecordBegin :: Var("a") :: RecordEnd

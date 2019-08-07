@@ -74,7 +74,7 @@ object Repr {
   ///// Repr.Of Type Class ////
   /////////////////////////////
 
-  trait Of[T] {
+  trait Of[-T] {
     def of(a: T): Repr
   }
   def of[T](t: T)(implicit ev: Repr.Of[T]) = ev.of(t)
@@ -110,5 +110,11 @@ object Repr {
     t => R + t.head + t.tail
 
   implicit def _inst_11[T: Repr.Of]: Repr.Of[Option[T]] =
+    _.map(Repr.of(_)).getOrElse(R)
+
+  implicit def _inst_12: Repr.Of[None.type] =
+    _ => R
+
+  implicit def _inst_13[T: Repr.Of]: Repr.Of[Some[T]] =
     _.map(Repr.of(_)).getOrElse(R)
 }

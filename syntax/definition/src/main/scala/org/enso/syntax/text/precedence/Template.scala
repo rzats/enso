@@ -5,6 +5,8 @@ import org.enso.data.Shifted
 import org.enso.data.Tree
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST._
+import org.enso.syntax.text.AST.Template.Segment.Pattern
+import org.enso.syntax.text.AST.Template.Segment.Body
 
 import scala.annotation.tailrec
 
@@ -26,7 +28,7 @@ object Template {
   //////////////////
 
   final case class Registry() {
-    var tree = Tree[AST, List1[Template.Segment.Pattern.Class]]()
+    var tree = Tree[AST, List1[Template.Segment.Pattern]]()
 
     override def toString: String =
       tree.toString
@@ -36,7 +38,7 @@ object Template {
   }
 
   object Registry {
-    type T = Tree[AST, List1[Template.Segment.Pattern.Class]]
+    type T = Tree[AST, List1[Template.Segment.Pattern]]
     def apply(ts: Template.Definition*): Registry = {
       val registry = new Registry()
       ts.foreach(registry.insert)
@@ -96,40 +98,39 @@ object Template {
       }
 
     def build(
-      tp: Pattern.Class
-//      last: Boolean
+      tp: Pattern
     ): Shifted[Segment.Class] = {
-//      resolveStep(tp, revBody.reverse)
 
-      val segment2 = tp.resolve(ast, revBody.reverse, resolver)
+      val stream = revBody.reverse
 
-//      val optAst = buildAST()
-//      val segment = tp match {
-//        case t: Pattern.Empty =>
-//          val empty = Segment(t, ast, ())
-//          if (last) empty
-//          else optAst.map(Segment.Empty.NonEmpty(ast, _)).getOrElse(empty)
-//        case t: Pattern.Expr0 =>
-//          Segment(t, ast, optAst)
-//        case t: Pattern.Expr =>
-//          optAst.map(Segment(t, ast, _)).getOrElse(Segment.Expr.Empty(ast))
-//      }
+      val segment2 = resolveStep(tp, stream) match {
+        case None => Segment.Unmatched(tp, ast, stream)
+        case Some(rr) =>
+          rr.stream match {
+            case Nil     => Segment(ast, rr.elem)
+            case s :: ss => Segment.Unsaturated(ast, rr.elem, List1(s, ss))
+          }
+      }
+
       Shifted(offset, segment2)
     }
 
-    case class ResolveResult[+T](elem: T, stream: AST.Stream) {
-      def map[S](fn: T => S): ResolveResult[S] =
-        ResolveResult(fn(elem), stream)
-    }
-    implicit def tupleToResolveResult[T](t: (T, AST.Stream)): ResolveResult[T] =
-      ResolveResult(t._1, t._2)
+    //////////////////////////////////////
 
-    def resolveList[T](
-      p: Pattern[T],
+    case class ResolveResult(
+      elem: Body,
       stream: AST.Stream
-    ): (List[T], AST.Stream) = {
+    )
+
+    def resolveList(
+      p: Pattern,
+      stream: AST.Stream
+    ): (List[Body], AST.Stream) = {
       @tailrec
-      def go(stream: AST.Stream, revOut: List[T]): (List[T], AST.Stream) =
+      def go(
+        stream: AST.Stream,
+        revOut: List[Body]
+      ): (List[Body], AST.Stream) =
         resolveStep(p, stream) match {
           case None    => (revOut.reverse, stream)
           case Some(t) => go(t.stream, t.elem :: revOut)
@@ -137,76 +138,111 @@ object Template {
       go(stream, Nil)
     }
 
-    def resolveStep[T](
-      p: Pattern[T],
-      stream: AST.Stream
-    ): Option[ResolveResult[T]] = p match {
-      case Pattern.Empty =>
-        Some(((), stream))
-      case Pattern.Expr =>
-        buildAST2(stream.reverse).map((_, Nil))
-      case Pattern.Option(p2) =>
-        val fail = (None, stream)
-        Some(resolveStep(p2, stream).map(_.map(Some(_))).getOrElse(fail))
-      case Pattern.List(p2) =>
-        val (lst, stream2) = resolveList(p2, stream)
-        Some((lst, stream2))
+    def resolveStep(p: Pattern, stream: AST.Stream): Option[ResolveResult] = {
+      import Body._
 
-      case Pattern.List1(p2) =>
-        resolveStep(p2, stream) match {
-          case None => None
-          case Some(t) =>
-            val (tail, stream2) = resolveList(p2, t.stream)
-            Some((List1(t.elem, tail), stream2))
-        }
-      case p: Pattern.Token[_] => {
-        stream match {
-          case Shifted(off, p.tag(t)) :: ss => Some((Shifted(off, t), ss))
-          case _                            => None
-        }
-      }
-      case seq: Pattern.Seq_00[_, _] => resolveSeq(seq, stream)
-      case seq: Pattern.Seq_01[_, _] => resolveSeq(seq, stream)
-      case seq: Pattern.Seq_10[_, _] => resolveSeq(seq, stream)
-      case seq: Pattern.Seq_11[_, _] => resolveSeq(seq, stream)
+      def ret(result: Body, stream: AST.Stream) =
+        Some(ResolveResult(result, stream))
 
-    }
+      p match {
 
-    def resolveSeq[L, R](
-      seq: Pattern.Seq[L, R],
-      stream: AST.Stream
-    ): Option[ResolveResult[(L, R)]] =
-      resolveStep(seq.l, stream) match {
-        case None => None
-        case Some(t) =>
-          resolveStep(seq.r, t.stream) match {
-            case None    => None
-            case Some(s) => Some(ResolveResult((t.elem, s.elem), s.stream))
+        case Pattern.Skip =>
+          ret(Empty, stream)
+
+        case Pattern.AnyToken =>
+          buildAST2(stream.reverse).flatMap(e => ret(Expr(e), Nil))
+
+        case Pattern.Opt(p2) =>
+          resolveStep(p2, stream) match {
+            case None    => ret(Empty, stream)
+            case Some(r) => Some(r)
           }
-      }
 
-    val resolver: Pattern.Resolver = new Pattern.Resolver {
-      def resolve[T](pat: Pattern[T], stream: Stream) = {
-        val t = resolveStep(pat, stream)
-        t.map(s => (s.elem, s.stream))
+        case Pattern.Many(p2) =>
+          resolveStep(p2, stream) match {
+            case None => None
+            case Some(t) =>
+              val (tail, stream2) = resolveList(p2, t.stream)
+              ret(Body.Many(t.elem, tail), stream2)
+          }
+
+        case Pattern.Seq(pats) =>
+          @tailrec
+          def go(
+            inp: scala.List[Pattern],
+            revOut: scala.List[Body],
+            stream: AST.Stream
+          ): scala.Option[ResolveResult] = inp match {
+            case Nil =>
+              revOut.reverse match {
+                case Nil     => None
+                case s :: ss => ret(Many(s, ss), stream)
+              }
+            case p :: ps =>
+              resolveStep(p, stream) match {
+                case None    => None
+                case Some(r) => go(ps, r.elem :: revOut, r.stream)
+              }
+          }
+          go(pats.head :: pats.tail, scala.List(), stream)
+
+        case Pattern.Alt(pats) =>
+          @tailrec
+          def go(
+            inp: scala.List[Pattern],
+            stream: AST.Stream
+          ): scala.Option[ResolveResult] = inp match {
+            case Nil => None
+            case p :: ps =>
+              resolveStep(p, stream) match {
+                case None    => go(ps, stream)
+                case Some(r) => ret(r.elem, r.stream)
+              }
+          }
+          go(pats.head :: pats.tail, stream)
+
+        case p: Pattern.Token[_] =>
+          stream match {
+            case Shifted(off, p.tag(t)) :: ss => ret(Expr(Shifted(off, t)), ss)
+            case _                            => None
+          }
+
+        //      case seq: Pattern.Seq_00[_, _] => resolveSeq(seq, stream)
+        //      case seq: Pattern.Seq_01[_, _] => resolveSeq(seq, stream)
+        //      case seq: Pattern.Seq_10[_, _] => resolveSeq(seq, stream)
+        //      case seq: Pattern.Seq_11[_, _] => resolveSeq(seq, stream)
+        //
       }
     }
+
+//    def resolveSeq[L, R](
+//      seq: Pattern.Seq[L, R],
+//      stream: AST.Stream
+//    ): Option[ResolveResult[(L, R)]] =
+//      resolveStep(seq.l, stream) match {
+//        case None => None
+//        case Some(t) =>
+//          resolveStep(seq.r, t.stream) match {
+//            case None    => None
+//            case Some(s) => Some(ResolveResult((t.elem, s.elem), s.stream))
+//          }
+//      }
 
     override def toString: String =
       s"SegmentBuilder($offset, $revBody)"
   }
 
   class MixfixBuilder(ast: AST) {
-    var context: Context                                      = Context()
-    var mixfix: Option[List1[Template.Segment.Pattern.Class]] = None
-    var current: SegmentBuilder                               = new SegmentBuilder(ast)
-    var revSegs: List[SegmentBuilder]                         = List()
+    var context: Context                                = Context()
+    var mixfix: Option[List1[Template.Segment.Pattern]] = None
+    var current: SegmentBuilder                         = new SegmentBuilder(ast)
+    var revSegs: List[SegmentBuilder]                   = List()
   }
 
   def partition(t: AST): AST = {
 
     var builder: MixfixBuilder = new MixfixBuilder(Blank)
-    builder.mixfix = Some(List1(Template.Segment.Pattern.Expr, Nil))
+    builder.mixfix = Some(List1(Template.Segment.Pattern.AnyToken, Nil))
     var builderStack: List[MixfixBuilder] = Nil
 
     def pushBuilder(ast: AST, off: Int): Unit = {
@@ -232,27 +268,32 @@ object Template {
     import Template._
 
     def buildHardcodedRegistry(): Registry = {
+      import Template._
       import Template.Segment.Pattern._
 
       Registry(
-        Template.Definition(
-          Opr("(") -> Option(Expr),
-          Opr(")") -> Empty
+        Definition(
+          Opr("(") -> Opt(AnyToken),
+          Opr(")") -> Skip
         ),
-        Template.Definition(
-          Var("if") -> Expr,
-          Var("then") -> Expr
+        Definition(
+          Var("if") -> AnyToken,
+          Var("then") -> AnyToken
         ),
-        Template.Definition(
-          Var("if") -> Expr,
-          Var("then") -> Expr,
-          Var("else") -> Expr
+        Definition(
+          Var("if") -> AnyToken,
+          Var("then") -> AnyToken,
+          Var("else") -> AnyToken
         ),
-        Template.Definition(
-          Var("import") -> Expr
+        Definition(
+          Var("import") -> AnyToken
         ),
-        Template.Definition(
-          Var("type") -> Seq(Option(Token[AST.Ident]), List(Token[AST.Var]))
+        Definition(
+          Var("type") -> Seq(
+            Opt(Token[AST.Cons]),
+            Opt(Many(Token[AST.Var])),
+            Opt(Token[AST.Block])
+          )
         )
       )
     }
@@ -265,7 +306,7 @@ object Template {
       revSegs: List1[Shifted[Template.Segment.Class]]
     ): (List1[Shifted[Template.Segment.Class]], AST.Stream) = {
       val lastSeg                = revSegs.head
-      val (lastSegEl, revStream) = lastSeg.el.stripped()
+      val (lastSegEl, revStream) = lastSeg.el.strip()
       val lastSeg2               = Shifted(lastSeg.off, lastSegEl)
       val revSegments            = List1(lastSeg2, revSegs.tail)
       (revSegments.reverse, revStream.reverse)
@@ -318,8 +359,18 @@ object Template {
       popBuilder()
       builder.current.revBody = subAst.concat(builder.current.revBody).toList
     }
+
+//    def extractRoot[T](seg: Template.Segment[T]): Unit = {
+//      import Template.Segment._
+//      import Template.Segment
+//      seg match {
+//        case Segment(Pattern.Option(Pattern.Expr), _, body) => body.get
+//      }
+//    }
+
     @tailrec
     def go(input: AST.Stream): AST = {
+      import Template.Segment.Body._
       input match {
         case Nil =>
           if (builderStack.isEmpty) {
@@ -327,10 +378,9 @@ object Template {
             close().head.el match {
               case Template(segs) =>
                 segs.head match {
-                  case seg: Template.Segment[_] =>
-                    seg.tp match {
-                      case Template.Segment.Pattern.Expr =>
-                        seg.body.el
+                  case seg: Template.Segment =>
+                    seg.body match {
+                      case Expr(t) => t.el
 
                       case _ => throw new Error("Impossible happened.")
                     }

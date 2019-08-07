@@ -16,7 +16,6 @@ class Parser {
   def run(input: String): Result[AST.Module] = engine.run(input).map { module =>
     val module2 = module.asInstanceOf[AST.Module] // FIXME
     Template.run(module2)
-//    module2
   }
 
 }
@@ -36,7 +35,9 @@ object Main extends App {
 
 //  val out = p1.run("t   if  a+b   *    c     then      x")
 //val out = p1.run("if (a then")
-  val out = p1.run("foo\nbar")
+//val out = p1.run("foo\n bar")
+  val inp = "type a b c X"
+  val out = p1.run(inp)
   //  val out = p1.run("(a")
 //  val out = p1.run("()")
 //  val out = p1.run("if a then x")
@@ -45,10 +46,12 @@ object Main extends App {
 //  val out = p1.run("(t  if a then b)")
 //  val out = p1.run("x ( a  b   )")
 
-//  out match {
-//    case Success(v, _) =>
-//      pprint(v)
-//      println(v.show())
-//  }
+  out match {
+    case flexer.Success(v, _) =>
+      println(v.show() == inp)
+      println("------")
+      println(v.show().replace(' ', '.'))
+      println("------")
+  }
   println()
 }

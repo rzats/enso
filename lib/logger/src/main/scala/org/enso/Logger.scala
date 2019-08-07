@@ -18,6 +18,9 @@ class Logger {
   def trace[T](body: => T): T =
     macro targetRedirect[T]
 
+  def trace_[T](body: => T): T =
+    macro targetRedirect_[T]
+
   def _log(msg: String): Unit =
     println("|  " * nesting + msg)
 
@@ -30,6 +33,14 @@ class Logger {
   }
 
   def _trace[T](msg: String)(body: => T): T = {
+    _log(msg)
+    beginGroup()
+    val out = body
+    endGroup()
+    out
+  }
+
+  def _trace_[T](msg: String)(body: => T): T = {
     _log(msg)
     beginGroup()
     val out = body
@@ -73,6 +84,25 @@ object Logger {
             val msg =
               if (lst2.isEmpty) List(q"$ownerName")
               else List(q"$ownerName + $lst2.toString().drop(4)")
+            Apply(Apply(TypeApply(Select(base, newName), tp), msg), body2)
+          case _ => throw new Error("Unsupported shape")
+        }
+      case _ => throw new Error("Unsupported shape")
+    }
+    if (checkEnabled(c)) c.Expr(q"$target") else c.Expr(q"$body")
+  }
+
+  def targetRedirect_[R: c.WeakTypeTag](c: Context)(body: c.Tree): c.Expr[R] = {
+    import c.universe._
+    val target = c.macroApplication match {
+      case Apply(TypeApply(Select(base, name), tp), body2) =>
+        val newName   = TermName("_" + name.toString)
+        val owner     = c.internal.enclosingOwner.asMethod
+        val ownerName = Literal(Constant(owner.name.toString))
+        owner.paramLists match {
+          case lst :: _ =>
+            val lst2 = lst.map(x => q"$x")
+            val msg  = List(q"$ownerName")
             Apply(Apply(TypeApply(Select(base, newName), tp), msg), body2)
           case _ => throw new Error("Unsupported shape")
         }
