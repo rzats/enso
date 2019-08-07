@@ -242,6 +242,8 @@ object AST {
         case class Alt(pats: List1[Pattern]) extends Pattern
         case class Token[T <: AST]()(implicit val tag: ClassTag[T])
             extends Pattern
+        case class NotToken[T <: AST]()(implicit val tag: ClassTag[T])
+            extends Pattern
 
         object Seq {
           def apply(pat: Pattern, pats: Pattern*): Seq =
@@ -253,15 +255,23 @@ object AST {
 
       sealed trait Body extends Repr.Provider
       object Body {
-        private type B = Body
 
-        case object Empty                extends B { val repr = R }
-        case class Expr(t: Shifted[AST]) extends B { val repr = Repr.of(t) }
-        case class Many(t: List1[B])     extends B { val repr = Repr.of(t) }
+        case object Empty                extends Body { val repr = R }
+        case class Expr(t: Shifted[AST]) extends Body { val repr = Repr.of(t) }
+        case class Many(t: List1[Body])  extends Body { val repr = Repr.of(t) }
+
+        case class Warning(msg: String, t: Body) extends Body {
+          val repr = Repr.of(t)
+        }
+
+        case class Error(msg: String, t: Body) extends Body {
+          val repr = Repr.of(t)
+        }
 
         object Many {
-          def apply(head: B, tail: List[B]): Many = Many(List1(head, tail))
-          def apply(head: B):                Many = Many(List1(head))
+          def apply(head: Body, tail: List[Body]): Many =
+            Many(List1(head, tail))
+          def apply(head: Body): Many = Many(List1(head))
         }
       }
     }
@@ -278,19 +288,31 @@ object AST {
       }
     }
 
-    case class Definition(segments: List1[Definition.Input])
+    case class Definition(
+      segments: Definition.Input
+    )
     object Definition {
-      type Scoped       = Template.Scoped[Definition]
-      type Restricted   = Template.Restricted[Definition]
-      type Unrestricted = Template.Unrestricted[Definition]
-      type Input        = (AST, Segment.Pattern)
-      def apply(t1: Input, ts: Input*): Definition =
-        Definition(List1(t1, ts.to[List]))
-    }
+      type Input     = List1[Segment]
+      type Segment   = (AST, Segment.Pattern)
+      type Finalizer = List[Option[Segment.Body]] => List[Option[Segment.Body]]
 
-    sealed trait Scoped[T] { val el: T }
-    case class Restricted[T](el: T)   extends Scoped[T]
-    case class Unrestricted[T](el: T) extends Scoped[T]
+      case class Spec[T](scope: Scope, finalizer: Finalizer, el: T) {
+        def map[S](fn: T => S): Spec[S] = Spec(scope, finalizer, fn(el))
+      }
+
+      def Restricted[T](t1: Segment, ts: Segment*)(fin: Finalizer = a => a) =
+        Spec(Scope.Restricted, fin, Definition(List1(t1, ts: _*)))
+
+      def Unrestricted[T](t1: Segment, ts: Segment*)(fin: Finalizer = a => a) =
+        Spec(Scope.Unrestricted, fin, Definition(List1(t1, ts: _*)))
+
+      trait Scope
+      object Scope {
+        case object Restricted   extends Scope
+        case object Unrestricted extends Scope
+      }
+
+    }
   }
 
   ////////////////

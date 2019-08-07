@@ -2,10 +2,9 @@ package org.enso.syntax.text.precedence
 
 import org.enso.data.List1
 import org.enso.data.Shifted
-import org.enso.data.Tree
+import org.enso.data
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST._
-import org.enso.syntax.text.AST.Template.Segment.Pattern
 import org.enso.syntax.text.AST.Template.Segment.Body
 
 import scala.annotation.tailrec
@@ -13,6 +12,7 @@ import scala.annotation.tailrec
 object Template {
 
   val Template = AST.Template
+  import Template._
 
   def exprList(ast: AST): Shifted.List1[AST] = {
     @tailrec
@@ -28,18 +28,19 @@ object Template {
   //////////////////
 
   final case class Registry() {
-    var tree = Tree[AST, List1[Template.Segment.Pattern]]()
+    var tree: Registry.Tree = data.Tree()
 
     override def toString: String =
       tree.toString
 
-    def insert(t: Template.Definition): Unit =
-      tree += t.segments.toList.map(_._1) -> t.segments.map(_._2)
+    def insert(t: Definition.Spec[Definition]): Unit =
+      tree += t.el.segments.toList.map(_._1) -> t.map(_.segments.map(_._2))
   }
 
   object Registry {
-    type T = Tree[AST, List1[Template.Segment.Pattern]]
-    def apply(ts: Template.Definition*): Registry = {
+    type Value = Definition.Spec[List1[Template.Segment.Pattern]]
+    type Tree  = data.Tree[AST, Value]
+    def apply(ts: Definition.Spec[Definition]*): Registry = {
       val registry = new Registry()
       ts.foreach(registry.insert)
       registry
@@ -50,8 +51,8 @@ object Template {
   //// Context ////
   /////////////////
 
-  case class Context(tree: Registry.T, parent: Option[Context]) {
-    def get(t: AST): Option[Registry.T] =
+  case class Context(tree: Registry.Tree, parent: Option[Context]) {
+    def get(t: AST): Option[Registry.Tree] =
       tree.get(t)
 
     def isEmpty: Boolean =
@@ -71,8 +72,8 @@ object Template {
   }
 
   object Context {
-    def apply():                 Context = Context(Tree(), None)
-    def apply(tree: Registry.T): Context = Context(tree, None)
+    def apply():                    Context = Context(data.Tree(), None)
+    def apply(tree: Registry.Tree): Context = Context(tree, None)
   }
 
   /////////////////
@@ -97,12 +98,8 @@ object Template {
         case seg1 :: seg2_ => Some(Operator.rebuild(List1(seg1, seg2_)))
       }
 
-    def build(
-      tp: Pattern
-    ): Shifted[Segment.Class] = {
-
+    def build(tp: Pattern): Shifted[Segment.Class] = {
       val stream = revBody.reverse
-
       val segment2 = resolveStep(tp, stream) match {
         case None => Segment.Unmatched(tp, ast, stream)
         case Some(rr) =>
@@ -207,6 +204,12 @@ object Template {
             case _                            => None
           }
 
+        case p: Pattern.NotToken[_] =>
+          stream match {
+            case Shifted(off, p.tag(t)) :: ss => None
+            case Shifted(off, t) :: ss        => ret(Expr(Shifted(off, t)), ss)
+          }
+
         //      case seq: Pattern.Seq_00[_, _] => resolveSeq(seq, stream)
         //      case seq: Pattern.Seq_01[_, _] => resolveSeq(seq, stream)
         //      case seq: Pattern.Seq_10[_, _] => resolveSeq(seq, stream)
@@ -233,16 +236,22 @@ object Template {
   }
 
   class MixfixBuilder(ast: AST) {
-    var context: Context                                = Context()
-    var mixfix: Option[List1[Template.Segment.Pattern]] = None
-    var current: SegmentBuilder                         = new SegmentBuilder(ast)
-    var revSegs: List[SegmentBuilder]                   = List()
+    var context: Context               = Context()
+    var mixfix: Option[Registry.Value] = None
+    var current: SegmentBuilder        = new SegmentBuilder(ast)
+    var revSegs: List[SegmentBuilder]  = List()
   }
 
   def partition(t: AST): AST = {
 
     var builder: MixfixBuilder = new MixfixBuilder(Blank)
-    builder.mixfix = Some(List1(Template.Segment.Pattern.AnyToken, Nil))
+    builder.mixfix = Some(
+      Definition.Spec(
+        Definition.Scope.Unrestricted,
+        a => a,
+        List1(Template.Segment.Pattern.AnyToken, Nil)
+      )
+    )
     var builderStack: List[MixfixBuilder] = Nil
 
     def pushBuilder(ast: AST, off: Int): Unit = {
@@ -268,33 +277,32 @@ object Template {
     import Template._
 
     def buildHardcodedRegistry(): Registry = {
-      import Template._
       import Template.Segment.Pattern._
 
       Registry(
-        Definition(
+        Definition.Restricted(
           Opr("(") -> Opt(AnyToken),
           Opr(")") -> Skip
-        ),
-        Definition(
+        )(),
+        Definition.Unrestricted(
           Var("if") -> AnyToken,
           Var("then") -> AnyToken
-        ),
-        Definition(
+        )(),
+        Definition.Unrestricted(
           Var("if") -> AnyToken,
           Var("then") -> AnyToken,
           Var("else") -> AnyToken
-        ),
-        Definition(
+        )(),
+        Definition.Unrestricted(
           Var("import") -> AnyToken
-        ),
-        Definition(
+        )(),
+        Definition.Unrestricted(
           Var("type") -> Seq(
             Opt(Token[AST.Cons]),
-            Opt(Many(Token[AST.Var])),
+            Opt(Many(NotToken[AST.Block])),
             Opt(Token[AST.Block])
           )
-        )
+        )()
       )
     }
 
@@ -303,13 +311,18 @@ object Template {
     val root = Context(hardcodedRegistry.tree)
 
     def stripLastSegment(
+      scope: Definition.Scope,
       revSegs: List1[Shifted[Template.Segment.Class]]
     ): (List1[Shifted[Template.Segment.Class]], AST.Stream) = {
-      val lastSeg                = revSegs.head
-      val (lastSegEl, revStream) = lastSeg.el.strip()
-      val lastSeg2               = Shifted(lastSeg.off, lastSegEl)
-      val revSegments            = List1(lastSeg2, revSegs.tail)
-      (revSegments.reverse, revStream.reverse)
+      if (scope == Definition.Scope.Unrestricted)
+        (revSegs.reverse, List())
+      else {
+        val lastSeg                = revSegs.head
+        val (lastSegEl, revStream) = lastSeg.el.strip()
+        val lastSeg2               = Shifted(lastSeg.off, lastSegEl)
+        val revSegments            = List1(lastSeg2, revSegs.tail)
+        (revSegments.reverse, revStream.reverse)
+      }
     }
 
     def close(): AST.Stream1 = {
@@ -329,17 +342,22 @@ object Template {
             val head     = segments.head
             val tail     = segments.tail
             val paths    = builder.context.tree.dropValues()
-            val template =
-              Template.Unmatched(Shifted.List1(head.el, tail), paths)
-            val newTok = Shifted(head.off, template)
+            val template = Unmatched(Shifted.List1(head.el, tail), paths)
+            val newTok   = Shifted(head.off, template)
             List1(newTok)
 
           case Some(ts) =>
-            val revSegTps      = ts.reverse
+            val revSegTps      = ts.el.reverse
             val revSegs        = revSegBldrs.zipWith(revSegTps)(_.build(_))
-            val (segs, stream) = stripLastSegment(revSegs)
-            val template       = Template(Shifted.List1(segs.head.el, segs.tail))
-            val newTok         = Shifted(segs.head.off, template)
+            val (segs, stream) = stripLastSegment(ts.scope, revSegs)
+            println("------------------")
+            val segsx = segs.toList.map {
+              case Shifted(off, Segment(head, body)) => Some(body)
+              case _                                 => None
+            }
+            println(segs)
+            val template = Template(Shifted.List1(segs.head.el, segs.tail))
+            val newTok   = Shifted(segs.head.off, template)
 
             stream match {
               case Nil     => List1(newTok)
@@ -382,11 +400,11 @@ object Template {
                     seg.body match {
                       case Expr(t) => t.el
 
-                      case _ => throw new Error("Impossible happened.")
+                      case _ => throw new scala.Error("Impossible happened.")
                     }
-                  case _ => throw new Error("Impossible happened.")
+                  case _ => throw new scala.Error("Impossible happened.")
                 }
-              case _ => throw new Error("Impossible happened.")
+              case _ => throw new scala.Error("Impossible happened.")
             }
 
           } else {

@@ -79,10 +79,6 @@ object Repr {
   }
   def of[T](t: T)(implicit ev: Repr.Of[T]) = ev.of(t)
 
-  trait Of2[T] {
-    def of(a: T): Repr
-  }
-
   ///// Instances ////
 
   implicit def _inst_0: Repr.Of[Unit]   = _ => Repr.Empty()
