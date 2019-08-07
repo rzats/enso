@@ -208,6 +208,7 @@ object Template {
           stream match {
             case Shifted(off, p.tag(t)) :: ss => None
             case Shifted(off, t) :: ss        => ret(Expr(Shifted(off, t)), ss)
+            case _                            => None
           }
 
         //      case seq: Pattern.Seq_00[_, _] => resolveSeq(seq, stream)
@@ -247,8 +248,11 @@ object Template {
     var builder: MixfixBuilder = new MixfixBuilder(Blank)
     builder.mixfix = Some(
       Definition.Spec(
-        Definition.Scope.Unrestricted,
-        a => a,
+        Definition.Scope.Unrestricted, {
+          case Shifted(_, Segment(_, Body.Expr(e))) :: Nil => e.el
+
+          case _ => throw new scala.Error("Impossible happened")
+        },
         List1(Template.Segment.Pattern.AnyToken, Nil)
       )
     )
@@ -277,32 +281,68 @@ object Template {
     import Template._
 
     def buildHardcodedRegistry(): Registry = {
-      import Template.Segment.Pattern._
+      import Template.Segment.Pattern
+      import Body._
+
+      val groupDef = Definition.Restricted(
+        Opr("(") -> Pattern.Opt(Pattern.AnyToken),
+        Opr(")") -> Pattern.Skip
+      ) {
+        case List(s1, s2) =>
+          (s1.el.body, s2.el.body) match {
+            case (Expr(e), Empty) => AST.Group(e.off, e.el, s2.off)
+            case (Empty, Empty)   => AST.Group(s2.off)
+          }
+      }
+
+      val typeDef = Definition.Unrestricted(
+        Var("type") -> Pattern.Seq(
+          Pattern.Opt(Pattern.Token[AST.Cons]),
+          Pattern.Opt(Pattern.Many(Pattern.NotToken[AST.Block])),
+          Pattern.Opt(Pattern.Token[AST.Block])
+        )
+      ) {
+        case List(s1) =>
+          s1.el.body match {
+            case Many(lst) =>
+              val name = lst.head
+              val args = lst.tail(0)
+              val body = lst.tail(1)
+              val nameAST: Shifted[AST] = name match {
+                case Expr(n @ Shifted(_, AST.Cons(_))) => n
+                case Expr(n @ Shifted(_, AST.Var(_)))  => n
+                case _                                 => ???
+              }
+              val argsAST: List[Shifted[AST]] = args match {
+                case Many(lst) =>
+                  lst.toList.map {
+                    case Expr(n @ Shifted(_, AST.Var(_))) => n
+                    case _                                => ???
+                  }
+                case Empty => List()
+              }
+              val bodyAST: Shifted[AST] = body match {
+                case Expr(n @ Shifted(_, _: AST.Block)) => n
+              }
+              AST.Type(nameAST, argsAST, bodyAST)
+          }
+      }
 
       Registry(
-        Definition.Restricted(
-          Opr("(") -> Opt(AnyToken),
-          Opr(")") -> Skip
-        )(),
+        groupDef,
         Definition.Unrestricted(
-          Var("if") -> AnyToken,
-          Var("then") -> AnyToken
-        )(),
+          Var("if") -> Pattern.AnyToken,
+          Var("then") -> Pattern.AnyToken
+        )(a => ???),
         Definition.Unrestricted(
-          Var("if") -> AnyToken,
-          Var("then") -> AnyToken,
-          Var("else") -> AnyToken
-        )(),
+          Var("if") -> Pattern.AnyToken,
+          Var("then") -> Pattern.AnyToken,
+          Var("else") -> Pattern.AnyToken
+        )(a => ???),
         Definition.Unrestricted(
-          Var("import") -> AnyToken
-        )(),
-        Definition.Unrestricted(
-          Var("type") -> Seq(
-            Opt(Token[AST.Cons]),
-            Opt(Many(NotToken[AST.Block])),
-            Opt(Token[AST.Block])
-          )
-        )()
+          Var("import") -> Pattern.AnyToken
+        )(a => ???),
+        typeDef
       )
     }
 
@@ -336,13 +376,13 @@ object Template {
           case None =>
             val revSegs = revSegBldrs.map { segBldr =>
               val optAst = segBldr.buildAST()
-              Shifted(segBldr.offset, Unmatched.Segment(segBldr.ast, optAst))
+              Shifted(segBldr.offset, Partial.Segment(segBldr.ast, optAst))
             }
             val segments = revSegs.reverse
             val head     = segments.head
             val tail     = segments.tail
             val paths    = builder.context.tree.dropValues()
-            val template = Unmatched(Shifted.List1(head.el, tail), paths)
+            val template = Partial(Shifted.List1(head.el, tail), paths)
             val newTok   = Shifted(head.off, template)
             List1(newTok)
 
@@ -350,14 +390,18 @@ object Template {
             val revSegTps      = ts.el.reverse
             val revSegs        = revSegBldrs.zipWith(revSegTps)(_.build(_))
             val (segs, stream) = stripLastSegment(ts.scope, revSegs)
-            println("------------------")
-            val segsx = segs.toList.map {
-              case Shifted(off, Segment(head, body)) => Some(body)
-              case _                                 => None
+            val shiftSegs      = Shifted.List1(segs.head.el, segs.tail)
+            val optValSegs     = Template.validate2(shiftSegs)
+
+            val template = optValSegs match {
+              case None => Template.Invalid(shiftSegs)
+              case Some(validSegs) =>
+                val validSegsList = validSegs.toList()
+                val ast           = ts.finalizer(validSegsList)
+                Template.Valid(validSegs, ast)
             }
-            println(segs)
-            val template = Template(Shifted.List1(segs.head.el, segs.tail))
-            val newTok   = Shifted(segs.head.off, template)
+
+            val newTok = Shifted(segs.head.off, template)
 
             stream match {
               case Nil     => List1(newTok)
@@ -394,16 +438,8 @@ object Template {
           if (builderStack.isEmpty) {
 //            println("End of input (not in stack)")
             close().head.el match {
-              case Template(segs) =>
-                segs.head match {
-                  case seg: Template.Segment =>
-                    seg.body match {
-                      case Expr(t) => t.el
+              case Template.Valid(segs, ast) => ast
 
-                      case _ => throw new scala.Error("Impossible happened.")
-                    }
-                  case _ => throw new scala.Error("Impossible happened.")
-                }
               case _ => throw new scala.Error("Impossible happened.")
             }
 

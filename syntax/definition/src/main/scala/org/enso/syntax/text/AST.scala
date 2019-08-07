@@ -9,12 +9,13 @@ import org.enso.syntax.text.ast.opr
 import org.enso.syntax.text.ast.text
 
 import scala.reflect.ClassTag
-import monocle.Lens
 import monocle.macros.GenLens
+import cats.implicits._
 
 sealed trait AST extends AST.Symbol
 
 object AST {
+  type SAST = Shifted[AST]
 
   ///////////////////
   //// Reexports ////
@@ -29,8 +30,8 @@ object AST {
   //// Definition ////
   ////////////////////
 
-  type Stream  = List[Shifted[AST]]
-  type Stream1 = List1[Shifted[AST]]
+  type Stream  = List[SAST]
+  type Stream1 = List1[SAST]
 
   trait Symbol extends Repr.Provider {
     def span:   Int    = repr.span
@@ -67,6 +68,10 @@ object AST {
 
   final case class Unrecognized(str: String) extends Invalid {
     val repr = str
+  }
+
+  final case class Unexpected(stream: Stream) extends Invalid {
+    val repr = R + stream
   }
 
   /////////////////
@@ -188,16 +193,61 @@ object AST {
     }
   }
 
+  ///////////////
+  //// Group ////
+  ///////////////
+
+  final case class Group(leftOff: Int, body: Option[AST], rightOff: Int)
+      extends AST {
+    val repr = R + leftOff + body + rightOff
+  }
+  object Group {
+    def apply():         Group = Group(0)
+    def apply(off: Int): Group = Group(off, None, 0)
+    def apply(leftOff: Int, body: AST, rightOff: Int): Group =
+      Group(leftOff, Some(body), rightOff)
+  }
+
   ////////////////
   //// Mixfix ////
   ////////////////
 
-  final case class Template(segments: Shifted.List1[Template.Segment.Class])
-      extends AST {
-    val repr = R + segments.map(_.repr)
-  }
-
+  trait Template extends AST
   object Template {
+
+    final case class Valid(segments: Shifted.List1[Segment], ast: AST)
+        extends Template {
+      val repr = R + segments.map(_.repr)
+    }
+
+    final case class Invalid(segments: Shifted.List1[Segment.Class])
+        extends Template {
+      val repr = R + segments.map(_.repr)
+    }
+
+    case class Partial(
+      segments: Shifted.List1[Partial.Segment],
+      possiblePaths: Tree[AST, Unit]
+    ) extends AST {
+      val repr = R + segments.map(_.repr)
+    }
+    object Partial {
+      case class Segment(head: AST, body: Option[SAST]) extends Symbol {
+        val repr = R + head + body
+      }
+    }
+
+    def validate2(
+      segments: Shifted.List1[Segment.Class]
+    ): Option[Shifted.List1[Segment]] = {
+      val segList = segments.toList().map { t =>
+        t.el match {
+          case s: Segment => Some(Shifted(t.off, s))
+          case _          => None
+        }
+      }
+      segList.sequence.map(s => Shifted.List1.fromListDropHead(s))
+    }
 
     final case class Segment(head: AST, body: Segment.Body)
         extends Segment.Class {
@@ -256,9 +306,9 @@ object AST {
       sealed trait Body extends Repr.Provider
       object Body {
 
-        case object Empty                extends Body { val repr = R }
-        case class Expr(t: Shifted[AST]) extends Body { val repr = Repr.of(t) }
-        case class Many(t: List1[Body])  extends Body { val repr = Repr.of(t) }
+        case object Empty               extends Body { val repr = R }
+        case class Expr(t: SAST)        extends Body { val repr = Repr.of(t) }
+        case class Many(t: List1[Body]) extends Body { val repr = Repr.of(t) }
 
         case class Warning(msg: String, t: Body) extends Body {
           val repr = Repr.of(t)
@@ -276,34 +326,22 @@ object AST {
       }
     }
 
-    case class Unmatched(
-      segments: Shifted.List1[Unmatched.Segment],
-      possiblePaths: Tree[AST, Unit]
-    ) extends AST {
-      val repr = R + segments.map(_.repr)
-    }
-    object Unmatched {
-      case class Segment(head: AST, body: Option[Shifted[AST]]) extends Symbol {
-        val repr = R + head + body
-      }
-    }
-
     case class Definition(
       segments: Definition.Input
     )
     object Definition {
       type Input     = List1[Segment]
       type Segment   = (AST, Segment.Pattern)
-      type Finalizer = List[Option[Segment.Body]] => List[Option[Segment.Body]]
+      type Finalizer = List[Shifted[Template.Segment]] => AST
 
       case class Spec[T](scope: Scope, finalizer: Finalizer, el: T) {
         def map[S](fn: T => S): Spec[S] = Spec(scope, finalizer, fn(el))
       }
 
-      def Restricted[T](t1: Segment, ts: Segment*)(fin: Finalizer = a => a) =
+      def Restricted[T](t1: Segment, ts: Segment*)(fin: Finalizer) =
         Spec(Scope.Restricted, fin, Definition(List1(t1, ts: _*)))
 
-      def Unrestricted[T](t1: Segment, ts: Segment*)(fin: Finalizer = a => a) =
+      def Unrestricted[T](t1: Segment, ts: Segment*)(fin: Finalizer) =
         Spec(Scope.Unrestricted, fin, Definition(List1(t1, ts: _*)))
 
       trait Scope
@@ -516,6 +554,14 @@ object AST {
       }
 
     }
+  }
+
+  //////////////
+  //// Type ////
+  //////////////
+
+  case class Type(name: SAST, args: List[SAST], body: SAST) extends AST {
+    val repr = "type" + name + args + body
   }
 
   ////////////////
