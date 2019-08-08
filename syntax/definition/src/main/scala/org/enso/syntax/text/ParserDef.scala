@@ -345,7 +345,7 @@ case class ParserDef() extends ParserBase[AST] {
     if (singleLine || currentBlock.firstLine.isDefined || result.isDefined)
       txt
     else {
-      val segs = Text.MultiLine.preprocess(currentBlock.indent, txt.segments)
+      val segs = Text.MultiLine.stripOffset(currentBlock.indent, txt.segments)
       Text.MultiLine(currentBlock.indent, txt.quoteChar, txt.quote, segs)
     }
   }

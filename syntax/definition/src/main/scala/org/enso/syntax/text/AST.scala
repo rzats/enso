@@ -405,16 +405,16 @@ object AST {
 
     object MultiLine {
 
-      def preprocess(indent: Int, rawSegments: List[Segment]): List[Segment] = {
+      def stripOffset(offset: Int, rawSegments: List[Segment]): List[Segment] = {
         if (rawSegments.isEmpty) return rawSegments
         var last = rawSegments.head
         for (s <- rawSegments.tail :+ EOL()) yield (last, s) match {
-          case (EOL(_), segment) if indent == 0 =>
+          case (EOL(_), segment) if offset == 0 =>
             last = segment
             EOL()
           case (EOL(_), Plain(txt))
-              if txt.takeWhile(_ == ' ').length >= indent =>
-            last = Plain(txt.drop(indent))
+              if txt.takeWhile(_ == ' ').length >= offset =>
+            last = Plain(txt.drop(offset))
             EOL()
           case (EOL(_), segment) =>
             last = segment
