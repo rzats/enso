@@ -81,6 +81,7 @@ trait ParserBase[T] {
     var state: Int = 0
     matchBuilder.setLength(0)
     while(state >= 0) {
+      logger.log(s"Step: group $group, state $state, code $codePoint, char $currentChar")
       state = nextState(state)
       if(state >= 0) {
         matchBuilder.append(buffer(offset))
@@ -126,8 +127,10 @@ trait ParserBase[T] {
       else String.valueOf(ch)
   }
   def getNextCodePoint(): Int = {
-    if (offset >= bufferLen)
+    if (offset >= bufferLen) {
+      logger.log("Next char ETX.")
       return etxChar.toInt
+    }
     offset += charSize
     if (offset > BUFFERSIZE - UTFCHARSIZE) {
       val keepChars = Math.max(charsToLastRule, currentMatch.length) + UTFCHARSIZE - 1
@@ -143,9 +146,8 @@ trait ParserBase[T] {
     Character.codePointAt(buffer, offset)
   }
 
-  final def rewind(): Unit = logger.trace {
+  final def rewind(): Unit =
     rewind(currentMatch.length)
-  }
 
   final def rewind(i: Int): Unit = logger.trace {
     offset -= i
@@ -164,6 +166,8 @@ trait ParserBase[T] {
     rule()
     -1
   }
+
+  final def currentChar: String = new String(Character.toChars(codePoint))
 
   final def charSize: Int =
     if (offset >= 0 && buffer(offset).isHighSurrogate) 2 else 1
