@@ -102,7 +102,7 @@ case class CodeGen(dfa: DFA) {
   def generate(i: Int): Tree = {
     def states =
       dfa.links.indices.toList
-        .map(st => (st, TermName(s"group${i}_state$st")))
+        .map(st => (st, TermName(s"state${i}_${st}")))
 
     val cases = states.map {
       case (st, fun) => cq"$st => $fun"
@@ -111,20 +111,8 @@ case class CodeGen(dfa: DFA) {
       case (st, fun) => q"def $fun = {${generateCaseBody(st)}}"
     }
     q"""
-      def ${TermName(s"runGroup$i")}(): Int = {
-        var state: Int = 0
-        matchBuilder.setLength(0)
-        while(state >= 0) {
-          state = ${Match(q"state", cases)}
-          if(state >= 0) {
-            matchBuilder.append(buffer(offset))
-            if (buffer(offset).isHighSurrogate)
-              matchBuilder.append(buffer(offset+1))
-            codePoint = getNextCodePoint()
-          }
-        }
-        state
-      }
+      groups($i) = ${TermName(s"nextState$i")}
+      def ${TermName(s"nextState$i")}(state: Int): Int = ${Match(q"state", cases)}
       ..$bodies
     """
   }

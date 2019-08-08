@@ -5,7 +5,7 @@ import org.enso.flexer.ParserBase._
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.reflect.runtime.universe.Tree
+import scala.reflect.runtime.universe.showCode
 
 trait ParserBase[T] {
   import java.io.Reader
@@ -26,7 +26,7 @@ trait ParserBase[T] {
   var matchBuilder = new StringBuilder(64)
   var currentMatch = ""
 
-  val groups: Array[() => Int] = new Array(256)
+  val groups: Array[Int=>Int] = new Array(256)
 
   val logger = new Logger()
 
@@ -38,10 +38,9 @@ trait ParserBase[T] {
     val numRead = sreader.read(buffer, 1, buffer.length - 1)
     bufferLen = if (numRead == -1) 1 else numRead + 1
     codePoint = getNextCodePoint()
-    var r = -1
-    while (r == -1) {
-      r = step()
-    }
+
+    var r = -1; while (r == -1)
+      r = runGroup()
 
     getResult() match {
       case None => InternalFailure(offset)
@@ -77,8 +76,20 @@ trait ParserBase[T] {
     logger.log(s"End ${groupLabel(oldGroup)}, back to ${groupLabel(group)}")
   }
 
-  def step(): Int = {
-    groups(group)()
+  def runGroup(): Int = {
+    val nextState = groups(group)
+    var state: Int = 0
+    matchBuilder.setLength(0)
+    while(state >= 0) {
+      state = nextState(state)
+      if(state >= 0) {
+        matchBuilder.append(buffer(offset))
+        if (buffer(offset).isHighSurrogate)
+          matchBuilder.append(buffer(offset+1))
+        codePoint = getNextCodePoint()
+      }
+    }
+    state
   }
 
   def initialize(): Unit
@@ -157,7 +168,8 @@ trait ParserBase[T] {
   final def charSize: Int =
     if (offset >= 0 && buffer(offset).isHighSurrogate) 2 else 1
 
-  def debugGeneratedOutput: Seq[Tree] = groupsx.map(_.generate())
+  def debugGeneratedOutput: String =
+    groupsx.map(g => showCode(g.generate())).mkString("\n")
 }
 
 object ParserBase {

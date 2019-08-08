@@ -23,6 +23,8 @@ class Parser {
 object Parser {
   type Result[T] = flexer.Result[T]
   private val newEngine = compile(text.ParserDef)
+
+  def run(input: String): Result[AST.Module] = new Parser().run(input)
 }
 
 //////////////
