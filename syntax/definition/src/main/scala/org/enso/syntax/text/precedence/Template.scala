@@ -17,8 +17,8 @@ object Template {
   def exprList(ast: AST): Shifted.List1[AST] = {
     @tailrec
     def go(ast: AST, out: AST.Stream): Shifted.List1[AST] = ast match {
-      case App(fn, off, arg) => go(fn, Shifted(off, arg) :: out)
-      case ast               => Shifted.List1(ast, out)
+      case _App(fn, off, arg) => go(fn, Shifted(off, arg) :: out)
+      case ast                => Shifted.List1(ast, out)
     }
     go(ast, List())
   }
@@ -210,27 +210,8 @@ object Template {
             case Shifted(off, t) :: ss        => ret(Expr(Shifted(off, t)), ss)
             case _                            => None
           }
-
-        //      case seq: Pattern.Seq_00[_, _] => resolveSeq(seq, stream)
-        //      case seq: Pattern.Seq_01[_, _] => resolveSeq(seq, stream)
-        //      case seq: Pattern.Seq_10[_, _] => resolveSeq(seq, stream)
-        //      case seq: Pattern.Seq_11[_, _] => resolveSeq(seq, stream)
-        //
       }
     }
-
-//    def resolveSeq[L, R](
-//      seq: Pattern.Seq[L, R],
-//      stream: AST.Stream
-//    ): Option[ResolveResult[(L, R)]] =
-//      resolveStep(seq.l, stream) match {
-//        case None => None
-//        case Some(t) =>
-//          resolveStep(seq.r, t.stream) match {
-//            case None    => None
-//            case Some(s) => Some(ResolveResult((t.elem, s.elem), s.stream))
-//          }
-//      }
 
     override def toString: String =
       s"SegmentBuilder($offset, $revBody)"
@@ -308,16 +289,17 @@ object Template {
               val name = lst.head
               val args = lst.tail(0)
               val body = lst.tail(1)
-              val nameAST: Shifted[AST] = name match {
-                case Expr(n @ Shifted(_, AST.Cons(_))) => n
-                case Expr(n @ Shifted(_, AST.Var(_)))  => n
-                case _                                 => ???
+              val nameAST = name match {
+                case Expr(Shifted(off, t @ AST.Cons(_))) =>
+                  Some(Shifted(off, t))
+                case _ =>
+                  throw new Error("Impossible")
               }
-              val argsAST: List[Shifted[AST]] = args match {
+              val argsAST: List[Shifted[Var]] = args match {
                 case Many(lst) =>
                   lst.toList.map {
-                    case Expr(n @ Shifted(_, AST.Var(_))) => n
-                    case _                                => ???
+                    case Expr(Shifted(off, t @ AST.Var(_))) => Shifted(off, t)
+                    case _                                  => ???
                   }
                 case Empty => List()
               }
@@ -391,7 +373,7 @@ object Template {
             val revSegs        = revSegBldrs.zipWith(revSegTps)(_.build(_))
             val (segs, stream) = stripLastSegment(ts.scope, revSegs)
             val shiftSegs      = Shifted.List1(segs.head.el, segs.tail)
-            val optValSegs     = Template.validate2(shiftSegs)
+            val optValSegs     = Template.validate(shiftSegs)
 
             val template = optValSegs match {
               case None => Template.Invalid(shiftSegs)

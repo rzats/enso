@@ -3,6 +3,7 @@ package org.enso.syntax.text
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.data.Tree
+import org.enso.data.Compare._
 import org.enso.syntax.text.ast.Repr.R
 import org.enso.syntax.text.ast.Repr
 import org.enso.syntax.text.ast.opr
@@ -148,48 +149,74 @@ object AST {
   //// App ////
   /////////////
 
-  final case class App(func: AST, off: Int, arg: AST) extends AST {
+  type App = _App
+  final case class _App(func: AST, off: Int = 1, arg: AST) extends AST {
     val repr = R + func + off + arg
   }
-
   object App {
-    def apply(func: AST, arg: AST):         App   = App(func, 1, arg)
+    def apply(func: AST, off: Int = 1, arg: AST): App = _App(func, off, arg)
+    def apply(func: AST, arg: AST): App = App(func, 1, arg)
+    def unapply(t: App) = Some((t.func, t.arg))
+
     def apply(op: Opr, off: Int, arg: AST): Right = Right(op, off, arg)
     def apply(op: Opr, arg: AST):           Right = Right(op, 1, arg)
-    def apply(arg: AST, off: Int, op: Opr): Left  = Left(arg, off, op)
-    def apply(arg: AST, op: Opr):           Left  = Left(arg, 1, op)
-    def apply(
-      leftArg: AST,
-      leftOff: Int,
-      opr: Opr,
-      rightOff: Int,
-      rightArg: AST
-    ): Infix = Infix(leftArg, leftOff, opr, rightOff, rightArg)
 
-    final case class Left(arg: AST, off: Int, op: Opr) extends AST {
+    def apply(arg: AST, off: Int, op: Opr): Left = Left(arg, off, op)
+    def apply(arg: AST, op: Opr):           Left = Left(arg, op)
+
+    def apply(larg: AST, loff: Int, opr: Opr, roff: Int, rarg: AST): Infix =
+      Infix(larg, loff, opr, roff, rarg)
+    def apply(larg: AST, opr: Opr, roff: Int, rarg: AST): Infix =
+      Infix(larg, opr, roff, rarg)
+    def apply(larg: AST, loff: Int, opr: Opr, rarg: AST): Infix =
+      Infix(larg, loff, opr, rarg)
+    def apply(larg: AST, opr: Opr, rarg: AST): Infix =
+      Infix(larg, opr, rarg)
+
+    type Left = _Left
+    final case class _Left(arg: AST, off: Int = 0, op: Opr) extends AST {
       val repr = R + arg + off + op
     }
+    object Left {
+      def apply(arg: AST, off: Int, op: Opr): Left = _Left(arg, off, op)
+      def apply(arg: AST, op: Opr):           Left = Left(arg, 1, op)
+      def unapply(t: Left) = Some((t.arg, t.op))
+    }
 
-    final case class Right(opr: Opr, off: Int, arg: AST) extends AST {
+    type Right = _Right
+    final case class _Right(opr: Opr, off: Int = 0, arg: AST) extends AST {
       val repr = R + opr + off + arg
+    }
+    object Right {
+      def apply(opr: Opr, off: Int, arg: AST): Right = _Right(opr, off, arg)
+      def apply(opr: Opr, arg: AST):           Right = Right(opr, 1, arg)
+      def unapply(t: Right) = Some((t.opr, t.arg))
     }
 
     final case class Sides(opr: Opr) extends AST {
       val repr = R + opr
     }
 
-    final case class Infix(
-      leftArg: AST,
-      leftOff: Int,
+    type Infix = _Infix
+    final case class _Infix(
+      larg: AST,
+      loff: Int = 1,
       opr: Opr,
-      rightOff: Int,
-      rightArg: AST
+      roff: Int = 1,
+      rarg: AST
     ) extends AST {
-      val repr = R + leftArg + leftOff + opr + rightOff + rightArg
+      val repr = R + larg + loff + opr + roff + rarg
     }
-
-    final case class MissingArgument() extends Invalid {
-      val repr = R
+    object Infix {
+      def apply(larg: AST, loff: Int, opr: Opr, roff: Int, rarg: AST): Infix =
+        _Infix(larg, loff, opr, roff, rarg)
+      def apply(larg: AST, opr: Opr, roff: Int, rarg: AST): Infix =
+        Infix(larg, 1, opr, roff, rarg)
+      def apply(larg: AST, loff: Int, opr: Opr, rarg: AST): Infix =
+        Infix(larg, loff, opr, 1, rarg)
+      def apply(larg: AST, opr: Opr, rarg: AST): Infix =
+        _Infix(larg, 1, opr, 1, rarg)
+      def unapply(t: Infix) = Some((t.larg, t.opr, t.rarg))
     }
   }
 
@@ -197,15 +224,28 @@ object AST {
   //// Group ////
   ///////////////
 
-  final case class Group(leftOff: Int, body: Option[AST], rightOff: Int)
-      extends AST {
-    val repr = R + leftOff + body + rightOff
+  type Group = _Group
+  final case class _Group(
+    loff: Int         = 0,
+    body: Option[AST] = None,
+    roff: Int         = 0
+  ) extends AST {
+    val repr = R + loff + body + roff
   }
   object Group {
-    def apply():         Group = Group(0)
-    def apply(off: Int): Group = Group(off, None, 0)
-    def apply(leftOff: Int, body: AST, rightOff: Int): Group =
-      Group(leftOff, Some(body), rightOff)
+    def apply(loff: Int, body: Option[AST], roff: Int) =
+      _Group(loff, body, roff)
+    def apply(loff: Int, body: AST, roff: Int): Group =
+      Group(loff, Some(body), roff)
+    def apply(loff: Int, body: Option[AST]): Group = Group(loff, body, 0)
+    def apply(loff: Int, body: AST):         Group = Group(loff, Some(body), 0)
+    def apply(body: Option[AST], roff: Int): Group = Group(0, body, roff)
+    def apply(body: AST, roff: Int):         Group = Group(0, Some(body), roff)
+    def apply(body: Option[AST]):            Group = Group(0, body, 0)
+    def apply(body: AST):                    Group = Group(0, Some(body), 0)
+    def apply(loff: Int):                    Group = Group(loff, None, 0)
+    def apply():                             Group = Group(0, None, 0)
+    def unapply(t: Group) = Some(t.body)
   }
 
   ////////////////
@@ -237,7 +277,7 @@ object AST {
       }
     }
 
-    def validate2(
+    def validate(
       segments: Shifted.List1[Segment.Class]
     ): Option[Shifted.List1[Segment]] = {
       val segList = segments.toList().map { t =>
@@ -309,14 +349,6 @@ object AST {
         case object Empty               extends Body { val repr = R }
         case class Expr(t: SAST)        extends Body { val repr = Repr.of(t) }
         case class Many(t: List1[Body]) extends Body { val repr = Repr.of(t) }
-
-        case class Warning(msg: String, t: Body) extends Body {
-          val repr = Repr.of(t)
-        }
-
-        case class Error(msg: String, t: Body) extends Body {
-          val repr = Repr.of(t)
-        }
 
         object Many {
           def apply(head: Body, tail: List[Body]): Many =
@@ -560,9 +592,74 @@ object AST {
   //// Type ////
   //////////////
 
-  case class Type(name: SAST, args: List[SAST], body: SAST) extends AST {
-    val repr = "type" + name + args + body
+  type Type = _Type
+  case class _Type(_name: Option[SAST], _args: List[SAST], _body: SAST)
+      extends AST {
+    val repr = "type" + _name + _args + _body
+    def name = _name.map(_.el)
+    def args = _args.map(_.el)
+    def body = _body.el
+
+    def name_=(v: Option[AST]) = copy(_name = v.map(Arg.from[AST, SAST]))
   }
+  object Type {
+    def apply[NAME, ARGS, BODY](name: NAME, args: ARGS, body: BODY)(
+      implicit
+      NAME: Arg[NAME, Option[SAST]],
+      ARGS: Arg[ARGS, List[SAST]],
+      BODY: Arg[BODY, SAST]
+    ): Type = _Type(NAME.from(name), ARGS.from(args), BODY.from(body))
+
+    //    def unapply(arg: Type): Option[(Option[AST], List)] =
+  }
+
+  trait Arg[A, T] {
+    def from(el: A): T
+  }
+  object Arg {
+    def from[A, T](a: A)(implicit ev: Arg[A, T]): T = ev.from(a)
+  }
+
+  implicit def arg_id[S <: T, T]: Arg[S, T] = a => a
+  implicit def arg_opt[S, T](implicit ev: Arg[S, T]): Arg[S, Option[T]] =
+    a => Some(ev.from(a))
+  implicit def arg_shifted[S, T](implicit ev: Arg[S, T]): Arg[S, Shifted[T]] =
+    a => Shifted(1, ev.from(a))
+  implicit def arg_list[S, T](implicit ev: Arg[S, T]): Arg[S, List[T]] =
+    a => List(ev.from(a))
+
+  import org.enso.flexer.Test.foo
+
+  type Type2 = _Type2
+  @foo
+  case class _Type2(
+    nameOff: Int = 1
+//    name: Option[AST],
+//    argsOff: List[Int] = List(),
+//    args: List[AST],
+//    bodyOff: Int = 1,
+//    body: AST
+  ) extends { //AST {
+//    val repr = "type" + nameOff + name + argsOff.zip(args) + bodyOff + body
+  }
+
+  object _Type2 {
+    val sss = 99
+  }
+
+  println("?????????????")
+  println(_Type2.hasFoo)
+  object Type2 {
+//    def apply(nameOff:Int, name:Option[AST], argOff:List[Int], args:List[AST], bodyOff)
+    def prepOffList(offs: List[Int], argCount: Int): List[Int] =
+      compare(offs.length, argCount) match {
+        case EQ => offs
+        case LT => offs ++ List.fill(argCount - offs.length)(1)
+        case GT => offs.take(argCount)
+      }
+  }
+
+//  val ttt = Type(Blank, Blank, Blank)
 
   ////////////////
   //// Module ////

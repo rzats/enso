@@ -132,6 +132,10 @@ lazy val syntax_definition = (project in file("syntax/definition"))
       "https://oss.sonatype.org/content/repositories/snapshots",
       "Sonatype OSS Releases" at
       "https://oss.sonatype.org/content/repositories/releases"
+    ),
+    resolvers += Resolver.sonatypeRepo("releases"),
+    addCompilerPlugin(
+      "org.scalamacros" % "paradise" % "2.1.0" cross CrossVersion.full
     )
   )
   .dependsOn(logger)
