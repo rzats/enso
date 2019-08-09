@@ -26,7 +26,7 @@ trait ParserBase[T] {
   var matchBuilder = new StringBuilder(64)
   var currentMatch = ""
 
-  val groups: Array[Int=>Int] = new Array(256)
+  val groups: Array[Int => Int] = new Array(256)
 
   val logger = new Logger()
 
@@ -39,8 +39,7 @@ trait ParserBase[T] {
     bufferLen = if (numRead == -1) 1 else numRead + 1
     codePoint = getNextCodePoint()
 
-    var r = -1; while (r == -1)
-      r = runGroup()
+    var r = -1; while (r == -1) r = runGroup()
 
     getResult() match {
       case None => InternalFailure(offset)
@@ -77,16 +76,16 @@ trait ParserBase[T] {
   }
 
   def runGroup(): Int = {
-    val nextState = groups(group)
+    val nextState  = groups(group)
     var state: Int = 0
     matchBuilder.setLength(0)
-    while(state >= 0) {
-      logger.log(s"Step: group $group, state $state, code $codePoint, char $currentChar")
+    while (state >= 0) {
+      logger.log(s"Step: state $group $state, code $codePoint ($currentChar)")
       state = nextState(state)
-      if(state >= 0) {
+      if (state >= 0) {
         matchBuilder.append(buffer(offset))
         if (buffer(offset).isHighSurrogate)
-          matchBuilder.append(buffer(offset+1))
+          matchBuilder.append(buffer(offset + 1))
         codePoint = getNextCodePoint()
       }
     }
@@ -127,10 +126,8 @@ trait ParserBase[T] {
       else String.valueOf(ch)
   }
   def getNextCodePoint(): Int = {
-    if (offset >= bufferLen) {
-      logger.log("Next char ETX.")
+    if (offset >= bufferLen)
       return etxChar.toInt
-    }
     offset += charSize
     if (offset > BUFFERSIZE - UTFCHARSIZE) {
       val keepChars = Math.max(charsToLastRule, currentMatch.length) + UTFCHARSIZE - 1
@@ -142,7 +139,6 @@ trait ParserBase[T] {
       bufferLen = keepChars + numRead
     } else if (offset == bufferLen)
       return eofChar.toInt
-    logger.log(s"Next char '${escapeChar(buffer(offset))}'")
     Character.codePointAt(buffer, offset)
   }
 
@@ -161,7 +157,7 @@ trait ParserBase[T] {
   }
 
   final def call(rule: () => Unit): Int = {
-    currentMatch = matchBuilder.result()
+    currentMatch    = matchBuilder.result()
     charsToLastRule = 0
     rule()
     -1
