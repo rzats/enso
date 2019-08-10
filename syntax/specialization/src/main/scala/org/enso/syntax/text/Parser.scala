@@ -35,7 +35,7 @@ object Main extends App {
   val p1 = new Parser()
   val p2 = new Parser()
 
-  val inp = "(a b c)"
+  val inp = "(a b c) "
   val out = p1.run(inp)
 
   pprint.pprintln(out, width = 50, height = 10000)

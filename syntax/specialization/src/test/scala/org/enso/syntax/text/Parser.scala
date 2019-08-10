@@ -6,7 +6,8 @@ import org.enso.syntax.text.ast.Helpers._
 import org.enso.{flexer => Flexer}
 import org.scalatest._
 import EDSL._
-import org.enso.syntax.text.AST.Text.Segment.{EOL, Plain}
+import org.enso.syntax.text.AST.Text.Segment.EOL
+import org.enso.syntax.text.AST.Text.Segment.Plain
 
 class ParserSpec extends FlatSpec with Matchers {
 
@@ -181,7 +182,6 @@ class ParserSpec extends FlatSpec with Matchers {
   "'''a'"   ?= Text.Unclosed(Text(Text.Quote.Triple, "a'"))
   "'''a''"  ?= Text.Unclosed(Text(Text.Quote.Triple, "a''"))
 
-
   "\""             ?= Text.Unclosed(Text.Raw())
   "\"\""           ?= Text.Raw()
   "\"\"\""         ?= Text.Unclosed(Text.Raw(Text.Quote.Triple))
@@ -196,8 +196,12 @@ class ParserSpec extends FlatSpec with Matchers {
   "\"\"\"a\""      ?= Text.Unclosed(Text.Raw(Text.Quote.Triple, "a\""))
   "\"\"\"a\"\""    ?= Text.Unclosed(Text.Raw(Text.Quote.Triple, "a\"\""))
 
-
-  "'''\nX\n Y\n'''" ?= Text.MultiLine(0, '\'', Text.Quote.Triple, List(EOL(), Plain("X"), EOL(), Plain(" Y"), EOL()))
+  "'''\nX\n Y\n'''" ?= Text.MultiLine(
+    0,
+    '\'',
+    Text.Quote.Triple,
+    List(EOL(), Plain("X"), EOL(), Plain(" Y"), EOL())
+  )
 
   //// Escapes ////
 
@@ -268,6 +272,6 @@ class ParserSpec extends FlatSpec with Matchers {
   "(if a) then" ?= "(" I ("if" I_ "a" Ixx (_then_else: _*)) I ")" $_ "then"
   "if (a then)" ?= "if" I_ ("(" I ("a" $_ "then") I ")") Ixx (_then_else: _*)
 
-//  "import Std.Math" ?= "foo"
+  //  "import Std.Math" ?= "foo"
 
 }

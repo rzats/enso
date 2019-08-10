@@ -1,35 +1,30 @@
 package org.enso.flexer
 
 import org.enso.flexer.group.Rule
-
-import scala.collection.mutable.ArrayBuffer
-import scala.reflect.runtime.universe._
+import scala.reflect.runtime.universe.TermName
+import scala.reflect.runtime.universe.Tree
 
 class Group(val groupIx: Int, val finish: () => Unit) {
   var parent: Option[Group] = None
-  val rules                 = ArrayBuffer[Rule]()
+  var revRules: List[Rule]  = List()
 
-  def addRule(rule: Rule): Rule = {
-    rules.append(rule)
-    rule
-  }
+  def parent_=(p: Group): Unit =
+    parent = Some(p)
+
+  def addRule(rule: Rule): Unit =
+    revRules = rule +: revRules
 
   def rule(expr: Pattern): Rule.Builder =
     Rule.Builder(expr, addRule)
-//    rule(new Rule(expr, null))
 
-  def setParent(group: Group): Unit =
-    parent = Some(group)
+  def cloneRulesFrom(that: Group): Unit =
+    revRules = that.revRules ++ revRules
 
-  def cloneRulesFrom(that: Group): Unit = {
-    rules.appendAll(that.rules)
-  }
-
-  def ruleName(ruleIx: Int): TermName =
+  private def ruleName(ruleIx: Int): TermName =
     TermName(s"group${groupIx}_rule$ruleIx")
 
-  def allRules: Vector[Rule] = {
-    val myRules = rules.to[Vector]
+  def allRules: List[Rule] = {
+    val myRules = revRules.reverse
     parent.map(myRules ++ _.allRules).getOrElse(myRules)
   }
 
@@ -48,7 +43,7 @@ class Group(val groupIx: Int, val finish: () => Unit) {
   }
 
   def buildRuleAutomata(nfa: NFA, last: Int, ruleIx: Int, rule: Rule): Int = {
-    val end = buildExprAutomata(nfa, last, rule.expr)
+    val end = buildExprAutomata(nfa, last, rule.pattern)
     nfa.state(end).end  = true
     nfa.state(end).rule = ruleName(ruleIx)
     end
@@ -87,6 +82,7 @@ class Group(val groupIx: Int, val finish: () => Unit) {
   }
 
   def generate(): Tree = {
+    import scala.reflect.runtime.universe._
     val nfa = buildAutomata()
     nfa.computeIsos()
     val dfa   = nfa.computeDFA()

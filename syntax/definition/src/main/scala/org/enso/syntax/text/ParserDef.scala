@@ -243,7 +243,7 @@ case class ParserDef() extends ParserBase[AST] {
 
   val OPERATOR_SFX_CHECK = defineGroup("Operator Suffix Check")
   val OPERATOR_MOD_CHECK = defineGroup("Operator Modifier Check")
-  OPERATOR_MOD_CHECK.setParent(OPERATOR_SFX_CHECK)
+  OPERATOR_MOD_CHECK.parent = OPERATOR_SFX_CHECK
 
   // format: off
   NORMAL             rule operator       run reify { onOp(AST.Opr(_)) }
@@ -469,7 +469,7 @@ case class ParserDef() extends ParserBase[AST] {
   val TEXT: Group        = defineGroup("Text")
   val RAWTEXT: Group     = defineGroup("RawText")
   val INTERPOLATE: Group = defineGroup("Interpolate")
-  INTERPOLATE.setParent(NORMAL)
+  INTERPOLATE.parent = NORMAL
 
   // format: off
   NORMAL  rule '`'            run reify { onInterpolateEnd() }
