@@ -98,13 +98,13 @@ object Template {
         case seg1 :: seg2_ => Some(Operator.rebuild(List1(seg1, seg2_)))
       }
 
-    def build(tp: Pattern): Shifted[Segment.Class] = {
+    def build(tp: Pattern): Shifted[Segment] = {
       val stream = revBody.reverse
       val segment2 = resolveStep(tp, stream) match {
         case None => Segment.Unmatched(tp, ast, stream)
         case Some(rr) =>
           rr.stream match {
-            case Nil     => Segment(ast, rr.elem)
+            case Nil     => Segment.Valid(ast, rr.elem)
             case s :: ss => Segment.Unsaturated(ast, rr.elem, List1(s, ss))
           }
       }
@@ -230,7 +230,7 @@ object Template {
     builder.mixfix = Some(
       Definition.Spec(
         Definition.Scope.Unrestricted, {
-          case Shifted(_, Segment(_, Body.Expr(e))) :: Nil => e.el
+          case Shifted(_, Segment.Valid(_, Body.Expr(e))) :: Nil => e.el
 
           case _ => throw new scala.Error("Impossible happened")
         },
@@ -330,8 +330,8 @@ object Template {
 
     def stripLastSegment(
       scope: Definition.Scope,
-      revSegs: List1[Shifted[Template.Segment.Class]]
-    ): (List1[Shifted[Template.Segment.Class]], AST.Stream) = {
+      revSegs: List1[Shifted[Template.Segment]]
+    ): (List1[Shifted[Template.Segment]], AST.Stream) = {
       if (scope == Definition.Scope.Unrestricted)
         (revSegs.reverse, List())
       else {

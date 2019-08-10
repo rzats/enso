@@ -13,8 +13,6 @@ import scala.reflect.runtime.universe.reify
 
 case class ParserDef() extends ParserBase[AST] {
 
-  val ast = AST
-
   val any: Pattern  = range(5, Int.MaxValue) // FIXME 5 -> 0
   val pass: Pattern = Pass
   val eof: Pattern  = char('\u0000')
@@ -199,9 +197,9 @@ case class ParserDef() extends ParserBase[AST] {
   val IDENT_SFX_CHECK = defineGroup("Identifier Suffix Check")
 
   // format: off
-  NORMAL          rule variable    run reify { onIdent(ast.Var(_)) }
-  NORMAL          rule constructor run reify { onIdent(ast.Cons(_)) }
-  NORMAL          rule "_"         run reify { onIdent(ast.Blank) }
+  NORMAL          rule variable    run reify { onIdent(AST.Var(_)) }
+  NORMAL          rule constructor run reify { onIdent(AST.Cons(_)) }
+  NORMAL          rule "_"         run reify { onIdent(AST.Blank) }
   IDENT_SFX_CHECK rule identErrSfx run reify { onIdentErrSfx() }
   IDENT_SFX_CHECK rule pass        run reify { onNoIdentErrSfx() }
   // format: on
@@ -248,8 +246,8 @@ case class ParserDef() extends ParserBase[AST] {
   OPERATOR_MOD_CHECK.setParent(OPERATOR_SFX_CHECK)
 
   // format: off
-  NORMAL             rule operator       run reify { onOp(ast.Opr(_)) }
-  NORMAL             rule noModOperator  run reify { onNoModOp(ast.Opr(_)) }
+  NORMAL             rule operator       run reify { onOp(AST.Opr(_)) }
+  NORMAL             rule noModOperator  run reify { onNoModOp(AST.Opr(_)) }
   OPERATOR_MOD_CHECK rule "="            run reify { onModifier() }
   OPERATOR_SFX_CHECK rule operatorErrSfx run reify { onIdentErrSfx() }
   OPERATOR_SFX_CHECK rule pass           run reify { onNoIdentErrSfx() }
@@ -477,18 +475,18 @@ case class ParserDef() extends ParserBase[AST] {
   NORMAL  rule '`'            run reify { onInterpolateEnd() }
   TEXT    rule '`'            run reify { onInterpolateBegin() }
   
-  NORMAL  rule "'"            run reify { onTextBegin(TEXT, ast.Text.Quote.Single) }
-  NORMAL  rule "'''"          run reify { onTextBegin(TEXT, ast.Text.Quote.Triple) }
-  TEXT    rule "'"            run reify { onTextQuote(ast.Text.Quote.Single) }
-  TEXT    rule "'''"          run reify { onTextQuote(ast.Text.Quote.Triple) }
+  NORMAL  rule "'"            run reify { onTextBegin(TEXT, AST.Text.Quote.Single) }
+  NORMAL  rule "'''"          run reify { onTextBegin(TEXT, AST.Text.Quote.Triple) }
+  TEXT    rule "'"            run reify { onTextQuote(AST.Text.Quote.Single) }
+  TEXT    rule "'''"          run reify { onTextQuote(AST.Text.Quote.Triple) }
   TEXT    rule stringSegment  run reify { onPlainTextSegment() }
   TEXT    rule eof            run reify { onTextEOF() }
   TEXT    rule '\n'           run reify { onTextEOL() }
 
-  NORMAL  rule "\""           run reify { onTextBegin(RAWTEXT, ast.Text.Quote.Single) }
-  NORMAL  rule "\"\"\""       run reify { onTextBegin(RAWTEXT, ast.Text.Quote.Triple) }
-  RAWTEXT rule "\""           run reify { onTextQuote(ast.Text.Quote.Single) }
-  RAWTEXT rule "\"\"\""       run reify { onTextQuote(ast.Text.Quote.Triple) }
+  NORMAL  rule "\""           run reify { onTextBegin(RAWTEXT, AST.Text.Quote.Single) }
+  NORMAL  rule "\"\"\""       run reify { onTextBegin(RAWTEXT, AST.Text.Quote.Triple) }
+  RAWTEXT rule "\""           run reify { onTextQuote(AST.Text.Quote.Single) }
+  RAWTEXT rule "\"\"\""       run reify { onTextQuote(AST.Text.Quote.Triple) }
   RAWTEXT rule noneOf("\"\n") run reify { onPlainTextSegment() }
   RAWTEXT rule eof            run reify { onTextEOF() }
   RAWTEXT rule '\n'           run reify { onTextEOL() }
@@ -496,14 +494,14 @@ case class ParserDef() extends ParserBase[AST] {
   AST.Text.Segment.Escape.Character.codes.foreach { ctrl =>
     import scala.reflect.runtime.universe._
     val name = TermName(ctrl.toString)
-    val func = q"onTextEscape(ast.Text.Segment.Escape.Character.$name)"
+    val func = q"onTextEscape(AST.Text.Segment.Escape.Character.$name)"
     TEXT rule s"\\$ctrl" run func
   }
 
   AST.Text.Segment.Escape.Control.codes.foreach { ctrl =>
     import scala.reflect.runtime.universe._
     val name = TermName(ctrl.toString)
-    val func = q"onTextEscape(ast.Text.Segment.Escape.Control.$name)"
+    val func = q"onTextEscape(AST.Text.Segment.Escape.Control.$name)"
     TEXT rule s"\\$ctrl" run func
   }
 
@@ -517,80 +515,6 @@ case class ParserDef() extends ParserBase[AST] {
   TEXT    rule "\\"                 run reify { onPlainTextSegment() }
 
   // format: on
-
-//  //////////////
-//  /// Groups ///
-//  //////////////
-//
-//  var groupLeftOffsetStack: List[Int] = Nil
-//
-//  final def pushGroupLeftOffset(offset: Int): Unit = logger.trace {
-//    groupLeftOffsetStack +:= offset
-//  }
-//
-//  final def popGroupLeftOffset(): Int = logger.trace {
-//    val offset = groupLeftOffsetStack.head
-//    groupLeftOffsetStack = groupLeftOffsetStack.tail
-//    offset
-//  }
-//
-//  final def isInsideOfGroup(): Boolean =
-//    groupLeftOffsetStack != Nil
-//
-//  final def onGroupBegin(): Unit = logger.trace {
-//    val leftOffset = currentMatch.length - 1
-//    pushGroupLeftOffset(leftOffset)
-//    pushAST()
-//    pushLastOffset()
-//    beginGroup(PARENSED)
-//  }
-//
-//  final def onGroupEnd(): Unit = logger.trace {
-//    val leftOffset  = popGroupLeftOffset()
-//    val rightOffset = useLastOffset()
-//    val group       = Group(leftOffset, result, rightOffset)
-//    popLastOffset()
-//    popAST()
-//    app(group)
-//    endGroup()
-//  }
-//
-//  final def onGroupFinalize(): Unit = logger.trace {
-//    val leftOffset  = popGroupLeftOffset()
-//    var rightOffset = useLastOffset()
-//
-//    val group = result match {
-//      case Some(_) =>
-//        Group.Unclosed(leftOffset, result)
-//      case None =>
-//        rightOffset += leftOffset
-//        Group.Unclosed()
-//    }
-//    popLastOffset()
-//    popAST()
-//    app(group)
-//    lastOffset = rightOffset
-//  }
-//
-//  final def onGroupEOF(): Unit = logger.trace {
-//    onGroupFinalize()
-//    endGroup()
-//    rewind()
-//  }
-//
-//  final def onGroupUnmatchedClose(): Unit = logger.trace {
-//    app(Group.UnmatchedClose)
-//  }
-//
-//  val PARENSED = defineGroup("Parensed", { onGroupFinalize() })
-//  PARENSED.setParent(NORMAL)
-//
-//  // format: off
-//  NORMAL   rule ("(" >> whitespace0) run reify { onGroupBegin() }
-//  NORMAL   rule ")"                  run reify { onGroupUnmatchedClose() }
-//  PARENSED rule ")"                  run reify { onGroupEnd() }
-//  PARENSED rule eof                  run reify { onGroupEOF() }
-//  // format: on
 
   //////////////
   /// Blocks ///

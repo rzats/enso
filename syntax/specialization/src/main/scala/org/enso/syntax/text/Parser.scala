@@ -35,18 +35,10 @@ object Main extends App {
   val p1 = new Parser()
   val p2 = new Parser()
 
-//  val out = p1.run("t   if  a+b   *    c     then      x")
-//val out = p1.run("if (a then")
-//val out = p1.run("foo\n bar")
   val inp = "(a b c)"
   val out = p1.run(inp)
-  //  val out = p1.run("(a")
-//  val out = p1.run("()")
-//  val out = p1.run("if a then x")
-  pprint.pprintln(out, width = 50, height = 10000)
 
-//  val out = p1.run("(t  if a then b)")
-//  val out = p1.run("x ( a  b   )")
+  pprint.pprintln(out, width = 50, height = 10000)
 
   out match {
     case flexer.Success(v, _) =>

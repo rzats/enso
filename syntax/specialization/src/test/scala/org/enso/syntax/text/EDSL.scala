@@ -22,7 +22,7 @@ object EDSL {
     (m: Template.Valid, i: Int, t: AST) => {
 
       def dd() = {
-        val seg = Template.Segment(t, Template.Segment.Body.Empty)
+        val seg = Template.Segment.Valid(t, Template.Segment.Body.Empty)
         m.copy(segments = m.segments :+ Shifted(i, seg))
       }
 
@@ -30,11 +30,11 @@ object EDSL {
       if (tail.nonEmpty) {
         val sss = tail.last.el
         tail.last.el match {
-          case seg: Template.Segment =>
+          case seg: Template.Segment.Valid =>
             seg.body match {
               case Template.Segment.Body.Empty => {
                 val seg2 =
-                  Template.Segment(
+                  Template.Segment.Valid(
                     seg.head,
                     Template.Segment.Body.Expr(Shifted(i, t))
                   )
@@ -57,18 +57,18 @@ object EDSL {
     (m: Template.Valid, i: Int, t: AST) => {
 
       def dd() = {
-        val seg = Template.Segment(t, Template.Segment.Body.Empty)
+        val seg = Template.Segment.Valid(t, Template.Segment.Body.Empty)
         m.copy(segments = m.segments :+ Shifted(i, seg))
       }
 
       val tail = m.segments.tail
       if (tail.nonEmpty) {
         tail.last.el match {
-          case seg: Template.Segment =>
+          case seg: Template.Segment.Valid =>
             seg.body match {
               case Template.Segment.Body.Empty => {
                 val seg2 =
-                  Template.Segment(
+                  Template.Segment.Valid(
                     seg.head,
                     Template.Segment.Body.Expr(Shifted(i, t))
                   )
@@ -87,8 +87,8 @@ object EDSL {
 
     def empty(i: Int, s: String) = Template.Valid(
       Shifted.List1(
-        Template.Segment(fromStringRaw(t), Template.Segment.Body.Empty),
-        List(Shifted(i, Template.Segment(fromStringRaw(s))))
+        Template.Segment.Valid(fromStringRaw(t), Template.Segment.Body.Empty),
+        List(Shifted(i, Template.Segment.Valid(fromStringRaw(s))))
       )
     )
 
@@ -152,7 +152,7 @@ object EDSL {
   implicit class MixfixBuilder_AST(t: AST) {
     def _addSeg_(i: Int)(s: AST): Template.Valid = Template.Valid(
       Shifted.List1(
-        Template.Segment(
+        Template.Segment.Valid(
           t,
           Template.Segment.Body.Expr(Shifted(i, s))
         ),
@@ -161,7 +161,7 @@ object EDSL {
     )
     def _addSeg1_(i: Int)(s: AST): Template.Valid = Template.Valid(
       Shifted.List1(
-        Template.Segment(t, Template.Segment.Body.Expr(Shifted(i, s))),
+        Template.Segment.Valid(t, Template.Segment.Body.Expr(Shifted(i, s))),
         Nil
       )
     )
@@ -197,7 +197,7 @@ object EDSL {
 
     def unmatched(tree: Tree[AST, Unit]): Template.Partial = {
       val segments2 = t.segments.map {
-        case seg: Template.Segment =>
+        case seg: Template.Segment.Valid =>
           seg.body match {
             case Template.Segment.Body.Expr(e) =>
               Template.Partial.Segment(seg.head, Some(e))

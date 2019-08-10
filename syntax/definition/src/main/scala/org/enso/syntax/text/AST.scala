@@ -1,18 +1,18 @@
 package org.enso.syntax.text
 
+import cats.implicits._
+import monocle.macros.GenLens
+import org.enso.data.Compare._
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.data.Tree
 import org.enso.flexer.Utils._
-import org.enso.data.Compare._
 import org.enso.syntax.text.ast.Repr.R
 import org.enso.syntax.text.ast.Repr
 import org.enso.syntax.text.ast.opr
 import org.enso.syntax.text.ast.text
 
 import scala.reflect.ClassTag
-import monocle.macros.GenLens
-import cats.implicits._
 
 sealed trait AST extends AST.Symbol
 
@@ -50,6 +50,7 @@ object AST {
       case any      => any
     }
 
+  // FIXME: This is unsafe and should be defined in AST EDSL module.
   def fromStringRaw(str: String): AST = {
     if (str == "") throw new Error("Empty literal")
     if (str == "_") Blank
@@ -57,10 +58,6 @@ object AST {
     else if (str.head.isUpper) Cons(str)
     else Opr(str)
   }
-
-//  implicit final private class OptAST(val self: Option[AST]) extends Symbol {
-//    val repr = self.map(_.repr).getOrElse(Repr())
-//  }
 
   /////////////////
   //// Invalid ////
@@ -85,16 +82,17 @@ object AST {
   /////////////////
 
   sealed trait Literal extends AST
+
   sealed trait Ident extends Literal {
     val name: String
   }
-
   object Ident {
-    type Class = Ident
     final case class InvalidSuffix(elem: Ident, suffix: String)
         extends AST.Invalid {
       val repr = R + elem + suffix
     }
+
+    // FIXME: This is unsafe and should be defined in AST EDSL module.
     implicit def fromString(str: String): Ident = {
       if (str == "") throw new Error("Empty literal")
       if (str == "_") Blank
@@ -222,184 +220,6 @@ object AST {
       def apply(larg: AST, opr: Opr, rarg: AST): Infix =
         _Infix(larg, 1, opr, 1, rarg)
       def unapply(t: Infix) = Some((t.larg, t.opr, t.rarg))
-    }
-  }
-
-  ///////////////
-  //// Group ////
-  ///////////////
-
-  type Group = _Group
-  final case class _Group(
-    loff: Int         = 0,
-    body: Option[AST] = None,
-    roff: Int         = 0
-  ) extends AST {
-    val repr = R + loff + body + roff
-  }
-  object Group {
-    def apply(loff: Int, body: Option[AST], roff: Int) =
-      _Group(loff, body, roff)
-    def apply(loff: Int, body: AST, roff: Int): Group =
-      Group(loff, Some(body), roff)
-    def apply(loff: Int, body: Option[AST]): Group = Group(loff, body, 0)
-    def apply(loff: Int, body: AST):         Group = Group(loff, Some(body), 0)
-    def apply(body: Option[AST], roff: Int): Group = Group(0, body, roff)
-    def apply(body: AST, roff: Int):         Group = Group(0, Some(body), roff)
-    def apply(body: Option[AST]):            Group = Group(0, body, 0)
-    def apply(body: AST):                    Group = Group(0, Some(body), 0)
-    def apply(loff: Int):                    Group = Group(loff, None, 0)
-    def apply():                             Group = Group(0, None, 0)
-    def unapply(t: Group) = Some(t.body)
-  }
-
-  ////////////////
-  //// Mixfix ////
-  ////////////////
-
-  trait Template extends AST
-  object Template {
-
-    final case class Valid(segments: Shifted.List1[Segment]) //, ast: AST)
-        extends Template {
-      val repr = R + segments.map(_.repr)
-    }
-
-    final case class Invalid(segments: Shifted.List1[Segment.Class])
-        extends Template {
-      val repr = R + segments.map(_.repr)
-    }
-
-    case class Partial(
-      segments: Shifted.List1[Partial.Segment],
-      possiblePaths: Tree[AST, Unit]
-    ) extends AST {
-      val repr = R + segments.map(_.repr)
-    }
-    object Partial {
-      case class Segment(head: AST, body: Option[SAST]) extends Symbol {
-        val repr = R + head + body
-      }
-    }
-
-    def validate(
-      segments: Shifted.List1[Segment.Class]
-    ): Option[Shifted.List1[Segment]] = {
-      val segList = segments.toList().map { t =>
-        t.el match {
-          case s: Segment => Some(Shifted(t.off, s))
-          case _          => None
-        }
-      }
-      segList.sequence.map(s => Shifted.List1.fromListDropHead(s))
-    }
-
-    final case class Segment(head: AST, body: Segment.Body)
-        extends Segment.Class {
-      val repr = R + head + body
-      def strip(): (Segment, AST.Stream) = (this, List())
-    }
-
-    object Segment {
-
-      def apply(head: AST): Segment = new Segment(head, Body.Empty)
-
-      //// Segment Types ////
-
-      sealed trait Class extends Symbol {
-        def strip(): (Class, AST.Stream)
-      }
-
-      case class Unmatched(pat: Pattern, head: AST, stream: AST.Stream)
-          extends Class {
-        val repr = R + head + stream
-        def strip(): (Unmatched, AST.Stream) =
-          (Unmatched(pat, head, List()), stream)
-      }
-
-      case class Unsaturated(head: AST, body: Body, stream: AST.Stream1)
-          extends Class {
-        val repr = R + head + body + stream
-        def strip(): (Segment, AST.Stream) =
-          (Segment(head, body), stream.toList)
-      }
-
-      //// Pattern ////
-
-      sealed trait Pattern
-      object Pattern {
-        case object End                      extends Pattern
-        case object Skip                     extends Pattern
-        case object AnyToken                 extends Pattern
-        case class Opt(pat: Pattern)         extends Pattern
-        case class Many(pat: Pattern)        extends Pattern
-        case class Seq(pats: List1[Pattern]) extends Pattern
-        case class Alt(pats: List1[Pattern]) extends Pattern
-        case class Token[T <: AST]()(implicit val tag: ClassTag[T])
-            extends Pattern
-        case class NotToken[T <: AST]()(implicit val tag: ClassTag[T])
-            extends Pattern
-
-        object Seq {
-          def apply(pat: Pattern, pats: Pattern*): Seq =
-            Seq(List1(pat, pats.toList))
-        }
-      }
-
-      //// Body ////
-
-      sealed trait Body extends Repr.Provider {
-        def toStream(): AST.Stream
-      }
-      object Body {
-
-        case object Empty extends Body {
-          val repr       = R
-          def toStream() = List()
-        }
-
-        case class Expr(t: SAST) extends Body {
-          val repr       = Repr.of(t)
-          def toStream() = List(t)
-        }
-
-        case class Many(t: List1[Body]) extends Body {
-          val repr       = Repr.of(t)
-          def toStream() = t.toList.flatMap(_.toStream)
-        }
-
-        object Many {
-          def apply(head: Body, tail: List[Body]): Many =
-            Many(List1(head, tail))
-          def apply(head: Body): Many = Many(List1(head))
-        }
-      }
-    }
-
-    case class Definition(
-      segments: Definition.Input
-    )
-    object Definition {
-      type Input     = List1[Segment]
-      type Segment   = (AST, Segment.Pattern)
-      type Finalizer = List[Shifted[Template.Segment]] => AST
-
-      case class Spec[T](scope: Scope, finalizer: Finalizer, el: T) {
-        def map[S](fn: T => S): Spec[S] = Spec(scope, finalizer, fn(el))
-      }
-
-      def Restricted[T](t1: Segment, ts: Segment*)(fin: Finalizer) =
-        Spec(Scope.Restricted, fin, Definition(List1(t1, ts: _*)))
-
-      def Unrestricted[T](t1: Segment, ts: Segment*)(fin: Finalizer) =
-        Spec(Scope.Unrestricted, fin, Definition(List1(t1, ts: _*)))
-
-      trait Scope
-      object Scope {
-        case object Restricted   extends Scope
-        case object Unrestricted extends Scope
-      }
-
     }
   }
 
@@ -604,7 +424,8 @@ object AST {
   //// Block ////
   ///////////////
 
-  final case class Block(
+  type Block = _Block
+  final case class _Block(
     indent: Int,
     emptyLines: List[Int],
     firstLine: Block.Line.Required,
@@ -620,28 +441,49 @@ object AST {
   }
 
   object Block {
+    def apply(
+      indent: Int,
+      emptyLines: List[Int],
+      firstLine: Line.Required,
+      lines: List[Line]
+    ): Block = _Block(indent, emptyLines, firstLine, lines)
+
+    def apply(indent: Int, firstLine: Line.Required, lines: List[Line]): Block =
+      Block(indent, List(), firstLine, lines)
+
+    def unapply(t: Block): Option[(Int, Line.Required, List[Line])] =
+      Some((t.indent, t.firstLine, t.lines))
 
     final case class InvalidIndentation(block: Block) extends AST.Invalid {
       val repr = R + block
     }
 
-    final case class Line(elem: Option[AST], offset: Int)
+    type Line = _Line
+    final case class _Line(elem: Option[AST], off: Int)
         extends Symbol
         with Zipper.Has {
       type Zipper[T] = Line.Zipper.Class[T]
-      val repr = R + elem + offset
+      val repr = R + elem + off
       def map(f: AST => AST): Line =
-        Line(elem.map(f), offset)
+        _Line(elem.map(f), off)
     }
-
     object Line {
-      def apply():            Line = Line(None, 0)
-      def apply(offset: Int): Line = Line(None, offset)
+      def apply(elem: Option[AST], off: Int): Line = _Line(elem, off)
+      def apply(elem: Option[AST]):           Line = Line(elem, 0)
+      def apply(elem: AST):                   Line = Line(Some(elem))
+      def apply(off: Int):                    Line = Line(None, off)
+      def apply():                            Line = Line(None, 0)
 
-      final case class Required(elem: AST, offset: Int) extends Symbol {
-        val repr = R + elem + offset
+      type Required = _Required
+      final case class _Required(elem: AST, off: Int) extends Symbol {
+        val repr = R + elem + off
         def toOptional: Line =
-          Line(Some(elem), offset)
+          Line(Some(elem), off)
+      }
+      object Required {
+        def apply(elem: AST, off: Int): Required    = _Required(elem, off)
+        def apply(elem: AST):           Required    = Required(elem, 0)
+        def unapply(t: Required):       Option[AST] = Some(t.elem)
       }
 
       //// Zipper ////
@@ -657,7 +499,7 @@ object AST {
 
         case class Offset[S](lens: AST.Zipper.Path[S, Line])
             extends AST.Zipper.Path[Line, Int] {
-          val path = GenLens[Line](_.offset).asOptional
+          val path = GenLens[Line](_.off).asOptional
         }
 
       }
@@ -665,45 +507,188 @@ object AST {
     }
   }
 
-  //////////////
-  //// Type ////
-  //////////////
+  //////////////////
+  //// Template ////
+  //////////////////
 
-//  type Type = _Type
-//  case class _Type(_name: Option[SAST], _args: List[SAST], _body: SAST)
-//      extends AST {
-//    val repr = "type" + _name + _args + _body
-//    def name = _name.map(_.el)
-//    def args = _args.map(_.el)
-//    def body = _body.el
-//
-//    def name_=(v: Option[AST]) = copy(_name = v.map(Arg.from[AST, SAST]))
-//  }
-//  object Type {
-//    def apply[NAME, ARGS, BODY](name: NAME, args: ARGS, body: BODY)(
-//      implicit
-//      NAME: Arg[NAME, Option[SAST]],
-//      ARGS: Arg[ARGS, List[SAST]],
-//      BODY: Arg[BODY, SAST]
-//    ): Type = _Type(NAME.from(name), ARGS.from(args), BODY.from(body))
-//
-//    //    def unapply(arg: Type): Option[(Option[AST], List)] =
-//  }
-//
-//  trait Arg[A, T] {
-//    def from(el: A): T
-//  }
-//  object Arg {
-//    def from[A, T](a: A)(implicit ev: Arg[A, T]): T = ev.from(a)
-//  }
-//
-//  implicit def arg_id[S <: T, T]: Arg[S, T] = a => a
-//  implicit def arg_opt[S, T](implicit ev: Arg[S, T]): Arg[S, Option[T]] =
-//    a => Some(ev.from(a))
-//  implicit def arg_shifted[S, T](implicit ev: Arg[S, T]): Arg[S, Shifted[T]] =
-//    a => Shifted(1, ev.from(a))
-//  implicit def arg_list[S, T](implicit ev: Arg[S, T]): Arg[S, List[T]] =
-//    a => List(ev.from(a))
+  trait Template extends AST
+  object Template {
+
+    final case class Valid(segments: Shifted.List1[Segment.Valid])
+        extends Template {
+      val repr = R + segments.map(_.repr)
+    }
+
+    final case class Invalid(segments: Shifted.List1[Segment])
+        extends Template {
+      val repr = R + segments.map(_.repr)
+    }
+
+    case class Partial(
+      segments: Shifted.List1[Partial.Segment],
+      possiblePaths: Tree[AST, Unit]
+    ) extends Template {
+      val repr = R + segments.map(_.repr)
+    }
+    object Partial {
+      case class Segment(head: AST, body: Option[SAST]) extends Symbol {
+        val repr = R + head + body
+      }
+    }
+
+    def validate(
+      segments: Shifted.List1[Segment]
+    ): Option[Shifted.List1[Segment.Valid]] = {
+      val segList = segments.toList().map { t =>
+        t.el match {
+          case s: Segment.Valid => Some(Shifted(t.off, s))
+          case _                => None
+        }
+      }
+      segList.sequence.map(s => Shifted.List1.fromListDropHead(s))
+    }
+
+    sealed trait Segment extends Symbol {
+      def strip(): (Segment, AST.Stream)
+    }
+    object Segment {
+
+      //// Segment Types ////
+
+      final case class Valid(head: AST, body: Segment.Body) extends Segment {
+        val repr = R + head + body
+        def strip(): (Segment.Valid, AST.Stream) = (this, List())
+      }
+      object Valid {
+        def apply(head: AST): Valid = new Valid(head, Body.Empty)
+      }
+
+      case class Unmatched(pat: Pattern, head: AST, stream: AST.Stream)
+          extends Segment {
+        val repr = R + head + stream
+        def strip(): (Unmatched, AST.Stream) =
+          (Unmatched(pat, head, List()), stream)
+      }
+
+      case class Unsaturated(head: AST, body: Body, stream: AST.Stream1)
+          extends Segment {
+        val repr = R + head + body + stream
+        def strip(): (Segment.Valid, AST.Stream) =
+          (Segment.Valid(head, body), stream.toList)
+      }
+
+      //// Pattern ////
+
+      sealed trait Pattern
+      object Pattern {
+        case object End                      extends Pattern
+        case object Skip                     extends Pattern
+        case object AnyToken                 extends Pattern
+        case class Opt(pat: Pattern)         extends Pattern
+        case class Many(pat: Pattern)        extends Pattern
+        case class Seq(pats: List1[Pattern]) extends Pattern
+        case class Alt(pats: List1[Pattern]) extends Pattern
+        case class Token[T <: AST]()(implicit val tag: ClassTag[T])
+            extends Pattern
+        case class NotToken[T <: AST]()(implicit val tag: ClassTag[T])
+            extends Pattern
+
+        object Seq {
+          def apply(pat: Pattern, pats: Pattern*): Seq =
+            Seq(List1(pat, pats.toList))
+        }
+      }
+
+      //// Body ////
+
+      sealed trait Body extends Repr.Provider {
+        def toStream(): AST.Stream
+      }
+      object Body {
+
+        case object Empty extends Body {
+          val repr       = R
+          def toStream() = List()
+        }
+
+        case class Expr(t: SAST) extends Body {
+          val repr       = Repr.of(t)
+          def toStream() = List(t)
+        }
+
+        case class Many(t: List1[Body]) extends Body {
+          val repr       = Repr.of(t)
+          def toStream() = t.toList.flatMap(_.toStream)
+        }
+
+        object Many {
+          def apply(head: Body, tail: List[Body]): Many =
+            Many(List1(head, tail))
+          def apply(head: Body): Many = Many(List1(head))
+        }
+      }
+    }
+
+    //// Definition ////
+
+    case class Definition(
+      segments: Definition.Input
+    )
+    object Definition {
+      type Input     = List1[Segment]
+      type Segment   = (AST, Segment.Pattern)
+      type Finalizer = List[Shifted[Template.Segment.Valid]] => AST
+
+      case class Spec[T](scope: Scope, finalizer: Finalizer, el: T) {
+        def map[S](fn: T => S): Spec[S] = Spec(scope, finalizer, fn(el))
+      }
+
+      def Restricted[T](t1: Segment, ts: Segment*)(fin: Finalizer) =
+        Spec(Scope.Restricted, fin, Definition(List1(t1, ts: _*)))
+
+      def Unrestricted[T](t1: Segment, ts: Segment*)(fin: Finalizer) =
+        Spec(Scope.Unrestricted, fin, Definition(List1(t1, ts: _*)))
+
+      trait Scope
+      object Scope {
+        case object Restricted   extends Scope
+        case object Unrestricted extends Scope
+      }
+
+    }
+  }
+
+  ///////////////
+  //// Group ////
+  ///////////////
+
+  type Group = _Group
+  final case class _Group(
+    loff: Int         = 0,
+    body: Option[AST] = None,
+    roff: Int         = 0
+  ) extends AST {
+    val repr = R + loff + body + roff
+  }
+  object Group {
+    def apply(loff: Int, body: Option[AST], roff: Int) =
+      _Group(loff, body, roff)
+    def apply(loff: Int, body: AST, roff: Int): Group =
+      Group(loff, Some(body), roff)
+    def apply(loff: Int, body: Option[AST]): Group = Group(loff, body, 0)
+    def apply(loff: Int, body: AST):         Group = Group(loff, Some(body), 0)
+    def apply(body: Option[AST], roff: Int): Group = Group(0, body, roff)
+    def apply(body: AST, roff: Int):         Group = Group(0, Some(body), roff)
+    def apply(body: Option[AST]):            Group = Group(0, body, 0)
+    def apply(body: AST):                    Group = Group(0, Some(body), 0)
+    def apply(loff: Int):                    Group = Group(loff, None, 0)
+    def apply():                             Group = Group(0, None, 0)
+    def unapply(t: Group) = Some(t.body)
+  }
+
+  /////////////
+  //// Def ////
+  /////////////
 
   type Def = _Def
   case class _Def(
@@ -737,8 +722,8 @@ object AST {
       val bodyEl  = body.map(_.el)
       Def(name.off, name.el, args.map(_.off), args.map(_.el), bodyOff, bodyEl)
     }
-
-//    def unapply(arg: Def): Option[()] =
+    def unapply(t: Def): Option[(AST, List[AST], Option[AST])] =
+      Some((t.name, t.args, t.body))
 
     def prepOffList(offs: List[Int], argCount: Int): List[Int] =
       compare(offs.length, argCount) match {
@@ -747,8 +732,6 @@ object AST {
         case GT => offs.take(argCount)
       }
   }
-
-//  val ttt = Type(Blank, Blank, Blank)
 
   ////////////////
   //// Module ////
@@ -764,6 +747,7 @@ object AST {
     List1(lst.head, lst.tail.flatMap(s => List(t, s)))
 
   import Block.Line
+
   final case class Module(lines: List1[Line]) extends AST {
     val repr = R + intersperse2(R + '\n', lines.map(R + _))
 
@@ -789,6 +773,10 @@ object AST {
   //// Zipper ////
   ////////////////
 
+  /**
+    * This is just a stub implementation. It shows how zippers could be
+    * implemented for AST.
+    */
   trait Zipper[Begin, End]
   object Zipper {
 
@@ -873,8 +861,4 @@ object AST {
   }
 
   val z1 = Module.Zipper.lines.index(5).offset.zipper
-
-//  println("-------------")
-//  println(z1)
-
 }
