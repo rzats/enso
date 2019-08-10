@@ -3,7 +3,6 @@ package org.enso.flexer
 import org.feijoas.mango.common.collect.mutable.RangeMap
 
 import scala.collection.mutable
-import scala.reflect.runtime.universe._
 
 class State {
   val isoLinks                            = new mutable.ArrayBuffer[Int]()
@@ -13,12 +12,12 @@ class State {
 
   var start  = false
   var end    = false
-  var rule   = TermName("")
+  var rule   = ""
   val links2 = RangeMap[Int, Int, Ordering.Int.type]()
 }
 
 object State {
-  case class StateDesc(priority: Int, rule: TermName)
+  case class StateDesc(priority: Int, rule: String)
 
   trait IsoComputeState
   case object NotComputed extends IsoComputeState

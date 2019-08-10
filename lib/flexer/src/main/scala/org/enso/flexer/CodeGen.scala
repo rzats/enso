@@ -21,8 +21,8 @@ case class CodeGen(dfa: DFA) {
     rulesOverlap: Boolean
   ): Tree = (trgState, maybeState, rulesOverlap) match {
     case (-1, None, _)            => q"-2"
-    case (-1, Some(state), false) => q"call(${state.rule})"
-    case (-1, Some(state), true)  => q"rewindThenCall(${state.rule})"
+    case (-1, Some(state), false) => q"call(${TermName(state.rule)})"
+    case (-1, Some(state), true)  => q"rewindThenCall(${TermName(state.rule)})"
 
     case (targetState, _, _) =>
       val rulesOverlap_ = maybeState match {
@@ -112,7 +112,10 @@ case class CodeGen(dfa: DFA) {
     }
     q"""
       groups($i) = ${TermName(s"nextState$i")}
-      def ${TermName(s"nextState$i")}(state: Int): Int = ${Match(q"state", cases)}
+      def ${TermName(s"nextState$i")}(state: Int): Int = ${Match(
+      q"state",
+      cases
+    )}
       ..$bodies
     """
   }

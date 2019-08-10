@@ -1,12 +1,11 @@
 package org.enso.flexer
 
 import org.enso.flexer.group.Rule
-import scala.reflect.runtime.universe.TermName
 import scala.reflect.runtime.universe.Tree
 
 class Group(val groupIx: Int, val finish: () => Unit) {
-  var parent: Option[Group] = None
-  var revRules: List[Rule]  = List()
+  var parent: Option[Group]        = None
+  private var revRules: List[Rule] = List()
 
   def parent_=(p: Group): Unit =
     parent = Some(p)
@@ -17,21 +16,18 @@ class Group(val groupIx: Int, val finish: () => Unit) {
   def rule(expr: Pattern): Rule.Builder =
     Rule.Builder(expr, addRule)
 
-  def cloneRulesFrom(that: Group): Unit =
-    revRules = that.revRules ++ revRules
-
-  private def ruleName(ruleIx: Int): TermName =
-    TermName(s"group${groupIx}_rule$ruleIx")
-
-  def allRules: List[Rule] = {
+  def rules(): List[Rule] = {
     val myRules = revRules.reverse
-    parent.map(myRules ++ _.allRules).getOrElse(myRules)
+    parent.map(myRules ++ _.rules()).getOrElse(myRules)
   }
 
-  def buildAutomata(): NFA = {
+  private def ruleName(ruleIx: Int): String =
+    s"group${groupIx}_rule$ruleIx"
+
+  private def buildAutomata(): NFA = {
     val nfa   = new NFA
     val start = nfa.addState()
-    val endpoints = allRules.zipWithIndex.map {
+    val endpoints = rules().zipWithIndex.map {
       case (rule, ix) => buildRuleAutomata(nfa, start, ix, rule)
     }
     val end = nfa.addState()
@@ -87,9 +83,10 @@ class Group(val groupIx: Int, val finish: () => Unit) {
     nfa.computeIsos()
     val dfa   = nfa.computeDFA()
     val state = CodeGen(dfa).generate(groupIx)
-    val rules = allRules.zipWithIndex.map {
-      case (rule, ruleIx) => q"def ${ruleName(ruleIx)}() = ${rule.tree}"
+    val rs = rules.zipWithIndex.map {
+      case (rule, ruleIx) =>
+        q"def ${TermName(ruleName(ruleIx))}() = ${rule.tree}"
     }
-    q"..$state; ..$rules"
+    q"..$state; ..$rs"
   }
 }
