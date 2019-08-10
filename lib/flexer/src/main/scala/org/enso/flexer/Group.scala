@@ -44,10 +44,9 @@ class Group(val groupIx: Int, val finish: () => Unit) {
   }
 
   def buildRuleAutomata(nfa: NFA, last: Int, ruleIx: Int, rule: Rule): Int = {
-    val end          = buildExprAutomata(nfa, last, rule.expr)
-    val currentMatch = q"currentMatch = matchBuilder.result()"
+    val end = buildExprAutomata(nfa, last, rule.expr)
     nfa.state(end).end  = true
-    nfa.state(end).code = q"{$currentMatch; ${ruleName(ruleIx)}()}"
+    nfa.state(end).rule = ruleName(ruleIx)
     end
   }
 
@@ -86,15 +85,11 @@ class Group(val groupIx: Int, val finish: () => Unit) {
   def generate(): Tree = {
     val nfa = buildAutomata()
     nfa.computeIsos()
-    val dfa  = nfa.computeDFA()
-    var code = CodeGen(dfa).generate(groupIx)
-
-    code =
-      q"{..$code; groups(${Literal(Constant(groupIx))}) = () => ${TermName(s"runGroup$groupIx")}()}"
-    allRules.zipWithIndex.foreach {
-      case (rule, ruleIx) =>
-        code = q"..$code; def ${ruleName(ruleIx)}() = ${rule.fn}"
+    val dfa   = nfa.computeDFA()
+    val state = CodeGen(dfa).generate(groupIx)
+    val rules = allRules.zipWithIndex.map {
+      case (rule, ruleIx) => q"def ${ruleName(ruleIx)}() = ${rule.fn}"
     }
-    code
+    q"..$state; ..$rules"
   }
 }

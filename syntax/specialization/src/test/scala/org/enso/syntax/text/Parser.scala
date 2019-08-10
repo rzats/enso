@@ -6,16 +6,12 @@ import org.enso.syntax.text.ast.Helpers._
 import org.enso.{flexer => Flexer}
 import org.scalatest._
 import EDSL._
+import org.enso.syntax.text.AST.Text.Segment.{EOL, Plain}
 
 class ParserSpec extends FlatSpec with Matchers {
 
-  def parse(input: String) = {
-    val parser = new Parser()
-    parser.run(input)
-  }
-
   def assertModule(input: String, result: AST): Assertion = {
-    val tt = parse(input)
+    val tt = Parser.run(input)
     tt match {
       case Flexer.Success(value, offset) =>
         assert(value == result)
@@ -25,7 +21,7 @@ class ParserSpec extends FlatSpec with Matchers {
   }
 
   def assertExpr(input: String, result: AST): Assertion = {
-    val tt = parse(input)
+    val tt = Parser.run(input)
     tt match {
       case Flexer.Success(value, offset) =>
         val module = value.asInstanceOf[Module]
@@ -171,11 +167,11 @@ class ParserSpec extends FlatSpec with Matchers {
   //// Text ////
   //////////////
 
-  "'"    ?= Text.Unclosed(Text())
-  "''"   ?= Text()
-  "'''"  ?= Text.Unclosed(Text(Text.Quote.Triple))
-  "''''" ?= Text.Unclosed(Text(Text.Quote.Triple, "'"))
-//  "'''''"   ?= Text.Unclosed(Text(Text.Quote.Triple, "''")) // FIXME
+  "'"       ?= Text.Unclosed(Text())
+  "''"      ?= Text()
+  "'''"     ?= Text.Unclosed(Text(Text.Quote.Triple))
+  "''''"    ?= Text.Unclosed(Text(Text.Quote.Triple, "'"))
+  "'''''"   ?= Text.Unclosed(Text(Text.Quote.Triple, "''"))
   "''''''"  ?= Text(Text.Quote.Triple)
   "'''''''" ?= Text(Text.Quote.Triple) $ Text.Unclosed(Text())
   "'a'"     ?= Text("a")
@@ -183,7 +179,25 @@ class ParserSpec extends FlatSpec with Matchers {
   "'a'''"   ?= Text("a") $ Text()
   "'''a'''" ?= Text(Text.Quote.Triple, "a")
   "'''a'"   ?= Text.Unclosed(Text(Text.Quote.Triple, "a'"))
-  //  "'''a''"  ?= Text.Unclosed(Text(Text.Quote.Triple, "a''")) // FIXME
+  "'''a''"  ?= Text.Unclosed(Text(Text.Quote.Triple, "a''"))
+
+
+  "\""             ?= Text.Unclosed(Text.Raw())
+  "\"\""           ?= Text.Raw()
+  "\"\"\""         ?= Text.Unclosed(Text.Raw(Text.Quote.Triple))
+  "\"\"\"\""       ?= Text.Unclosed(Text.Raw(Text.Quote.Triple, "\""))
+  "\"\"\"\"\""     ?= Text.Unclosed(Text.Raw(Text.Quote.Triple, "\"\""))
+  "\"\"\"\"\"\""   ?= Text.Raw(Text.Quote.Triple)
+  "\"\"\"\"\"\"\"" ?= Text.Raw(Text.Quote.Triple) $ Text.Unclosed(Text.Raw())
+  "\"a\""          ?= Text.Raw("a")
+  "\"a"            ?= Text.Unclosed(Text.Raw("a"))
+  "\"a\"\"\""      ?= Text.Raw("a") $ Text.Raw()
+  "\"\"\"a\"\"\""  ?= Text.Raw(Text.Quote.Triple, "a")
+  "\"\"\"a\""      ?= Text.Unclosed(Text.Raw(Text.Quote.Triple, "a\""))
+  "\"\"\"a\"\""    ?= Text.Unclosed(Text.Raw(Text.Quote.Triple, "a\"\""))
+
+
+  "'''\nX\n Y\n'''" ?= Text.MultiLine(0, '\'', Text.Quote.Triple, List(EOL(), Plain("X"), EOL(), Plain(" Y"), EOL()))
 
   //// Escapes ////
 

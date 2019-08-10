@@ -192,7 +192,7 @@ class NFA {
         nfaEndStatePriorityMap.get(iso) match {
           case None =>
           case Some(p) =>
-            dfaEndStatePriorityMap += dfaIx -> StateDesc(p, state(iso).code)
+            dfaEndStatePriorityMap += dfaIx -> StateDesc(p, state(iso).rule)
         }
       }
 

@@ -5,6 +5,7 @@ import org.enso.flexer.Pattern.range
 import org.enso.flexer.Pattern._
 import org.enso.flexer._
 import org.enso.syntax.text.AST.Text.Quote
+import org.enso.syntax.text.AST.Text.Segment.EOL
 import org.enso.syntax.text.AST
 
 import scala.annotation.tailrec
@@ -327,16 +328,27 @@ case class ParserDef() extends ParserBase[AST] {
   final def insideOfText: Boolean =
     textStateStack.nonEmpty
 
-  final def submitEmptyText(quoteNum: Quote): Unit = logger.trace {
-    app(AST.Text.Interpolated(quoteNum))
-  }
+  final def submitEmptyText(groupIx: Int, quoteNum: Quote): Unit =
+    logger.trace {
+      if (groupIx == RAWTEXT.groupIx)
+        app(AST.Text.Raw(quoteNum))
+      else
+        app(AST.Text.Interpolated(quoteNum))
+    }
 
-  final def finishCurrentTextBuilding(): AST.Text.Interpolated = logger.trace {
+  final def finishCurrentTextBuilding(): AST.Text.Class[_] = logger.trace {
     withCurrentText(t => t.copy(segments = t.segments.reverse))
-    val txt = currentText
+    val txt = if (group == RAWTEXT.groupIx) currentText.raw else currentText
     popTextState()
     endGroup()
-    txt
+    val singleLine = !txt.segments.contains(EOL())
+    if (singleLine || currentBlock.firstLine.isDefined || result.isDefined)
+      txt
+    else {
+      val segs =
+        AST.Text.MultiLine.stripOffset(currentBlock.indent, txt.segments)
+      AST.Text.MultiLine(currentBlock.indent, txt.quoteChar, txt.quote, segs)
+    }
   }
 
   final def submitText(): Unit = logger.trace {
@@ -347,9 +359,9 @@ case class ParserDef() extends ParserBase[AST] {
     app(AST.Text.Unclosed(finishCurrentTextBuilding()))
   }
 
-  final def onTextBegin(quoteSize: Quote): Unit = logger.trace {
+  final def onTextBegin(group: Group, quoteSize: Quote): Unit = logger.trace {
     pushTextState(quoteSize)
-    beginGroup(TEXT)
+    beginGroup(group)
   }
 
   final def submitPlainTextSegment(
@@ -369,11 +381,11 @@ case class ParserDef() extends ParserBase[AST] {
         && quoteSize == AST.Text.Quote.Single) onPlainTextSegment()
     else if (currentText.quote == AST.Text.Quote.Single
              && quoteSize == AST.Text.Quote.Triple) {
+      val groupIx = group
       submitText()
-      submitEmptyText(AST.Text.Quote.Single)
-    } else {
+      submitEmptyText(groupIx, AST.Text.Quote.Single)
+    } else
       submitText()
-    }
   }
 
   final def onTextEscape(code: AST.Text.Segment.Escape): Unit = logger.trace {
@@ -446,56 +458,64 @@ case class ParserDef() extends ParserBase[AST] {
     rewind()
   }
 
-  final def fixme_onTextDoubleQuote(): Unit = logger.trace {
-    currentMatch = "'"
-    onTextQuote(AST.Text.Quote.Single)
-    rewind(1)
+  final def onTextEOL(): Unit = logger.trace {
+    submitPlainTextSegment(AST.Text.Segment.EOL())
   }
 
-  val stringChar    = noneOf("'`\"\n\\")
+  val stringChar    = noneOf("'`\"\\\n")
   val stringSegment = stringChar.many1
   val escape_int    = "\\" >> decimal
   val escape_u16    = "\\u" >> repeat(stringChar, 0, 4)
   val escape_u32    = "\\U" >> repeat(stringChar, 0, 8)
 
   val TEXT: Group        = defineGroup("Text")
+  val RAWTEXT: Group     = defineGroup("RawText")
   val INTERPOLATE: Group = defineGroup("Interpolate")
   INTERPOLATE.setParent(NORMAL)
 
   // format: off
-  NORMAL rule "'"           run reify { onTextBegin(ast.Text.Quote.Single) }
-  NORMAL rule "''"          run reify { submitEmptyText(ast.Text.Quote.Single) } // FIXME: Remove after fixing DFA Gen
-  NORMAL rule "'''"         run reify { onTextBegin(ast.Text.Quote.Triple) }
-  NORMAL rule '`'           run reify { onInterpolateEnd() }
-  TEXT   rule '`'           run reify { onInterpolateBegin() }
-  TEXT   rule "'"           run reify { onTextQuote(ast.Text.Quote.Single) }
-  TEXT   rule "''"          run reify { fixme_onTextDoubleQuote() } // FIXME: Remove after fixing DFA Gen
-  TEXT   rule "'''"         run reify { onTextQuote(ast.Text.Quote.Triple) }
-  TEXT   rule stringSegment run reify { onPlainTextSegment() }
-  TEXT   rule eof           run reify { onTextEOF() }
+  NORMAL  rule '`'            run reify { onInterpolateEnd() }
+  TEXT    rule '`'            run reify { onInterpolateBegin() }
+  
+  NORMAL  rule "'"            run reify { onTextBegin(TEXT, ast.Text.Quote.Single) }
+  NORMAL  rule "'''"          run reify { onTextBegin(TEXT, ast.Text.Quote.Triple) }
+  TEXT    rule "'"            run reify { onTextQuote(ast.Text.Quote.Single) }
+  TEXT    rule "'''"          run reify { onTextQuote(ast.Text.Quote.Triple) }
+  TEXT    rule stringSegment  run reify { onPlainTextSegment() }
+  TEXT    rule eof            run reify { onTextEOF() }
+  TEXT    rule '\n'           run reify { onTextEOL() }
+
+  NORMAL  rule "\""           run reify { onTextBegin(RAWTEXT, ast.Text.Quote.Single) }
+  NORMAL  rule "\"\"\""       run reify { onTextBegin(RAWTEXT, ast.Text.Quote.Triple) }
+  RAWTEXT rule "\""           run reify { onTextQuote(ast.Text.Quote.Single) }
+  RAWTEXT rule "\"\"\""       run reify { onTextQuote(ast.Text.Quote.Triple) }
+  RAWTEXT rule noneOf("\"\n") run reify { onPlainTextSegment() }
+  RAWTEXT rule eof            run reify { onTextEOF() }
+  RAWTEXT rule '\n'           run reify { onTextEOL() }
 
   AST.Text.Segment.Escape.Character.codes.foreach { ctrl =>
     import scala.reflect.runtime.universe._
-  val name = TermName(ctrl.toString)
+    val name = TermName(ctrl.toString)
     val func = q"onTextEscape(ast.Text.Segment.Escape.Character.$name)"
     TEXT rule s"\\$ctrl" run func
   }
 
   AST.Text.Segment.Escape.Control.codes.foreach { ctrl =>
     import scala.reflect.runtime.universe._
-  val name = TermName(ctrl.toString)
+    val name = TermName(ctrl.toString)
     val func = q"onTextEscape(ast.Text.Segment.Escape.Control.$name)"
     TEXT rule s"\\$ctrl" run func
   }
 
-  TEXT rule escape_u16           run reify { onTextEscapeU16() }
-  TEXT rule escape_u32           run reify { onTextEscapeU32() }
-  TEXT rule escape_int           run reify { onTextEscapeInt() }
-  TEXT rule "\\\\"               run reify { onEscapeSlash() }
-  TEXT rule "\\'"                run reify { onEscapeQuote() }
-  TEXT rule "\\\""               run reify { onEscapeRawQuote() }
-  TEXT rule ("\\" >> stringChar) run reify { onInvalidEscape() }
-  TEXT rule "\\"                 run reify { onPlainTextSegment() }
+  TEXT    rule escape_u16           run reify { onTextEscapeU16() }
+  TEXT    rule escape_u32           run reify { onTextEscapeU32() }
+  TEXT    rule escape_int           run reify { onTextEscapeInt() }
+  TEXT    rule "\\\\"               run reify { onEscapeSlash() }
+  TEXT    rule "\\'"                run reify { onEscapeQuote() }
+  TEXT    rule "\\\""               run reify { onEscapeRawQuote() }
+  TEXT    rule ("\\" >> stringChar) run reify { onInvalidEscape() }
+  TEXT    rule "\\"                 run reify { onPlainTextSegment() }
+
   // format: on
 
 //  //////////////

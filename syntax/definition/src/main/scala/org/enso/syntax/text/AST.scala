@@ -3,6 +3,7 @@ package org.enso.syntax.text
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.data.Tree
+import org.enso.flexer.Utils._
 import org.enso.data.Compare._
 import org.enso.syntax.text.ast.Repr.R
 import org.enso.syntax.text.ast.Repr
@@ -432,13 +433,16 @@ object AST {
 
     //// Abstraction ////
 
-    sealed abstract class Class[This](val quoteChar: Char) extends Text {
-      type Segment >: Text.Segment.Raw
+    trait Class[This] extends Text {
+      type Segment <: Text.Segment
+
+      val quoteChar: Char
       val quote: Quote
       val segments: List[Segment]
 
-      val quoteRepr = R + quoteChar.toString * quote.asInt
-      val bodyRepr: Repr
+      lazy val quoteRepr = R + (quoteChar.toString * quote.asInt)
+      lazy val bodyRepr  = R + segments
+      lazy val repr      = R + quoteRepr + segments + quoteRepr
 
       def _dup(quote: Quote, segments: List[Segment]): This
       def dup(quote: Quote = quote, segments: List[Segment] = segments) =
@@ -447,7 +451,9 @@ object AST {
       def prepend(segment: Segment): This =
         this.dup(segments = segment :: segments)
 
-      def prependMergeReversed(segment: Segment): This =
+      def prependMergeReversed(
+        segment: Segment
+      )(implicit p: Text.Segment.Raw <:< Segment): This =
         (segment, segments) match {
           case (Text.Segment.Plain(n), Text.Segment.Plain(t) :: ss) =>
             this.dup(segments = Text.Segment.Plain(t + n) :: ss)
@@ -467,28 +473,78 @@ object AST {
 
     //// Definition ////
 
+    import Segment._
+
     final case class Interpolated(
       quote: Text.Quote,
       segments: List[Interpolated.Segment]
-    ) extends Class[Interpolated]('\'') {
+    ) extends Class[Interpolated] {
       type Segment = Interpolated.Segment
-      val bodyRepr = R + segments
-      val repr     = R + quoteRepr + segments + quoteRepr
+      val quoteChar = '\''
       def _dup(quote: Quote, segments: List[Segment]): Interpolated =
         copy(quote, segments)
+
+      def raw: Text.Raw =
+        Raw(quote, segments.map(s => Segment.Plain(s.repr.show())))
     }
 
     final case class Raw(quote: Text.Quote, segments: List[Raw.Segment])
-        extends Class[Raw]('"') {
+        extends Class[Raw] {
       type Segment = Raw.Segment
-      val bodyRepr = R + segments
-      val repr     = R + quoteRepr + segments + quoteRepr
+      val quoteChar = '"'
       def _dup(quote: Quote, segments: List[Segment]) =
         copy(quote, segments)
     }
 
+    final case class MultiLine(
+      indent: Int,
+      quoteChar: Char,
+      quote: Text.Quote,
+      segments: List[Segment]
+    ) extends Class[MultiLine] {
+      type Segment = Text.Segment
+      override lazy val bodyRepr = R + segments.flatMap {
+          case EOL(true) => List(EOL(), Plain(" " * indent))
+          case s         => List(s)
+        }
+
+      def _dup(quote: Quote, segments: List[Segment]) =
+        copy(indent, quoteChar, quote, segments)
+    }
+
+    object MultiLine {
+
+      def stripOffset(
+        offset: Int,
+        rawSegments: List[Segment]
+      ): List[Segment] = {
+        if (rawSegments.isEmpty) return rawSegments
+        var last = rawSegments.head
+        for (s <- rawSegments.tail :+ EOL()) yield (last, s) match {
+          case (EOL(_), segment) if offset == 0 =>
+            last = segment
+            EOL()
+          case (EOL(_), Plain(txt))
+              if txt.takeWhile(_ == ' ').length >= offset =>
+            last = Plain(txt.drop(offset))
+            EOL()
+          case (EOL(_), segment) =>
+            last = segment
+            EOL(validIndent = false)
+          case (_, segment) =>
+            last.thenDo { last = segment }
+        }
+      }
+    }
+
     object Raw {
       trait Segment extends Text.Interpolated.Segment
+
+      def apply():                      Raw = Raw(Quote.Single, Nil)
+      def apply(q: Quote):              Raw = Raw(q, Nil)
+      def apply(q: Quote, s: Segment*): Raw = Raw(q, s.to[List])
+      def apply(s: List[Segment]):      Raw = Raw(Quote.Single, s)
+      def apply(s: Segment*):           Raw = Raw(s.to[List])
     }
 
     object Interpolated {
@@ -523,6 +579,10 @@ object AST {
         val repr = value
       }
 
+      final case class EOL(validIndent: Boolean = true) extends Raw {
+        val repr = "\n"
+      }
+
       final case class Interpolation(value: Option[AST]) extends Interpolated {
         val repr = R + '`' + value + '`'
       }
@@ -530,7 +590,7 @@ object AST {
       trait Escape extends Interpolated
       val Escape = text.Escape
 
-      implicit def fromString(str: String): Segment.Plain = Segment.Plain(str)
+      implicit def fromString(str: String): Plain = Plain(str)
     }
 
     //// Unclosed ////

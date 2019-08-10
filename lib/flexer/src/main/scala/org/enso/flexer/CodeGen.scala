@@ -19,25 +19,23 @@ case class CodeGen(dfa: DFA) {
     trgState: Int,
     maybeState: Option[StateDesc],
     rulesOverlap: Boolean
-  ): Tree = {
-    (trgState, maybeState, rulesOverlap) match {
-      case (-1, None, _)            => q"-2"
-      case (-1, Some(state), false) => q"..${state.code}; -1"
-      case (-1, Some(state), true)  => q"rewindToLastRule(); ..${state.code}; -1"
+  ): Tree = (trgState, maybeState, rulesOverlap) match {
+    case (-1, None, _)            => q"-2"
+    case (-1, Some(state), false) => q"call(${state.rule})"
+    case (-1, Some(state), true)  => q"rewindThenCall(${state.rule})"
 
-      case (targetState, _, _) =>
-        val rulesOverlap_ = maybeState match {
-          case Some(state) if !dfa.endStatePriorityMap.contains(targetState) =>
-            dfa.endStatePriorityMap += targetState -> state
-            stateHasOverlappingRules += targetState -> true
-            true
-          case _ => false
-        }
-        if (rulesOverlap || rulesOverlap_)
-          q"charsToLastRule += charSize; ${Literal(Constant(targetState))}"
-        else
-          q"${Literal(Constant(targetState))}"
-    }
+    case (targetState, _, _) =>
+      val rulesOverlap_ = maybeState match {
+        case Some(state) if !dfa.endStatePriorityMap.contains(targetState) =>
+          dfa.endStatePriorityMap += targetState -> state
+          stateHasOverlappingRules += targetState -> true
+          true
+        case _ => false
+      }
+      if (rulesOverlap || rulesOverlap_)
+        q"charsToLastRule += charSize; ${Literal(Constant(targetState))}"
+      else
+        q"${Literal(Constant(targetState))}"
   }
 
   def genSwitch(branchs: Seq[Branch]): Seq[CaseDef] = {
@@ -104,7 +102,7 @@ case class CodeGen(dfa: DFA) {
   def generate(i: Int): Tree = {
     def states =
       dfa.links.indices.toList
-        .map(st => (st, TermName(s"group${i}_state$st")))
+        .map(st => (st, TermName(s"state${i}_${st}")))
 
     val cases = states.map {
       case (st, fun) => cq"$st => $fun"
@@ -113,20 +111,8 @@ case class CodeGen(dfa: DFA) {
       case (st, fun) => q"def $fun = {${generateCaseBody(st)}}"
     }
     q"""
-      def ${TermName(s"runGroup$i")}(): Int = {
-        var state: Int = 0
-        matchBuilder.setLength(0)
-        while(state >= 0) {
-          state = ${Match(q"state", cases)}
-          if(state >= 0) {
-            matchBuilder.append(buffer(offset))
-            if (buffer(offset).isHighSurrogate)
-              matchBuilder.append(buffer(offset+1))
-            codePoint = getNextCodePoint()
-          }
-        }
-        state
-      }
+      groups($i) = ${TermName(s"nextState$i")}
+      def ${TermName(s"nextState$i")}(state: Int): Int = ${Match(q"state", cases)}
       ..$bodies
     """
   }
