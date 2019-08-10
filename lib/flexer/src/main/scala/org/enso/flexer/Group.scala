@@ -1,6 +1,8 @@
 package org.enso.flexer
 
+import org.enso.flexer.automata.NFA
 import org.enso.flexer.group.Rule
+
 import scala.reflect.runtime.universe.Tree
 
 class Group(val groupIx: Int, val finish: () => Unit) {
@@ -38,14 +40,23 @@ class Group(val groupIx: Int, val finish: () => Unit) {
     nfa
   }
 
-  def buildRuleAutomata(nfa: NFA, last: Int, ruleIx: Int, rule: Rule): Int = {
+  def buildRuleAutomata(
+    nfa: NFA,
+    last: Int,
+    ruleIx: Int,
+    rule: Rule
+  ): Int = {
     val end = buildExprAutomata(nfa, last, rule.pattern)
     nfa.state(end).end  = true
     nfa.state(end).rule = ruleName(ruleIx)
     end
   }
 
-  def buildExprAutomata(nfa: NFA, last: Int, expr: Pattern): Int = {
+  def buildExprAutomata(
+    nfa: NFA,
+    last: Int,
+    expr: Pattern
+  ): Int = {
     val current = nfa.addState()
     nfa.link(last, current)
     expr match {
@@ -53,7 +64,7 @@ class Group(val groupIx: Int, val finish: () => Unit) {
       case Pass  => current
       case Ran(start, end) =>
         val state = nfa.addState()
-        nfa.link(current, state, start, end)
+        nfa.link(current, state, Range(start, end))
         state
       case Seq_(first, second) =>
         val s1 = buildExprAutomata(nfa, current, first)

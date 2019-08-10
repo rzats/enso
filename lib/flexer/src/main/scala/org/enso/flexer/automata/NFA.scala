@@ -1,27 +1,20 @@
-package org.enso.flexer
-
-import java.awt.Desktop
-import java.net.URI
-import java.net.URLEncoder
+package org.enso.flexer.automata
 
 import org.enso.Logger
-import org.enso.flexer.State._
-import org.feijoas.mango.common.{collect => RRR}
+import org.enso.flexer.Vocabulary
 
 import scala.collection.mutable
 
 case class DFA(
   vocabulary: Vocabulary,
   links: Array[Array[Int]],
-  endStatePriorityMap: mutable.Map[Int, StateDesc]
+  endStatePriorityMap: mutable.Map[Int, State.StateDesc]
 )
 
 class NFA {
-  val logger                             = new Logger()
+  val logger: Logger                     = new Logger()
   val states: mutable.ArrayBuffer[State] = new mutable.ArrayBuffer()
-  val isoMap: mutable.Map[Set[Int], Int] = mutable.Map()
-
-  val vocabulary = new Vocabulary()
+  val vocabulary                         = new Vocabulary()
 
   def addState(): Int = {
     val state = new State()
@@ -29,41 +22,39 @@ class NFA {
     states.length - 1
   }
 
-  def link(start: Int, end: Int, charStart: Char, charEnd: Char): Unit =
-    link(start, end, charStart.toInt, charEnd.toInt)
+  def state(ix: Int): State =
+    states(ix)
 
-  def link(start: Int, end: Int, charStart: Int, charEnd: Int): Unit = {
-    vocabulary.insert(Range(charStart, charEnd))
-    state(start).links2.put(RRR.Range.closed(charStart, charEnd), end)
+  def link(start: Int, end: Int, charRange: Range): Unit = {
+    vocabulary.insert(charRange)
+    state(start).links.add(end, charRange)
   }
 
-  def link(start: Int, end: Int, char: Char): Unit =
-    link(start, end, char, char)
-
-  def link(start: Int, end: Int): Unit = {
-    state(start).isoLinks += end
-    ()
-  }
+  def link(start: Int, end: Int): Unit =
+    state(start).links.add(end)
 
   def visualize(): String = {
+    import java.awt.Desktop
+    import java.net.URI
+    import java.net.URLEncoder
+
     val gray  = "#AAAAAA"
     val lines = mutable.ArrayBuffer[String]()
     lines += "digraph G {"
     lines += "node [shape=circle width=0.8]"
     for ((state, source) <- states.zipWithIndex) {
-      if (state.links2.isEmpty) {
+      if (state.links.ranged.isEmpty) {
         lines += s"""$source [color="$gray" fontcolor="$gray"]"""
       } else {
         lines += s"""$source"""
       }
-      for ((range, target) <- state.links2.asMapOfRanges()) {
+      for ((range, target) <- state.links.ranged.asMapOfRanges()) {
         lines += s"""$source -> $target [label="$range"]"""
       }
-      for (target <- state.isoLinks) {
+      for (target <- state.links.epsilon) {
         lines += s"""$source -> $target [style="dashed" color="$gray"]"""
       }
     }
-
     lines += "}"
     val code    = lines.mkString("\n")
     var webCode = code
@@ -74,37 +65,38 @@ class NFA {
     code
   }
 
-  def state(ix: Int): State =
-    states(ix)
-
   def computeIsosFor(i: Int): Unit = {
-    val s    = state(i)
-    var isos = Set[Int](i)
-    if (s.isosComputed == NotComputed) {
-      var circular = false
-      s.isosComputed = InProgress
-      s.isoLinks.foreach((tgt) => {
-        computeIsosFor(tgt)
-        val s2 = state(tgt)
-        isos = isos + tgt
-        isos = isos ++ s2.isos
-        if (s2.isosComputed == InProgress) {
-          circular = true
-        }
-      })
-      s.isos = isos
-      if (!circular) {
-        isoMap.get(isos) match {
-          case Some(id) => s.isosId = id
-          case None => {
-            val id = isoMap.size
-            s.isosId = id
-            isoMap += (isos -> id)
+    val isoMap: mutable.Map[Set[Int], Int] = mutable.Map()
+    def go(i: Int): Unit = {
+      val s    = state(i)
+      var isos = Set[Int](i)
+      if (s.isosComputed == State.NotComputed) {
+        var circular = false
+        s.isosComputed = State.InProgress
+        s.links.epsilon.foreach(tgt => {
+          go(tgt)
+          val s2 = state(tgt)
+          isos = isos + tgt
+          isos = isos ++ s2.isos
+          if (s2.isosComputed == State.InProgress) {
+            circular = true
           }
+        })
+        s.isos = isos
+        if (!circular) {
+          isoMap.get(isos) match {
+            case Some(id) => s.isosId = id
+            case None => {
+              val id = isoMap.size
+              s.isosId = id
+              isoMap += (isos -> id)
+            }
+          }
+          s.isosComputed = State.Computed
         }
-        s.isosComputed = Computed
       }
     }
+    go(i)
   }
 
   def computeIsos(): Unit =
@@ -118,7 +110,7 @@ class NFA {
       for (stateIx <- states.indices) {
         val s = state(stateIx)
         for ((range, vocIx) <- vocabulary) {
-          s.links2.get(range.start) match {
+          s.links.ranged.get(range.start) match {
             case Some(tgt) => matrix(stateIx)(vocIx) = tgt
             case None      => matrix(stateIx)(vocIx) = -1
           }
@@ -186,13 +178,16 @@ class NFA {
         }
       }
 
-      val dfaEndStatePriorityMap = mutable.Map[Int, StateDesc]()
+      val dfaEndStatePriorityMap = mutable.Map[Int, State.StateDesc]()
       for ((isos, dfaIx) <- dfaIsoKeys.zipWithIndex) {
         val iso = isos.maxBy(nfaEndStatePriorityMap.getOrElse(_, -1))
         nfaEndStatePriorityMap.get(iso) match {
           case None =>
           case Some(p) =>
-            dfaEndStatePriorityMap += dfaIx -> StateDesc(p, state(iso).rule)
+            dfaEndStatePriorityMap += dfaIx -> State.StateDesc(
+              p,
+              state(iso).rule
+            )
         }
       }
 

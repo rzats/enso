@@ -2,8 +2,9 @@ package org.enso.flexer
 
 import org.enso.flexer.CodeGen.MAX_ASCII_CODE
 import org.enso.flexer.CodeGen.MIN_ASCII_CODE
-import org.enso.flexer.State.StateDesc
+import org.enso.flexer.automata.State.StateDesc
 import org.enso.flexer.Utils._
+import org.enso.flexer.automata.DFA
 
 import scala.collection.immutable.Range
 import scala.collection.mutable
