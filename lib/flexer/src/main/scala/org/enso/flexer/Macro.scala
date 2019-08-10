@@ -1,5 +1,4 @@
 package org.enso.flexer
-
 import scala.reflect.macros.blackbox.Context
 import scala.reflect.runtime.{universe => u}
 

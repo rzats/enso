@@ -38,7 +38,7 @@ object Main extends App {
 //  val out = p1.run("t   if  a+b   *    c     then      x")
 //val out = p1.run("if (a then")
 //val out = p1.run("foo\n bar")
-  val inp = "type a b c X"
+  val inp = "(a b c)"
   val out = p1.run(inp)
   //  val out = p1.run("(a")
 //  val out = p1.run("()")

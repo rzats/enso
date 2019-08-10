@@ -8,18 +8,18 @@ import org.enso.syntax.text.ast.Repr.R
 object EDSL {
 
   trait MixfixBldr[T] {
-    def add(m: Template, i: Int, t: T): Template
+    def add(m: Template.Valid, i: Int, t: T): Template.Valid
   }
   trait MixfixBldr1[T] {
-    def add1(m: Template, i: Int, t: T): Template
+    def add1(m: Template.Valid, i: Int, t: T): Template.Valid
   }
 
   implicit val string_mixfixBuilder: MixfixBldr[String] =
-    (m: Template, i: Int, t: String) =>
+    (m: Template.Valid, i: Int, t: String) =>
       implicitly[MixfixBldr[AST]].add(m, i, fromStringRaw(t))
 
   implicit val ast_mixfixBuilder: MixfixBldr[AST] =
-    (m: Template, i: Int, t: AST) => {
+    (m: Template.Valid, i: Int, t: AST) => {
 
       def dd() = {
         val seg = Template.Segment(t, Template.Segment.Body.Empty)
@@ -50,11 +50,11 @@ object EDSL {
     }
 
   implicit val string_mixfixBuilder1: MixfixBldr1[String] =
-    (m: Template, i: Int, t: String) =>
+    (m: Template.Valid, i: Int, t: String) =>
       implicitly[MixfixBldr1[AST]].add1(m, i, fromStringRaw(t))
 
   implicit val ast_mixfixBuilder1: MixfixBldr1[AST] =
-    (m: Template, i: Int, t: AST) => {
+    (m: Template.Valid, i: Int, t: AST) => {
 
       def dd() = {
         val seg = Template.Segment(t, Template.Segment.Body.Empty)
@@ -85,72 +85,72 @@ object EDSL {
 
   implicit class MixfixBuilder_String(t: String) {
 
-    def empty(i: Int, s: String) = Template(
+    def empty(i: Int, s: String) = Template.Valid(
       Shifted.List1(
         Template.Segment(fromStringRaw(t), Template.Segment.Body.Empty),
         List(Shifted(i, Template.Segment(fromStringRaw(s))))
       )
     )
 
-    def unmatched(tree: Tree[AST, Unit]): Template.Unmatched =
-      Template.Unmatched(
+    def unmatched(tree: Tree[AST, Unit]): Template.Partial =
+      Template.Partial(
         Shifted
-          .List1(Template.Unmatched.Segment(fromStringRaw(t), None), List()),
+          .List1(Template.Partial.Segment(fromStringRaw(t), None), List()),
         tree
       )
 
-    def unmatched(lst: Seq[String]): Template.Unmatched = {
+    def unmatched(lst: Seq[String]): Template.Partial = {
       val args = lst.map(k => List(fromStringRaw(k)) -> (()))
       val tree = Tree[AST, Unit](args: _*)
       unmatched(tree)
     }
 
-    def unmatched_lst(lst: Seq[List[String]]): Template.Unmatched = {
+    def unmatched_lst(lst: Seq[List[String]]): Template.Partial = {
       val args = lst.map(k => k.map(fromStringRaw) -> (()))
       val tree = Tree[AST, Unit](args: _*)
       unmatched(tree)
     }
 
-    def II(s: String):          Template = empty(0, s)
-    def I_I(s: String):         Template = empty(1, s)
-    def I__I(s: String):        Template = empty(2, s)
-    def I___I(s: String):       Template = empty(3, s)
-    def I____I(s: String):      Template = empty(4, s)
-    def I_____I(s: String):     Template = empty(5, s)
-    def I______I(s: String):    Template = empty(6, s)
-    def I_______I(s: String):   Template = empty(7, s)
-    def I________I(s: String):  Template = empty(8, s)
-    def I_________I(s: String): Template = empty(9, s)
+    def II(s: String):          Template.Valid = empty(0, s)
+    def I_I(s: String):         Template.Valid = empty(1, s)
+    def I__I(s: String):        Template.Valid = empty(2, s)
+    def I___I(s: String):       Template.Valid = empty(3, s)
+    def I____I(s: String):      Template.Valid = empty(4, s)
+    def I_____I(s: String):     Template.Valid = empty(5, s)
+    def I______I(s: String):    Template.Valid = empty(6, s)
+    def I_______I(s: String):   Template.Valid = empty(7, s)
+    def I________I(s: String):  Template.Valid = empty(8, s)
+    def I_________I(s: String): Template.Valid = empty(9, s)
 
-    def Ix(t: Tree[AST, Unit]): Template.Unmatched = unmatched(t)
-    def Ix(t: String*):         Template.Unmatched = unmatched(t)
-    def Ixx(t: List[String]*):  Template.Unmatched = unmatched_lst(t)
+    def Ix(t: Tree[AST, Unit]): Template.Partial = unmatched(t)
+    def Ix(t: String*):         Template.Partial = unmatched(t)
+    def Ixx(t: List[String]*):  Template.Partial = unmatched_lst(t)
 
-    def I(s: AST):          Template = fromStringRaw(t)._addSeg_(0)(s)
-    def I_(s: AST):         Template = fromStringRaw(t)._addSeg_(1)(s)
-    def I__(s: AST):        Template = fromStringRaw(t)._addSeg_(2)(s)
-    def I___(s: AST):       Template = fromStringRaw(t)._addSeg_(3)(s)
-    def I____(s: AST):      Template = fromStringRaw(t)._addSeg_(4)(s)
-    def I_____(s: AST):     Template = fromStringRaw(t)._addSeg_(5)(s)
-    def I______(s: AST):    Template = fromStringRaw(t)._addSeg_(6)(s)
-    def I_______(s: AST):   Template = fromStringRaw(t)._addSeg_(7)(s)
-    def I________(s: AST):  Template = fromStringRaw(t)._addSeg_(8)(s)
-    def I_________(s: AST): Template = fromStringRaw(t)._addSeg_(9)(s)
+    def I(s: AST):          Template.Valid = fromStringRaw(t)._addSeg_(0)(s)
+    def I_(s: AST):         Template.Valid = fromStringRaw(t)._addSeg_(1)(s)
+    def I__(s: AST):        Template.Valid = fromStringRaw(t)._addSeg_(2)(s)
+    def I___(s: AST):       Template.Valid = fromStringRaw(t)._addSeg_(3)(s)
+    def I____(s: AST):      Template.Valid = fromStringRaw(t)._addSeg_(4)(s)
+    def I_____(s: AST):     Template.Valid = fromStringRaw(t)._addSeg_(5)(s)
+    def I______(s: AST):    Template.Valid = fromStringRaw(t)._addSeg_(6)(s)
+    def I_______(s: AST):   Template.Valid = fromStringRaw(t)._addSeg_(7)(s)
+    def I________(s: AST):  Template.Valid = fromStringRaw(t)._addSeg_(8)(s)
+    def I_________(s: AST): Template.Valid = fromStringRaw(t)._addSeg_(9)(s)
 
-    def I1(s: AST):          Template = fromStringRaw(t)._addSeg1_(0)(s)
-    def I1_(s: AST):         Template = fromStringRaw(t)._addSeg1_(1)(s)
-    def I1__(s: AST):        Template = fromStringRaw(t)._addSeg1_(2)(s)
-    def I1___(s: AST):       Template = fromStringRaw(t)._addSeg1_(3)(s)
-    def I1____(s: AST):      Template = fromStringRaw(t)._addSeg1_(4)(s)
-    def I1_____(s: AST):     Template = fromStringRaw(t)._addSeg1_(5)(s)
-    def I1______(s: AST):    Template = fromStringRaw(t)._addSeg1_(6)(s)
-    def I1_______(s: AST):   Template = fromStringRaw(t)._addSeg1_(7)(s)
-    def I1________(s: AST):  Template = fromStringRaw(t)._addSeg1_(8)(s)
-    def I1_________(s: AST): Template = fromStringRaw(t)._addSeg1_(9)(s)
+    def I1(s: AST):          Template.Valid = fromStringRaw(t)._addSeg1_(0)(s)
+    def I1_(s: AST):         Template.Valid = fromStringRaw(t)._addSeg1_(1)(s)
+    def I1__(s: AST):        Template.Valid = fromStringRaw(t)._addSeg1_(2)(s)
+    def I1___(s: AST):       Template.Valid = fromStringRaw(t)._addSeg1_(3)(s)
+    def I1____(s: AST):      Template.Valid = fromStringRaw(t)._addSeg1_(4)(s)
+    def I1_____(s: AST):     Template.Valid = fromStringRaw(t)._addSeg1_(5)(s)
+    def I1______(s: AST):    Template.Valid = fromStringRaw(t)._addSeg1_(6)(s)
+    def I1_______(s: AST):   Template.Valid = fromStringRaw(t)._addSeg1_(7)(s)
+    def I1________(s: AST):  Template.Valid = fromStringRaw(t)._addSeg1_(8)(s)
+    def I1_________(s: AST): Template.Valid = fromStringRaw(t)._addSeg1_(9)(s)
   }
 
   implicit class MixfixBuilder_AST(t: AST) {
-    def _addSeg_(i: Int)(s: AST): Template = Template(
+    def _addSeg_(i: Int)(s: AST): Template.Valid = Template.Valid(
       Shifted.List1(
         Template.Segment(
           t,
@@ -159,7 +159,7 @@ object EDSL {
         Nil
       )
     )
-    def _addSeg1_(i: Int)(s: AST): Template = Template(
+    def _addSeg1_(i: Int)(s: AST): Template.Valid = Template.Valid(
       Shifted.List1(
         Template.Segment(t, Template.Segment.Body.Expr(Shifted(i, s))),
         Nil
@@ -188,39 +188,39 @@ object EDSL {
     val I1_________ = _addSeg1_(9)(_)
   }
 
-  implicit class MixfixBuilder_Mixfix(t: Template) {
+  implicit class MixfixBuilder_Mixfix(t: Template.Valid) {
     type M[T]  = MixfixBldr[T]
     type M1[T] = MixfixBldr1[T]
 
     def add[T: M](i: Int, s: T)   = implicitly[M[T]].add(t, i, s)
     def add1[T: M1](i: Int, s: T) = implicitly[M1[T]].add1(t, i, s)
 
-    def unmatched(tree: Tree[AST, Unit]): Template.Unmatched = {
+    def unmatched(tree: Tree[AST, Unit]): Template.Partial = {
       val segments2 = t.segments.map {
         case seg: Template.Segment =>
           seg.body match {
             case Template.Segment.Body.Expr(e) =>
-              Template.Unmatched.Segment(seg.head, Some(e))
-            case _ => Template.Unmatched.Segment(seg.head, None)
+              Template.Partial.Segment(seg.head, Some(e))
+            case _ => Template.Partial.Segment(seg.head, None)
           }
       }
-      Template.Unmatched(segments2, tree)
+      Template.Partial(segments2, tree)
     }
 
-    def unmatched(lst: Seq[String]): Template.Unmatched = {
+    def unmatched(lst: Seq[String]): Template.Partial = {
       val args = lst.map(k => List(fromStringRaw(k)) -> (()))
       val tree = Tree[AST, Unit](args: _*)
       unmatched(tree)
     }
 
-    def unmatched_lst(lst: Seq[List[String]]): Template.Unmatched = {
+    def unmatched_lst(lst: Seq[List[String]]): Template.Partial = {
       val args = lst.map(k => k.map(fromStringRaw) -> (()))
       val tree = Tree[AST, Unit](args: _*)
       unmatched(tree)
     }
 
-    def Ix(t: String*):        Template.Unmatched = unmatched(t)
-    def Ixx(t: List[String]*): Template.Unmatched = unmatched_lst(t)
+    def Ix(t: String*):        Template.Partial = unmatched(t)
+    def Ixx(t: List[String]*): Template.Partial = unmatched_lst(t)
 
     def I[T: M](s: T)          = add(0, s)
     def I_[T: M](s: T)         = add(1, s)
