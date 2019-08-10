@@ -75,6 +75,10 @@ object AST {
     val repr = R + stream
   }
 
+  final case object Missing extends Invalid {
+    val repr = R
+  }
+
   /////////////////
   //// Literal ////
   /////////////////
@@ -255,7 +259,7 @@ object AST {
   trait Template extends AST
   object Template {
 
-    final case class Valid(segments: Shifted.List1[Segment], ast: AST)
+    final case class Valid(segments: Shifted.List1[Segment]) //, ast: AST)
         extends Template {
       val repr = R + segments.map(_.repr)
     }
@@ -343,12 +347,25 @@ object AST {
 
       //// Body ////
 
-      sealed trait Body extends Repr.Provider
+      sealed trait Body extends Repr.Provider {
+        def toStream(): AST.Stream
+      }
       object Body {
 
-        case object Empty               extends Body { val repr = R }
-        case class Expr(t: SAST)        extends Body { val repr = Repr.of(t) }
-        case class Many(t: List1[Body]) extends Body { val repr = Repr.of(t) }
+        case object Empty extends Body {
+          val repr       = R
+          def toStream() = List()
+        }
+
+        case class Expr(t: SAST) extends Body {
+          val repr       = Repr.of(t)
+          def toStream() = List(t)
+        }
+
+        case class Many(t: List1[Body]) extends Body {
+          val repr       = Repr.of(t)
+          def toStream() = t.toList.flatMap(_.toStream)
+        }
 
         object Many {
           def apply(head: Body, tail: List[Body]): Many =
@@ -592,65 +609,77 @@ object AST {
   //// Type ////
   //////////////
 
-  type Type = _Type
-  case class _Type(_name: Option[SAST], _args: List[SAST], _body: SAST)
-      extends AST {
-    val repr = "type" + _name + _args + _body
-    def name = _name.map(_.el)
-    def args = _args.map(_.el)
-    def body = _body.el
+//  type Type = _Type
+//  case class _Type(_name: Option[SAST], _args: List[SAST], _body: SAST)
+//      extends AST {
+//    val repr = "type" + _name + _args + _body
+//    def name = _name.map(_.el)
+//    def args = _args.map(_.el)
+//    def body = _body.el
+//
+//    def name_=(v: Option[AST]) = copy(_name = v.map(Arg.from[AST, SAST]))
+//  }
+//  object Type {
+//    def apply[NAME, ARGS, BODY](name: NAME, args: ARGS, body: BODY)(
+//      implicit
+//      NAME: Arg[NAME, Option[SAST]],
+//      ARGS: Arg[ARGS, List[SAST]],
+//      BODY: Arg[BODY, SAST]
+//    ): Type = _Type(NAME.from(name), ARGS.from(args), BODY.from(body))
+//
+//    //    def unapply(arg: Type): Option[(Option[AST], List)] =
+//  }
+//
+//  trait Arg[A, T] {
+//    def from(el: A): T
+//  }
+//  object Arg {
+//    def from[A, T](a: A)(implicit ev: Arg[A, T]): T = ev.from(a)
+//  }
+//
+//  implicit def arg_id[S <: T, T]: Arg[S, T] = a => a
+//  implicit def arg_opt[S, T](implicit ev: Arg[S, T]): Arg[S, Option[T]] =
+//    a => Some(ev.from(a))
+//  implicit def arg_shifted[S, T](implicit ev: Arg[S, T]): Arg[S, Shifted[T]] =
+//    a => Shifted(1, ev.from(a))
+//  implicit def arg_list[S, T](implicit ev: Arg[S, T]): Arg[S, List[T]] =
+//    a => List(ev.from(a))
 
-    def name_=(v: Option[AST]) = copy(_name = v.map(Arg.from[AST, SAST]))
-  }
-  object Type {
-    def apply[NAME, ARGS, BODY](name: NAME, args: ARGS, body: BODY)(
-      implicit
-      NAME: Arg[NAME, Option[SAST]],
-      ARGS: Arg[ARGS, List[SAST]],
-      BODY: Arg[BODY, SAST]
-    ): Type = _Type(NAME.from(name), ARGS.from(args), BODY.from(body))
-
-    //    def unapply(arg: Type): Option[(Option[AST], List)] =
-  }
-
-  trait Arg[A, T] {
-    def from(el: A): T
-  }
-  object Arg {
-    def from[A, T](a: A)(implicit ev: Arg[A, T]): T = ev.from(a)
-  }
-
-  implicit def arg_id[S <: T, T]: Arg[S, T] = a => a
-  implicit def arg_opt[S, T](implicit ev: Arg[S, T]): Arg[S, Option[T]] =
-    a => Some(ev.from(a))
-  implicit def arg_shifted[S, T](implicit ev: Arg[S, T]): Arg[S, Shifted[T]] =
-    a => Shifted(1, ev.from(a))
-  implicit def arg_list[S, T](implicit ev: Arg[S, T]): Arg[S, List[T]] =
-    a => List(ev.from(a))
-
-  import org.enso.flexer.Test.foo
-
-  type Type2 = _Type2
-  @foo
-  case class _Type2(
-    nameOff: Int = 1
-//    name: Option[AST],
-//    argsOff: List[Int] = List(),
-//    args: List[AST],
-//    bodyOff: Int = 1,
-//    body: AST
-  ) extends { //AST {
-//    val repr = "type" + nameOff + name + argsOff.zip(args) + bodyOff + body
+  type Def = _Def
+  case class _Def(
+    nameOff: Int = 1,
+    name: AST,
+    argsOff: List[Int] = List(),
+    args: List[AST],
+    bodyOff: Int = 1,
+    body: Option[AST]
+  ) extends AST {
+    val repr = "type" + nameOff + name + argsOff.zip(args) + bodyOff + body
   }
 
-  object _Type2 {
-    val sss = 99
-  }
+  object Def {
+    def apply(
+      nameOff: Int,
+      name: AST,
+      argsOff: List[Int],
+      args: List[AST],
+      bodyOff: Int,
+      body: Option[AST]
+    ): Def = _Def(nameOff, name, argsOff, args, bodyOff, body)
+    def apply(name: AST, args: List[AST], body: Option[AST]): Def = {
+      val nameOff = 1
+      val argsOff = prepOffList(List(), args.length)
+      val bodyOff = 0
+      Def(nameOff, name, argsOff, args, bodyOff, body)
+    }
+    def apply(name: SAST, args: AST.Stream, body: Option[SAST]): Def = {
+      val bodyOff = body.map(_.off).getOrElse(0)
+      val bodyEl  = body.map(_.el)
+      Def(name.off, name.el, args.map(_.off), args.map(_.el), bodyOff, bodyEl)
+    }
 
-  println("?????????????")
-  println(_Type2.hasFoo)
-  object Type2 {
-//    def apply(nameOff:Int, name:Option[AST], argOff:List[Int], args:List[AST], bodyOff)
+//    def unapply(arg: Def): Option[()] =
+
     def prepOffList(offs: List[Int], argCount: Int): List[Int] =
       compare(offs.length, argCount) match {
         case EQ => offs

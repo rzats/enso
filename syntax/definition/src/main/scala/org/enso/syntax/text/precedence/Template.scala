@@ -276,8 +276,8 @@ object Template {
           }
       }
 
-      val typeDef = Definition.Unrestricted(
-        Var("type") -> Pattern.Seq(
+      val defDef = Definition.Unrestricted(
+        Var("def") -> Pattern.Seq(
           Pattern.Opt(Pattern.Token[AST.Cons]),
           Pattern.Opt(Pattern.Many(Pattern.NotToken[AST.Block])),
           Pattern.Opt(Pattern.Token[AST.Block])
@@ -286,27 +286,23 @@ object Template {
         case List(s1) =>
           s1.el.body match {
             case Many(lst) =>
-              val name = lst.head
-              val args = lst.tail(0)
-              val body = lst.tail(1)
-              val nameAST = name match {
+              val nameParam = lst.head
+              val argsParam = lst.tail(0)
+              val bodyParam = lst.tail(1)
+              val name = nameParam match {
                 case Expr(Shifted(off, t @ AST.Cons(_))) =>
-                  Some(Shifted(off, t))
+                  Shifted(off, t)
+                case Empty => Shifted(AST.Missing)
+                case _     => throw new Error("Internal Parser Error")
+              }
+              val args = argsParam.toStream()
+              val body: Option[Shifted[AST]] = bodyParam match {
+                case Expr(n @ Shifted(_, _: AST.Block)) => Some(n)
+                case Empty                              => None
                 case _ =>
-                  throw new Error("Impossible")
+                  throw new Error("Internal Parser Error")
               }
-              val argsAST: List[Shifted[Var]] = args match {
-                case Many(lst) =>
-                  lst.toList.map {
-                    case Expr(Shifted(off, t @ AST.Var(_))) => Shifted(off, t)
-                    case _                                  => ???
-                  }
-                case Empty => List()
-              }
-              val bodyAST: Shifted[AST] = body match {
-                case Expr(n @ Shifted(_, _: AST.Block)) => n
-              }
-              AST.Type(nameAST, argsAST, bodyAST)
+              AST.Def(name, args, body)
           }
       }
 
@@ -324,7 +320,7 @@ object Template {
         Definition.Unrestricted(
           Var("import") -> Pattern.AnyToken
         )(a => ???),
-        typeDef
+        defDef
       )
     }
 
@@ -379,8 +375,8 @@ object Template {
               case None => Template.Invalid(shiftSegs)
               case Some(validSegs) =>
                 val validSegsList = validSegs.toList()
-                val ast           = ts.finalizer(validSegsList)
-                Template.Valid(validSegs, ast)
+//                val ast           = ts.finalizer(validSegsList)
+                Template.Valid(validSegs) //, ast)
             }
 
             val newTok = Shifted(segs.head.off, template)
@@ -420,7 +416,11 @@ object Template {
           if (builderStack.isEmpty) {
 //            println("End of input (not in stack)")
             close().head.el match {
-              case Template.Valid(segs, ast) => ast
+              case Template.Valid(segs) =>
+                segs.head.body.toStream() match {
+                  case Nil    => throw new scala.Error("Impossible happened.")
+                  case s :: _ => s.el
+                }
 
               case _ => throw new scala.Error("Impossible happened.")
             }
