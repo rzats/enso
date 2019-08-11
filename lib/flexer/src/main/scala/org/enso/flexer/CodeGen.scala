@@ -35,7 +35,7 @@ case class CodeGen(dfa: DFA) {
         case _ => false
       }
       if (rulesOverlap || rulesOverlap_)
-        q"charsToLastRule += charSize; ${Literal(Constant(targetState))}"
+        q"charsToLastRule += charSize(); ${Literal(Constant(targetState))}"
       else
         q"${Literal(Constant(targetState))}"
   }

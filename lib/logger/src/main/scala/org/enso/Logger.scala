@@ -12,6 +12,12 @@ class Logger {
   def log(s: String): Unit =
     macro funcRedirect
 
+  def warn(s: String): Unit =
+    macro funcRedirect
+
+  def err(s: String): Unit =
+    macro funcRedirect
+
   def group[T](msg: String)(body: => T): T =
     macro groupRedirect[T]
 
@@ -23,6 +29,12 @@ class Logger {
 
   def _log(msg: String): Unit =
     println("|  " * nesting + msg)
+
+  def _warn(msg: String): Unit =
+    println("|  " * nesting + Console.YELLOW + msg + Console.RESET)
+
+  def _err(msg: String): Unit =
+    println("|  " * nesting + Console.RED + msg + Console.RESET)
 
   def _group[T](msg: String)(body: => T): T = {
     _log(msg)

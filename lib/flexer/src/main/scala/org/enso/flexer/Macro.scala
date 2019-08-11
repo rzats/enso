@@ -20,12 +20,12 @@ object Macro {
     val parser = c.eval(c.Expr[Base[T]](c.untypecheck(expr.duplicate)))
     val groups = c.internal
       .createImporter(u)
-      .importTree(u.Block(parser.states.map(_.generate()): _*))
+      .importTree(u.Block(parser.state.registry.map(_.generate()): _*))
 
     val superClassName = tree match {
       case Select(_, name) => name
       case _ =>
-        println("ERROR: Wrong shape 64")
+        println("ERROR: Wrong shape 67")
         println("Expected Select(_, name), got:")
         println(showRaw(tree))
         throw new Error("Wrong shape")

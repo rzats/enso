@@ -67,8 +67,9 @@ case class ParserDef() extends Parser[AST] {
 
   //// Cleaning ////
 
-  final override def initialize(): Unit = {
+  override def run(input: String) = {
     onBlockBegin(0)
+    super.run(input)
   }
 
   ////////////////
