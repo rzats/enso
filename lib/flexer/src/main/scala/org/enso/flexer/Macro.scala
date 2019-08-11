@@ -2,6 +2,7 @@ package org.enso.flexer
 import scala.reflect.macros.blackbox.Context
 import scala.reflect.runtime.{universe => u}
 
+// FIXME: Needs to be refactored. Contains deprecated API usage
 object Macro {
 
   type Base[T] = Parser[T]
@@ -25,7 +26,7 @@ object Macro {
     val superClassName = tree match {
       case Select(_, name) => name
       case _ =>
-        println("ERROR: Wrong shape 78")
+        println("ERROR: Wrong shape 93")
         println("Expected Select(_, name), got:")
         println(showRaw(tree))
         throw new Error("Wrong shape")

@@ -1,7 +1,6 @@
 package org.enso.syntax.text
 
 import org.enso.flexer
-import org.enso.flexer.Macro.compile
 import org.enso.syntax.text
 import org.enso.syntax.text.precedence.Template
 
@@ -21,8 +20,8 @@ class Parser {
 }
 
 object Parser {
-  type Result[T] = flexer.Result[T]
-  private val newEngine = compile(text.ParserDef)
+  type Result[T] = flexer.Parser.Result[T]
+  private val newEngine = flexer.Parser.compile(text.ParserDef)
 
   def run(input: String): Result[AST.Module] = new Parser().run(input)
 }
@@ -41,7 +40,7 @@ object Main extends App {
   pprint.pprintln(out, width = 50, height = 10000)
 
   out match {
-    case flexer.Success(v, _) =>
+    case flexer.Parser.Success(v, _) =>
       println(v.show() == inp)
       println("------")
       println(v.show().replace(' ', '.'))

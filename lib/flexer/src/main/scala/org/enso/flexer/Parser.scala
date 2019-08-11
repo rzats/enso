@@ -1,6 +1,7 @@
 package org.enso.flexer
 
 import org.enso.Logger
+
 import scala.collection.mutable
 import org.enso.flexer.debug.Escape
 
@@ -175,5 +176,27 @@ object Parser {
     }
     def valid(i: Int): Boolean =
       i >= 0
+  }
+
+  import org.enso.flexer.Macro
+  def compile[T](p: Macro.In[T]): Macro.Out[T] =
+    macro Macro.compileImpl[T]
+
+  trait Result[T] {
+    val offset: Int
+    def map[S](fn: T => S): Result[S]
+  }
+
+  final case class Success[T](value: T, offset: Int) extends Result[T] {
+    def map[S](fn: T => S) = Success(fn(value), offset)
+  }
+  final case class Partial[T](value: T, offset: Int) extends Result[T] {
+    def map[S](fn: T => S) = Partial(fn(value), offset)
+  }
+  final case class Failure[T](value: T, offset: Int) extends Result[T] {
+    def map[S](fn: T => S) = Failure(fn(value), offset)
+  }
+  final case class InternalFailure[T](offset: Int) extends Result[T] {
+    def map[S](fn: T => S) = InternalFailure(offset)
   }
 }

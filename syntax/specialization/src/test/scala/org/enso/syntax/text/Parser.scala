@@ -14,7 +14,7 @@ class ParserSpec extends FlatSpec with Matchers {
   def assertModule(input: String, result: AST): Assertion = {
     val tt = Parser.run(input)
     tt match {
-      case flexer.Success(value, offset) =>
+      case flexer.Parser.Success(value, offset) =>
         assert(value == result)
         assert(value.show() == input)
       case _ => fail(s"Parsing failed, consumed ${tt.offset} chars")
@@ -24,7 +24,7 @@ class ParserSpec extends FlatSpec with Matchers {
   def assertExpr(input: String, result: AST): Assertion = {
     val tt = Parser.run(input)
     tt match {
-      case flexer.Success(value, offset) =>
+      case flexer.Parser.Success(value, offset) =>
         val module = value.asInstanceOf[Module]
         module.lines.tail match {
           case Nil =>

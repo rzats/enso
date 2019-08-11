@@ -6,7 +6,6 @@ import org.enso.data.Compare._
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.data.Tree
-import org.enso.flexer.Utils._
 import org.enso.syntax.text.ast.Repr.R
 import org.enso.syntax.text.ast.Repr
 import org.enso.syntax.text.ast.opr
@@ -351,8 +350,11 @@ object AST {
           case (EOL(_), segment) =>
             last = segment
             EOL(validIndent = false)
-          case (_, segment) =>
-            last.thenDo { last = segment }
+          case (_, segment) => {
+            val prev = last
+            last = segment
+            prev
+          }
         }
       }
     }

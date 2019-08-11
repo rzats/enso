@@ -1,4 +1,4 @@
-package org.enso.flexer.group
+package org.enso.flexer.state
 
 import org.enso.flexer.automata.Pattern
 

@@ -2,7 +2,7 @@ package org.enso.flexer
 
 import org.enso.flexer.automata.NFA
 import org.enso.flexer.automata.Pattern
-import org.enso.flexer.group.Rule
+import org.enso.flexer.state.Rule
 
 import scala.reflect.runtime.universe.Tree
 
@@ -52,7 +52,6 @@ class State(val label: String, val ix: Int, val finish: () => Unit) {
     val current = nfa.addState()
     nfa.link(last, current)
     expr match {
-//      case Never  => nfa.addState()
       case Always => current
       case Range(start, end) =>
         val state = nfa.addState()
@@ -84,7 +83,7 @@ class State(val label: String, val ix: Int, val finish: () => Unit) {
     import scala.reflect.runtime.universe._
     val nfa   = buildAutomata()
     val dfa   = nfa.toDFA()
-    val state = CodeGen(dfa).generate(ix)
+    val state = Spec(dfa).generate(ix)
     val rs = rules.zipWithIndex.map {
       case (rule, ruleIx) =>
         q"def ${TermName(ruleName(ruleIx))}() = ${rule.tree}"
