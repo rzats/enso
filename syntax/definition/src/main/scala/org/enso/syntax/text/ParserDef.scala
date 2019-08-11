@@ -159,7 +159,7 @@ case class ParserDef() extends Parser[AST] {
 
   final def onIdent(ast: AST.Ident): Unit = logger.trace {
     identBody = Some(ast)
-    group.begin(IDENT_SFX_CHECK)
+    state.begin(IDENT_SFX_CHECK)
   }
 
   final def submitIdent(): Unit = logger.trace {
@@ -174,13 +174,13 @@ case class ParserDef() extends Parser[AST] {
       val ast = AST.Ident.InvalidSuffix(body, currentMatch)
       app(ast)
       identBody = None
-      group.end()
+      state.end()
     }
   }
 
   final def onNoIdentErrSfx(): Unit = logger.trace {
     submitIdent()
-    group.end()
+    state.end()
   }
 
   final def finalizeIdent(): Unit = logger.trace {
@@ -218,12 +218,12 @@ case class ParserDef() extends Parser[AST] {
 
   final def onOp(ast: AST.Ident): Unit = logger.trace {
     identBody = Some(ast)
-    group.begin(OPERATOR_MOD_CHECK)
+    state.begin(OPERATOR_MOD_CHECK)
   }
 
   final def onNoModOp(ast: AST.Ident): Unit = logger.trace {
     identBody = Some(ast)
-    group.begin(OPERATOR_SFX_CHECK)
+    state.begin(OPERATOR_SFX_CHECK)
   }
 
   final def onModifier(): Unit = logger.trace {
@@ -272,25 +272,25 @@ case class ParserDef() extends Parser[AST] {
   }
 
   final def onDanglingBase(): Unit = logger.trace {
-    group.end()
+    state.end()
     app(AST.Number.DanglingBase(numberPart2))
     numberReset()
   }
 
   final def onDecimal(): Unit = logger.trace {
     numberPart2 = currentMatch
-    group.begin(NUMBER_PHASE2)
+    state.begin(NUMBER_PHASE2)
   }
 
   final def onExplicitBase(): Unit = logger.trace {
-    group.end()
+    state.end()
     numberPart1 = numberPart2
     numberPart2 = currentMatch.substring(1)
     submitNumber()
   }
 
   final def onNoExplicitBase(): Unit = logger.trace {
-    group.end()
+    state.end()
     submitNumber()
   }
 
@@ -337,10 +337,10 @@ case class ParserDef() extends Parser[AST] {
   final def finishCurrentTextBuilding(): AST.Text.Class[_] = logger.trace {
     withCurrentText(t => t.copy(segments = t.segments.reverse))
     val txt =
-      if (group.current == RAWTEXT.groupIx) currentText.raw
+      if (state.current == RAWTEXT.groupIx) currentText.raw
       else currentText
     popTextState()
-    group.end()
+    state.end()
     val singleLine = !txt.segments.contains(EOL())
     if (singleLine || currentBlock.firstLine.isDefined || result.isDefined)
       txt
@@ -361,7 +361,7 @@ case class ParserDef() extends Parser[AST] {
 
   final def onTextBegin(grp: Group, quoteSize: Quote): Unit = logger.trace {
     pushTextState(quoteSize)
-    group.begin(grp)
+    state.begin(grp)
   }
 
   final def submitPlainTextSegment(
@@ -381,7 +381,7 @@ case class ParserDef() extends Parser[AST] {
         && quoteSize == AST.Text.Quote.Single) onPlainTextSegment()
     else if (currentText.quote == AST.Text.Quote.Single
              && quoteSize == AST.Text.Quote.Triple) {
-      val groupIx = group.current
+      val groupIx = state.current
       submitText()
       submitEmptyText(groupIx, AST.Text.Quote.Single)
     } else
@@ -427,7 +427,7 @@ case class ParserDef() extends Parser[AST] {
   final def onInterpolateBegin(): Unit = logger.trace {
     pushAST()
     pushLastOffset()
-    group.begin(INTERPOLATE)
+    state.begin(INTERPOLATE)
   }
 
   final def terminateGroupsTill(g: Group): Unit = logger.trace {
@@ -435,19 +435,19 @@ case class ParserDef() extends Parser[AST] {
   }
 
   final def terminateGroupsTill(g: Int): Unit = logger.trace {
-    while (g != group.current) {
-      getGroup(group.current).finish()
-      group.end()
+    while (g != state.current) {
+      getGroup(state.current).finish()
+      state.end()
     }
   }
 
   final def onInterpolateEnd(): Unit = logger.trace {
-    if (group.insideOf(INTERPOLATE)) {
+    if (state.insideOf(INTERPOLATE)) {
       terminateGroupsTill(INTERPOLATE)
       submitTextSegment(AST.Text.Segment.Interpolation(result))
       popAST()
       popLastOffset()
-      group.end()
+      state.end()
     } else {
       onUnrecognized()
     }
@@ -619,18 +619,18 @@ case class ParserDef() extends Parser[AST] {
 
   final def onEOFLine(): Unit = logger.trace {
     submitLine()
-    group.end()
+    state.end()
     onWhitespace(-1)
     onEOF()
   }
 
   final def onNewLine(): Unit = logger.trace {
 //    submitLine()
-    group.begin(NEWLINE)
+    state.begin(NEWLINE)
   }
 
   final def onBlockNewline(): Unit = logger.trace {
-    group.end()
+    state.end()
     onWhitespace()
     if (lastOffset == currentBlock.indent) {
       submitLine()

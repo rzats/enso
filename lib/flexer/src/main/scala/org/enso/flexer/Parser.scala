@@ -55,7 +55,7 @@ trait Parser[T] {
 
   //// Group management ////
 
-  object group {
+  object _state {
     var stack: List[Int]                   = Nil
     val labelMap: mutable.Map[Int, String] = mutable.Map()
     var current: Int                       = 0
@@ -84,9 +84,12 @@ trait Parser[T] {
       )
     }
   }
+  val state = _state
+  // FIXME: This is a hack. Without it sbt crashes and needs to be completely
+  //        cleaned to compile again.
 
   def runCurrentGroup(): Int = {
-    val grp       = group.current
+    val grp       = state.current
     val nextState = stateRunners(grp)
     var sss: Int  = State.INITIAL
     matchBuilder.setLength(0)
@@ -111,14 +114,14 @@ trait Parser[T] {
     val groupIndex = groupsx.length
     val ggggg      = new Group(groupIndex, () => finish)
     groupsx.append(ggggg)
-    group.labelMap += (groupIndex -> label)
+    state.labelMap += (groupIndex -> label)
     ggggg
   }
 
   def getGroup(g: Int): Group = groupsx(g)
 
   def groupLabel(index: Int): String =
-    group.labelMap.get(index) match {
+    state.labelMap.get(index) match {
       case None        => "unnamed"
       case Some(label) => label
     }
