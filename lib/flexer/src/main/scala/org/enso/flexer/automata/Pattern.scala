@@ -21,27 +21,26 @@ object Pattern {
   case class Seq(first: Pattern, second: Pattern) extends Pattern
   case class Many(body: Pattern)                  extends Pattern
 
-  def range(start: Char, end: Char): Pattern = Range(start.toInt, end.toInt)
-  def range(start: Int, end: Int):   Pattern = Range(start, end)
-  def range(end: Int):               Pattern = range(0, end)
-  def range(end: Char):              Pattern = range(0, end)
-  def char(char: Char):              Pattern = range(char, char)
-  def char(char: Int):               Pattern = range(char, char)
+  //// API ////
 
-  val any: Pattern    = range(Int.MaxValue)
+  val never: Pattern  = Never
   val always: Pattern = Always
-  val eof: Pattern    = char(Parser.eofCodePoint)
-  val none: Pattern   = Never
+  def range(start: Char, end: Char): Range = Range(start.toInt, end.toInt)
+  def range(start: Int, end: Int):   Range = Range(start, end)
+  def range(end: Int):               Range = range(0, end)
+  def range(end: Char):              Range = range(0, end)
+  def char(char: Char):              Range = range(char, char)
+  def char(char: Int):               Range = range(char, char)
 
-  final def anyOf(chars: String): Pattern =
-    anyOf(chars.map(char))
+  val any: Range = range(Int.MaxValue)
+  val eof: Range = char(Parser.eofCodePoint)
 
-  final def anyOf(alts: scala.Seq[Pattern]): Pattern =
-    alts.fold(none)(_ | _)
+  def anyOf(chars: String):            Pattern = anyOf(chars.map(char))
+  def anyOf(alts: scala.Seq[Pattern]): Pattern = alts.fold(never)(_ | _)
 
-  final def noneOf(chars: String): Pattern = {
+  def noneOf(chars: String): Pattern = {
     val pointCodes  = chars.map(_.toInt).sorted
-    val startPoints = 5 +: pointCodes.map(_ + 1) // FIXME 5 -> 0
+    val startPoints = 0 +: pointCodes.map(_ + 1)
     val endPoints   = pointCodes.map(_ - 1) :+ Int.MaxValue
     val ranges      = startPoints.zip(endPoints)
     val validRanges = ranges.filter { case (s, e) => e >= s }
@@ -51,6 +50,13 @@ object Pattern {
 
   final def not(char: Char): Pattern =
     noneOf(char.toString)
+
+//  def not2(pat: Pattern): Range = pat match {
+//    case Never             => any
+//    case Always            => Never
+//    case Many(_)           => Never
+//    case Range(start, end) =>
+//  }
 
   def repeat(p: Pattern, min: Int, max: Int): Pattern = {
     val minPat = repeat(p, min)
@@ -84,6 +90,6 @@ object Pattern {
     range(char, char)
   implicit def fromString(str: String): Pattern = str.toList match {
     case Nil     => Always
-    case s :: ss => ss.foldLeft(char(s))(_ >> _)
+    case s :: ss => ss.foldLeft(char(s): Pattern)(_ >> _)
   }
 }
