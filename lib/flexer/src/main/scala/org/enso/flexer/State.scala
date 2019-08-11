@@ -19,6 +19,9 @@ class State(val label: String, val ix: Int, val finish: () => Unit) {
   def rule(expr: Pattern): Rule.Builder =
     Rule.Builder(expr, addRule)
 
+  def %(expr: Pattern): Rule.Builder =
+    rule(expr)
+
   def rules(): List[Rule] = {
     val myRules = revRules.reverse
     parent.map(myRules ++ _.rules()).getOrElse(myRules)

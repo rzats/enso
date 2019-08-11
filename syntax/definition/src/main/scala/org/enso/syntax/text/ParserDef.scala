@@ -93,97 +93,98 @@ case class ParserDef() extends Parser[AST] {
       current = 0
       offset
     }
-  }
 
-  final def onWhitespace(): Unit = onWhitespace(0)
-  final def onWhitespace(shift: Int): Unit = logger.trace {
-    val diff = currentMatch.length + shift
-    off.current += diff
-    logger.log(s"lastOffset + $diff = $off.current")
+    final def on(): Unit = on(0)
+    final def on(shift: Int): Unit = logger.trace {
+      val diff = currentMatch.length + shift
+      current += diff
+      logger.log(s"lastOffset + $diff = $current")
+    }
   }
 
   ////////////////////
   //// IDENTIFIER ////
   ////////////////////
 
-  var identBody: Option[AST.Ident] = None
+  object ident {
+    var current: Option[AST.Ident] = None
 
-  final def identOn(cons: String => AST.Ident): Unit = logger.trace_ {
-    identOn(cons(currentMatch))
-  }
-
-  final def identOn(ast: AST.Ident): Unit = logger.trace {
-    identBody = Some(ast)
-    state.begin(IDENT_SFX_CHECK)
-  }
-
-  final def identSubmit(): Unit = logger.trace {
-    withSome(identBody) { body =>
-      result.app(body)
-      identBody = None
+    final def on(cons: String => AST.Ident): Unit = logger.trace_ {
+      on(cons(currentMatch))
     }
-  }
 
-  final def onIdentErrSfx(): Unit = logger.trace {
-    withSome(identBody) { body =>
-      val ast = AST.Ident.InvalidSuffix(body, currentMatch)
-      result.app(ast)
-      identBody = None
+    final def on(ast: AST.Ident): Unit = logger.trace {
+      current = Some(ast)
+      state.begin(SFX_CHECK)
+    }
+
+    final def submit(): Unit = logger.trace {
+      withSome(current) { b =>
+        result.app(b)
+        current = None
+      }
+    }
+
+    final def onErrSfx(): Unit = logger.trace {
+      withSome(current) { b =>
+        val ast = AST.Ident.InvalidSuffix(b, currentMatch)
+        result.app(ast)
+        current = None
+        state.end()
+      }
+    }
+
+    final def onNoErrSfx(): Unit = logger.trace {
+      submit()
       state.end()
     }
+
+    final def finalizer(): Unit = logger.trace {
+      if (current.isDefined) submit()
+    }
+
+    val char: Pattern   = alphaNum | '_'
+    val body: Pattern   = char.many >> '\''.many
+    val _var: Pattern   = lowerLetter >> body
+    val cons: Pattern   = upperLetter >> body
+    val breaker: String = "^`!@#$%^&*()-=+[]{}|;:<>,./ \t\r\n\\"
+    val errSfx: Pattern = noneOf(breaker).many1
+
+    val SFX_CHECK = state.define("Identifier Suffix Check")
   }
 
-  final def onNoIdentErrSfx(): Unit = logger.trace {
-    identSubmit()
-    state.end()
-  }
-
-  final def finalizeIdent(): Unit = logger.trace {
-    if (identBody.isDefined) identSubmit()
-  }
-
-  val indentChar: Pattern  = alphaNum | '_'
-  val identBody_ : Pattern = indentChar.many >> '\''.many
-  val variable: Pattern    = lowerLetter >> identBody_
-  val constructor: Pattern = upperLetter >> identBody_
-  val identBreaker: String = "^`!@#$%^&*()-=+[]{}|;:<>,./ \t\r\n\\"
-  val identErrSfx: Pattern = noneOf(identBreaker).many1
-
-  val IDENT_SFX_CHECK = state.define("Identifier Suffix Check")
-
-  // format: off
-  ROOT          rule variable    run reify { identOn(AST.Var(_)) }
-  ROOT          rule constructor run reify { identOn(AST.Cons(_)) }
-  ROOT          rule "_"         run reify { identOn(AST.Blank) }
-  IDENT_SFX_CHECK rule identErrSfx run reify { onIdentErrSfx() }
-  IDENT_SFX_CHECK rule always        run reify { onNoIdentErrSfx() }
-  // format: on
+  ROOT            % ident._var   -> reify { ident.on(AST.Var) }
+  ROOT            % ident.cons   -> reify { ident.on(AST.Cons) }
+  ROOT            % "_"          -> reify { ident.on(AST.Blank) }
+  ident.SFX_CHECK % ident.errSfx -> reify { ident.onErrSfx() }
+  ident.SFX_CHECK % always       -> reify { ident.onNoErrSfx() }
 
   //////////////////
   //// Operator ////
   //////////////////
 
-  final def onOp(cons: String => AST.Ident): Unit = logger.trace {
-    onOp(cons(currentMatch))
+  object opr {}
+  final def oprOn(cons: String => AST.Ident): Unit = logger.trace {
+    oprOn(cons(currentMatch))
   }
 
-  final def onNoModOp(cons: String => AST.Ident): Unit = logger.trace {
-    onNoModOp(cons(currentMatch))
+  final def oprOnNoMod(cons: String => AST.Ident): Unit = logger.trace {
+    oprOnNoMod(cons(currentMatch))
   }
 
-  final def onOp(ast: AST.Ident): Unit = logger.trace {
-    identBody = Some(ast)
+  final def oprOn(ast: AST.Ident): Unit = logger.trace {
+    ident.current = Some(ast)
     state.begin(OPERATOR_MOD_CHECK)
   }
 
-  final def onNoModOp(ast: AST.Ident): Unit = logger.trace {
-    identBody = Some(ast)
+  final def oprOnNoMod(ast: AST.Ident): Unit = logger.trace {
+    ident.current = Some(ast)
     state.begin(OPERATOR_SFX_CHECK)
   }
 
-  final def onModifier(): Unit = logger.trace {
-    withSome(identBody) { body =>
-      identBody = Some(AST.Opr.Mod(body.asInstanceOf[AST.Opr].name))
+  final def oprOnMod(): Unit = logger.trace {
+    withSome(ident.current) { body =>
+      ident.current = Some(AST.Opr.Mod(body.asInstanceOf[AST.Opr].name))
     }
   }
 
@@ -201,11 +202,11 @@ case class ParserDef() extends Parser[AST] {
   OPERATOR_MOD_CHECK.parent = OPERATOR_SFX_CHECK
 
   // format: off
-  ROOT             rule operator       run reify { onOp(AST.Opr(_)) }
-  ROOT             rule noModOperator  run reify { onNoModOp(AST.Opr(_)) }
-  OPERATOR_MOD_CHECK rule "="            run reify { onModifier() }
-  OPERATOR_SFX_CHECK rule operatorErrSfx run reify { onIdentErrSfx() }
-  OPERATOR_SFX_CHECK rule always           run reify { onNoIdentErrSfx() }
+  ROOT             rule operator       run reify { oprOn(AST.Opr(_)) }
+  ROOT             rule noModOperator  run reify { oprOnNoMod(AST.Opr(_)) }
+  OPERATOR_MOD_CHECK rule "="            run reify { oprOnMod() }
+  OPERATOR_SFX_CHECK rule operatorErrSfx run reify { ident.onErrSfx() }
+  OPERATOR_SFX_CHECK rule always           run reify { ident.onNoErrSfx() }
   // format: on
 
   ////////////////////////////////////
@@ -567,13 +568,13 @@ case class ParserDef() extends Parser[AST] {
 
   final def onEmptyLine(): Unit = logger.trace {
     pushEmptyLine()
-    onWhitespace(-1)
+    off.on(-1)
   }
 
   final def onEOFLine(): Unit = logger.trace {
     submitLine()
     state.end()
-    onWhitespace(-1)
+    off.on(-1)
     onEOF()
   }
 
@@ -584,7 +585,7 @@ case class ParserDef() extends Parser[AST] {
 
   final def onBlockNewline(): Unit = logger.trace {
     state.end()
-    onWhitespace()
+    off.on()
     if (off.current == currentBlock.indent) {
       submitLine()
     } else if (off.current > currentBlock.indent) {
@@ -623,12 +624,12 @@ case class ParserDef() extends Parser[AST] {
   }
 
   final def onEOF(): Unit = logger.trace {
-    finalizeIdent()
+    ident.finalizer()
     onBlockEnd(0)
     submitModule()
   }
 
-  ROOT rule whitespace run reify { onWhitespace() }
+  ROOT rule whitespace run reify { off.on() }
   ROOT rule eof run reify { onEOF() }
   ROOT rule any run reify { onUnrecognized() }
 }
