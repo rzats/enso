@@ -25,7 +25,7 @@ object Macro {
     val superClassName = tree match {
       case Select(_, name) => name
       case _ =>
-        println("ERROR: Wrong shape 73")
+        println("ERROR: Wrong shape 78")
         println("Expected Select(_, name), got:")
         println(showRaw(tree))
         throw new Error("Wrong shape")

@@ -24,8 +24,9 @@ object State {
       def add(target: Int): Unit =
         epsilon += target
 
-      def add(target: Int, pattern: Range) =
-        ranged.put(Guava.Range.closed(pattern.start, pattern.end), target)
+      def add(target: Int, range: Range) =
+        if (range.start <= range.end)
+          ranged.put(Guava.Range.closed(range.start, range.end), target)
     }
   }
 }

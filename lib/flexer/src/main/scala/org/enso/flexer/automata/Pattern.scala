@@ -1,7 +1,6 @@
 package org.enso.flexer.automata
 
 import org.enso.flexer.Parser
-
 import scala.annotation.tailrec
 
 trait Pattern {
@@ -14,7 +13,6 @@ trait Pattern {
 }
 
 object Pattern {
-  case object Never                               extends Pattern
   case object Always                              extends Pattern
   case class Range(start: Int, end: Int)          extends Pattern
   case class Or(left: Pattern, right: Pattern)    extends Pattern
@@ -23,7 +21,6 @@ object Pattern {
 
   //// API ////
 
-  val never: Pattern  = Never
   val always: Pattern = Always
   def range(start: Char, end: Char): Range = Range(start.toInt, end.toInt)
   def range(start: Int, end: Int):   Range = Range(start, end)
@@ -32,12 +29,12 @@ object Pattern {
   def char(char: Char):              Range = range(char, char)
   def char(char: Int):               Range = range(char, char)
 
-  val any: Range = range(Int.MaxValue)
-  val eof: Range = char(Parser.eofCodePoint)
+  val never: Pattern = range(-1)
+  val any: Range     = range(Int.MaxValue)
+  val eof: Range     = char(Parser.eofCodePoint)
 
   def anyOf(chars: String):            Pattern = anyOf(chars.map(char))
   def anyOf(alts: scala.Seq[Pattern]): Pattern = alts.fold(never)(_ | _)
-
   def noneOf(chars: String): Pattern = {
     val pointCodes  = chars.map(_.toInt).sorted
     val startPoints = 0 +: pointCodes.map(_ + 1)
@@ -51,35 +48,23 @@ object Pattern {
   final def not(char: Char): Pattern =
     noneOf(char.toString)
 
-//  def not2(pat: Pattern): Range = pat match {
-//    case Never             => any
-//    case Always            => Never
-//    case Many(_)           => Never
-//    case Range(start, end) =>
-//  }
-
-  def repeat(p: Pattern, min: Int, max: Int): Pattern = {
-    val minPat = repeat(p, min)
-    _repeatAlt(p, max - min, minPat, minPat)
+  def repeat(pat: Pattern, min: Int, max: Int): Pattern = {
+    @tailrec
+    def go(i: Int, ch: Pattern, out: Pattern): Pattern =
+      i match {
+        case 0 => out
+        case _ =>
+          val ch2 = ch >> pat
+          go(i - 1, ch2, out | ch2)
+      }
+    val minPat = repeat(pat, min)
+    go(max - min, minPat, minPat)
   }
 
-  def repeat(p: Pattern, num: Int): Pattern =
-    _repeat(p, num, always)
+  def repeat(pat: Pattern, num: Int): Pattern =
+    0.until(num).foldLeft(always)((t, _) => t >> pat)
 
-  @tailrec
-  final def _repeat(p: Pattern, num: Int, out: Pattern): Pattern = num match {
-    case 0 => out
-    case _ => _repeat(p, num - 1, out >> p)
-  }
-
-  @tailrec
-  final def _repeatAlt(p: Pattern, i: Int, ch: Pattern, out: Pattern): Pattern =
-    i match {
-      case 0 => out
-      case _ =>
-        val ch2 = ch >> p
-        _repeatAlt(p, i - 1, ch2, out | ch2)
-    }
+  //// Implicits ////
 
   implicit class ExtendedChar(_this: Char) {
     final def ||(that: Char): Pattern =
@@ -89,7 +74,7 @@ object Pattern {
   implicit def fromChar(char: Char): Pattern =
     range(char, char)
   implicit def fromString(str: String): Pattern = str.toList match {
-    case Nil     => Always
+    case Nil     => always
     case s :: ss => ss.foldLeft(char(s): Pattern)(_ >> _)
   }
 }
