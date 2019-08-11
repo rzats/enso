@@ -41,38 +41,37 @@ trait Parser[T] {
     bufferLen = if (numRead == -1) 1 else numRead + 1
     codePoint = getNextCodePoint()
 
-    var runResult = State.EXIT.OK
-    while (runResult == State.EXIT.OK) runResult = runCurrentGroup()
+    var runResult = State.Status.EXIT.OK
+    while (runResult == State.Status.EXIT.OK) runResult = runCurrentGroup()
 
     getResult() match {
       case None => InternalFailure(offset)
       case Some(result) =>
         if (offset >= bufferLen) Success(result, offset)
-        else if (runResult == State.EXIT.FAIL) Failure(result, offset)
+        else if (runResult == State.Status.EXIT.FAIL) Failure(result, offset)
         else Partial(result, offset)
     }
   }
 
   //// Group management ////
 
+  var groupsx = new ArrayBuffer[State]()
+
+  // FIXME: This is a hack. Without it sbt crashes and needs to be completely
+  //        cleaned to compile again.
+  val state = _state
   object _state {
-    var stack: List[Int]                   = Nil
-    val labelMap: mutable.Map[Int, String] = mutable.Map()
-    var current: Int                       = 0
+    var stack: List[State] = Nil
+    var current: State     = null
+//    val labelMap: mutable.Map[Int, String] = mutable.Map()
 
-    def insideOf(g: Group): Boolean =
-      insideOf(g.groupIx)
-
-    def insideOf(g: Int): Boolean =
+    def insideOf(g: State): Boolean =
       current == g || stack.contains(g)
 
-    def begin(group: Group): Unit =
-      begin(group.groupIx)
-
-    def begin(g: Int): Unit = {
-      logger.log(s"Begin ${groupLabel(g)}")
+    def begin(state: State): Unit = {
+      logger.log(s"Begin ${state.label}")
       stack +:= current
-      current = g
+      current = state
     }
 
     def end(): Unit = {
@@ -80,51 +79,50 @@ trait Parser[T] {
       current = stack.head
       stack   = stack.tail
       logger.log(
-        s"End ${groupLabel(old)}, back to ${groupLabel(current)}"
+        s"End ${old.label}, back to ${current.label}"
       )
     }
+
+    def define(label: String = "unnamed", finish: => Unit = {}): State = {
+      val groupIndex = groupsx.length
+      val newState   = new State(label, groupIndex, () => finish)
+      groupsx.append(newState)
+//      state.labelMap += (groupIndex -> label)
+      newState
+    }
   }
-  val state = _state
-  // FIXME: This is a hack. Without it sbt crashes and needs to be completely
-  //        cleaned to compile again.
+  val NORMAL = state.define("Normal")
+  state.current = NORMAL
 
   def runCurrentGroup(): Int = {
-    val grp       = state.current
-    val nextState = stateRunners(grp)
-    var sss: Int  = State.INITIAL
+    val cstate      = state.current
+    val nextState   = stateRunners(cstate.ix)
+    var status: Int = State.Status.INITIAL
     matchBuilder.setLength(0)
-    while (State.valid(sss)) {
-      logger.log(s"Step: state ${grp} $sss, code $codePoint ($currentChar)")
-      sss = nextState(sss)
-      if (State.valid(sss)) {
+    while (State.valid(status)) {
+      logger.log(
+        s"step (${cstate.ix}:$status) ${escapeStr(currentStr)}($codePoint)"
+      )
+      status = nextState(status)
+      if (State.valid(status)) {
         matchBuilder.append(buffer(offset))
         if (buffer(offset).isHighSurrogate)
           matchBuilder.append(buffer(offset + 1))
         codePoint = getNextCodePoint()
       }
     }
-    sss
+    status
   }
 
   def initialize(): Unit
 
-  var groupsx = new ArrayBuffer[Group]()
+  def getGroup(g: Int): State = groupsx(g)
 
-  def defineGroup(label: String = "unnamed", finish: => Unit = {}): Group = {
-    val groupIndex = groupsx.length
-    val ggggg      = new Group(groupIndex, () => finish)
-    groupsx.append(ggggg)
-    state.labelMap += (groupIndex -> label)
-    ggggg
-  }
-
-  def getGroup(g: Int): Group = groupsx(g)
-
-  def groupLabel(index: Int): String =
-    state.labelMap.get(index) match {
-      case None        => "unnamed"
-      case Some(label) => label
-    }
+//  def groupLabel(index: Int): String =
+//    state.labelMap.get(index) match {
+//      case None        => "unnamed"
+//      case Some(label) => label
+//    }
 
   def escapeChar(ch: Char): String = ch match {
     case '\b' => "\\b"
@@ -139,6 +137,11 @@ trait Parser[T] {
       if (ch.isControl) "\\0" + Integer.toOctalString(ch.toInt)
       else String.valueOf(ch)
   }
+
+  def escapeChars(str: String): String = str.flatMap(escapeChar)
+
+  def escapeStr(str: String): String = s"'${escapeChars(str)}'"
+
   def getNextCodePoint(): Int = {
     if (offset >= bufferLen)
       return etxChar.toInt
@@ -177,7 +180,7 @@ trait Parser[T] {
     -1
   }
 
-  final def currentChar: String =
+  final def currentStr: String =
     new String(Character.toChars(codePoint))
 
   final def charSize: Int =
@@ -193,10 +196,12 @@ object Parser {
   val UTF_CHAR_SIZE = 2
 
   object State {
-    val INITIAL = 0
-    object EXIT {
-      val OK   = -1
-      val FAIL = -2
+    object Status {
+      val INITIAL = 0
+      object EXIT {
+        val OK   = -1
+        val FAIL = -2
+      }
     }
     def valid(i: Int): Boolean =
       i >= 0

@@ -5,11 +5,11 @@ import org.enso.flexer.group.Rule
 
 import scala.reflect.runtime.universe.Tree
 
-class Group(val groupIx: Int, val finish: () => Unit) {
-  var parent: Option[Group]        = None
+class State(val label: String, val ix: Int, val finish: () => Unit) {
+  var parent: Option[State]        = None
   private var revRules: List[Rule] = List()
 
-  def parent_=(p: Group): Unit =
+  def parent_=(p: State): Unit =
     parent = Some(p)
 
   def addRule(rule: Rule): Unit =
@@ -24,7 +24,7 @@ class Group(val groupIx: Int, val finish: () => Unit) {
   }
 
   private def ruleName(ruleIx: Int): String =
-    s"group${groupIx}_rule$ruleIx"
+    s"group${ix}_rule$ruleIx"
 
   private def buildAutomata(): NFA = {
     val nfa   = new NFA
@@ -82,7 +82,7 @@ class Group(val groupIx: Int, val finish: () => Unit) {
     import scala.reflect.runtime.universe._
     val nfa   = buildAutomata()
     val dfa   = nfa.toDFA()
-    val state = CodeGen(dfa).generate(groupIx)
+    val state = CodeGen(dfa).generate(ix)
     val rs = rules.zipWithIndex.map {
       case (rule, ruleIx) =>
         q"def ${TermName(ruleName(ruleIx))}() = ${rule.tree}"

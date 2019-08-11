@@ -106,7 +106,7 @@ case class ParserDef() extends Parser[AST] {
   //// Basic Char Classification ////
   ///////////////////////////////////
 
-  val NORMAL = defineGroup("Normal")
+//  val NORMAL = state.define("Normal")
 
   val lowerLetter: Pattern = range('a', 'z')
   val upperLetter: Pattern = range('A', 'Z')
@@ -194,7 +194,7 @@ case class ParserDef() extends Parser[AST] {
   val identBreaker: String = "^`!@#$%^&*()-=+[]{}|;:<>,./ \t\r\n\\"
   val identErrSfx: Pattern = noneOf(identBreaker).many1
 
-  val IDENT_SFX_CHECK = defineGroup("Identifier Suffix Check")
+  val IDENT_SFX_CHECK = state.define("Identifier Suffix Check")
 
   // format: off
   NORMAL          rule variable    run reify { onIdent(AST.Var(_)) }
@@ -241,8 +241,8 @@ case class ParserDef() extends Parser[AST] {
   val groupOperators: Pattern  = anyOf("()[]{}")
   val noModOperator: Pattern   = eqOperators | dotOperators | groupOperators
 
-  val OPERATOR_SFX_CHECK = defineGroup("Operator Suffix Check")
-  val OPERATOR_MOD_CHECK = defineGroup("Operator Modifier Check")
+  val OPERATOR_SFX_CHECK = state.define("Operator Suffix Check")
+  val OPERATOR_MOD_CHECK = state.define("Operator Modifier Check")
   OPERATOR_MOD_CHECK.parent = OPERATOR_SFX_CHECK
 
   // format: off
@@ -296,7 +296,7 @@ case class ParserDef() extends Parser[AST] {
 
   val decimal: Pattern = digit.many1
 
-  val NUMBER_PHASE2: Group = defineGroup("Number Phase 2")
+  val NUMBER_PHASE2: State = state.define("Number Phase 2")
 
   // format: off
   NORMAL        rule decimal                 run reify { onDecimal() }
@@ -326,9 +326,9 @@ case class ParserDef() extends Parser[AST] {
   final def insideOfText: Boolean =
     textStateStack.nonEmpty
 
-  final def submitEmptyText(groupIx: Int, quoteNum: Quote): Unit =
+  final def submitEmptyText(groupIx: State, quoteNum: Quote): Unit =
     logger.trace {
-      if (groupIx == RAWTEXT.groupIx)
+      if (groupIx == RAWTEXT)
         app(AST.Text.Raw(quoteNum))
       else
         app(AST.Text.Interpolated(quoteNum))
@@ -337,7 +337,7 @@ case class ParserDef() extends Parser[AST] {
   final def finishCurrentTextBuilding(): AST.Text.Class[_] = logger.trace {
     withCurrentText(t => t.copy(segments = t.segments.reverse))
     val txt =
-      if (state.current == RAWTEXT.groupIx) currentText.raw
+      if (state.current == RAWTEXT) currentText.raw
       else currentText
     popTextState()
     state.end()
@@ -359,7 +359,7 @@ case class ParserDef() extends Parser[AST] {
     app(AST.Text.Unclosed(finishCurrentTextBuilding()))
   }
 
-  final def onTextBegin(grp: Group, quoteSize: Quote): Unit = logger.trace {
+  final def onTextBegin(grp: State, quoteSize: Quote): Unit = logger.trace {
     pushTextState(quoteSize)
     state.begin(grp)
   }
@@ -430,13 +430,10 @@ case class ParserDef() extends Parser[AST] {
     state.begin(INTERPOLATE)
   }
 
-  final def terminateGroupsTill(g: Group): Unit = logger.trace {
-    terminateGroupsTill(g.groupIx)
-  }
-
-  final def terminateGroupsTill(g: Int): Unit = logger.trace {
+  final def terminateGroupsTill(g: State): Unit = logger.trace {
     while (g != state.current) {
-      getGroup(state.current).finish()
+//      getGroup(state.current).finish()
+      state.current.finish()
       state.end()
     }
   }
@@ -468,9 +465,9 @@ case class ParserDef() extends Parser[AST] {
   val escape_u16    = "\\u" >> repeat(stringChar, 0, 4)
   val escape_u32    = "\\U" >> repeat(stringChar, 0, 8)
 
-  val TEXT: Group        = defineGroup("Text")
-  val RAWTEXT: Group     = defineGroup("RawText")
-  val INTERPOLATE: Group = defineGroup("Interpolate")
+  val TEXT: State        = state.define("Text")
+  val RAWTEXT: State     = state.define("RawText")
+  val INTERPOLATE: State = state.define("Interpolate")
   INTERPOLATE.parent = NORMAL
 
   // format: off
@@ -652,7 +649,7 @@ case class ParserDef() extends Parser[AST] {
     }
   }
 
-  val NEWLINE = defineGroup("Newline")
+  val NEWLINE = state.define("Newline")
 
   // format: off
   NORMAL  rule newline                        run reify { onNewLine() }
