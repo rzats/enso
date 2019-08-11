@@ -1,15 +1,11 @@
 package org.enso.syntax.text
 
-import org.enso.flexer.automata.Pattern.char
-import org.enso.flexer.automata.Pattern.range
-import org.enso.flexer.automata.Pattern._
 import org.enso.flexer._
 import org.enso.flexer.automata.Pattern
+import org.enso.flexer.automata.Pattern._
 import org.enso.syntax.text.AST.Text.Quote
 import org.enso.syntax.text.AST.Text.Segment.EOL
-import org.enso.syntax.text.AST
 
-import scala.annotation.tailrec
 import scala.reflect.runtime.universe.reify
 
 case class ParserDef() extends Parser[AST] {
@@ -19,49 +15,18 @@ case class ParserDef() extends Parser[AST] {
     case Some(a) => f(a)
   }
 
-  //// Cleaning ////
+  /////////////
+  //// API ////
+  /////////////
 
   override def run(input: String) = {
     onBlockBegin(0)
     super.run(input)
   }
 
-  ////////////////
-  //// Result ////
-  ////////////////
-
-  override def getResult() = result
-
-  var result: Option[AST]         = None
-  var astStack: List[Option[AST]] = Nil
-
-  final def pushAST(): Unit = logger.trace {
-    logger.log(s"Pushed: $result")
-    astStack +:= result
-    result = None
-  }
-
-  final def popAST(): Unit = logger.trace {
-    result   = astStack.head
-    astStack = astStack.tail
-    logger.log(s"New result: $result")
-  }
-
-  final def app(fn: String => AST): Unit =
-    app(fn(currentMatch))
-
-  final def app(t: AST): Unit = logger.trace {
-    result = Some(result match {
-      case None    => t
-      case Some(r) => AST.App(r, useLastOffset(), t)
-    })
-  }
-
   ///////////////////////////////////
   //// Basic Char Classification ////
   ///////////////////////////////////
-
-//  val NORMAL = state.define("Normal")
 
   val lowerLetter: Pattern = range('a', 'z')
   val upperLetter: Pattern = range('A', 'Z')
@@ -73,33 +38,68 @@ case class ParserDef() extends Parser[AST] {
   val newline: Pattern     = '\n'
 
   ////////////////
+  //// Result ////
+  ////////////////
+
+  override def getResult() = result.current
+
+  object result {
+    var current: Option[AST]     = None
+    var stack: List[Option[AST]] = Nil
+
+    final def push(): Unit = logger.trace {
+      logger.log(s"Pushed: $current")
+      stack +:= current
+      current = None
+    }
+
+    final def pop(): Unit = logger.trace {
+      current = stack.head
+      stack   = stack.tail
+      logger.log(s"New result: $current")
+    }
+
+    final def app(fn: String => AST): Unit =
+      app(fn(currentMatch))
+
+    final def app(t: AST): Unit = logger.trace {
+      current = Some(current match {
+        case None    => t
+        case Some(r) => AST.App(r, off.use(), t)
+      })
+    }
+  }
+
+  ////////////////
   //// Offset ////
   ////////////////
 
-  var lastOffset: Int            = 0
-  var lastOffsetStack: List[Int] = Nil
+  object off {
+    var current: Int     = 0
+    var stack: List[Int] = Nil
 
-  final def pushLastOffset(): Unit = logger.trace {
-    lastOffsetStack +:= lastOffset
-    lastOffset = 0
-  }
+    final def push(): Unit = logger.trace {
+      stack +:= current
+      current = 0
+    }
 
-  final def popLastOffset(): Unit = logger.trace {
-    lastOffset      = lastOffsetStack.head
-    lastOffsetStack = lastOffsetStack.tail
-  }
+    final def pop(): Unit = logger.trace {
+      current = stack.head
+      stack   = stack.tail
+    }
 
-  final def useLastOffset(): Int = logger.trace {
-    val offset = lastOffset
-    lastOffset = 0
-    offset
+    final def use(): Int = logger.trace {
+      val offset = current
+      current = 0
+      offset
+    }
   }
 
   final def onWhitespace(): Unit = onWhitespace(0)
   final def onWhitespace(shift: Int): Unit = logger.trace {
     val diff = currentMatch.length + shift
-    lastOffset += diff
-    logger.log(s"lastOffset + $diff = $lastOffset")
+    off.current += diff
+    logger.log(s"lastOffset + $diff = $off.current")
   }
 
   ////////////////////
@@ -108,18 +108,18 @@ case class ParserDef() extends Parser[AST] {
 
   var identBody: Option[AST.Ident] = None
 
-  final def onIdent(cons: String => AST.Ident): Unit = logger.trace_ {
-    onIdent(cons(currentMatch))
+  final def identOn(cons: String => AST.Ident): Unit = logger.trace_ {
+    identOn(cons(currentMatch))
   }
 
-  final def onIdent(ast: AST.Ident): Unit = logger.trace {
+  final def identOn(ast: AST.Ident): Unit = logger.trace {
     identBody = Some(ast)
     state.begin(IDENT_SFX_CHECK)
   }
 
-  final def submitIdent(): Unit = logger.trace {
+  final def identSubmit(): Unit = logger.trace {
     withSome(identBody) { body =>
-      app(body)
+      result.app(body)
       identBody = None
     }
   }
@@ -127,19 +127,19 @@ case class ParserDef() extends Parser[AST] {
   final def onIdentErrSfx(): Unit = logger.trace {
     withSome(identBody) { body =>
       val ast = AST.Ident.InvalidSuffix(body, currentMatch)
-      app(ast)
+      result.app(ast)
       identBody = None
       state.end()
     }
   }
 
   final def onNoIdentErrSfx(): Unit = logger.trace {
-    submitIdent()
+    identSubmit()
     state.end()
   }
 
   final def finalizeIdent(): Unit = logger.trace {
-    if (identBody.isDefined) submitIdent()
+    if (identBody.isDefined) identSubmit()
   }
 
   val indentChar: Pattern  = alphaNum | '_'
@@ -152,9 +152,9 @@ case class ParserDef() extends Parser[AST] {
   val IDENT_SFX_CHECK = state.define("Identifier Suffix Check")
 
   // format: off
-  ROOT          rule variable    run reify { onIdent(AST.Var(_)) }
-  ROOT          rule constructor run reify { onIdent(AST.Cons(_)) }
-  ROOT          rule "_"         run reify { onIdent(AST.Blank) }
+  ROOT          rule variable    run reify { identOn(AST.Var(_)) }
+  ROOT          rule constructor run reify { identOn(AST.Cons(_)) }
+  ROOT          rule "_"         run reify { identOn(AST.Blank) }
   IDENT_SFX_CHECK rule identErrSfx run reify { onIdentErrSfx() }
   IDENT_SFX_CHECK rule always        run reify { onNoIdentErrSfx() }
   // format: on
@@ -222,13 +222,13 @@ case class ParserDef() extends Parser[AST] {
 
   final def submitNumber(): Unit = logger.trace {
     val base = if (numberPart1 == "") None else Some(numberPart1)
-    app(AST.Number(base, numberPart2))
+    result.app(AST.Number(base, numberPart2))
     numberReset()
   }
 
   final def onDanglingBase(): Unit = logger.trace {
     state.end()
-    app(AST.Number.DanglingBase(numberPart2))
+    result.app(AST.Number.DanglingBase(numberPart2))
     numberReset()
   }
 
@@ -284,9 +284,9 @@ case class ParserDef() extends Parser[AST] {
   final def submitEmptyText(groupIx: State, quoteNum: Quote): Unit =
     logger.trace {
       if (groupIx == RAWTEXT)
-        app(AST.Text.Raw(quoteNum))
+        result.app(AST.Text.Raw(quoteNum))
       else
-        app(AST.Text.Interpolated(quoteNum))
+        result.app(AST.Text.Interpolated(quoteNum))
     }
 
   final def finishCurrentTextBuilding(): AST.Text.Class[_] = logger.trace {
@@ -297,7 +297,7 @@ case class ParserDef() extends Parser[AST] {
     popTextState()
     state.end()
     val singleLine = !txt.segments.contains(EOL())
-    if (singleLine || currentBlock.firstLine.isDefined || result.isDefined)
+    if (singleLine || currentBlock.firstLine.isDefined || result.current.isDefined)
       txt
     else {
       val segs =
@@ -307,11 +307,11 @@ case class ParserDef() extends Parser[AST] {
   }
 
   final def submitText(): Unit = logger.trace {
-    app(finishCurrentTextBuilding())
+    result.app(finishCurrentTextBuilding())
   }
 
   final def submitUnclosedText(): Unit = logger.trace {
-    app(AST.Text.Unclosed(finishCurrentTextBuilding()))
+    result.app(AST.Text.Unclosed(finishCurrentTextBuilding()))
   }
 
   final def onTextBegin(grp: State, quoteSize: Quote): Unit = logger.trace {
@@ -380,8 +380,8 @@ case class ParserDef() extends Parser[AST] {
   }
 
   final def onInterpolateBegin(): Unit = logger.trace {
-    pushAST()
-    pushLastOffset()
+    result.push()
+    off.push()
     state.begin(INTERPOLATE)
   }
 
@@ -396,9 +396,9 @@ case class ParserDef() extends Parser[AST] {
   final def onInterpolateEnd(): Unit = logger.trace {
     if (state.isInside(INTERPOLATE)) {
       terminateGroupsTill(INTERPOLATE)
-      submitTextSegment(AST.Text.Segment.Interpolation(result))
-      popAST()
-      popLastOffset()
+      submitTextSegment(AST.Text.Segment.Interpolation(result.current))
+      result.pop()
+      off.pop()
       state.end()
     } else {
       onUnrecognized()
@@ -499,7 +499,7 @@ case class ParserDef() extends Parser[AST] {
 
   final def buildBlock(): AST.Block = logger.trace {
     submitLine()
-    println(result)
+    println(result.current)
     withSome(currentBlock.firstLine) { firstLine =>
       AST.Block(
         currentBlock.indent,
@@ -516,9 +516,9 @@ case class ParserDef() extends Parser[AST] {
       if (currentBlock.isValid) block
       else AST.Block.InvalidIndentation(block)
 
-    popAST()
+    result.pop()
     popBlock()
-    app(block2)
+    result.app(block2)
     logger.endGroup()
   }
 
@@ -532,34 +532,35 @@ case class ParserDef() extends Parser[AST] {
     }
     val lines  = firstLines ++ currentBlock.lines.reverse ++ el2
     val module = AST.Module(lines.head, lines.tail)
-    result = Some(module)
+    result.current = Some(module)
     logger.endGroup()
   }
 
   final def submitLine(): Unit = logger.trace {
-    result match {
+    result.current match {
       case None => pushEmptyLine()
       case Some(r) =>
         currentBlock.firstLine match {
           case None =>
-            val line = AST.Block.Line.Required(r, useLastOffset())
+            val line = AST.Block.Line.Required(r, off.use())
             currentBlock.emptyLines = emptyLines
             currentBlock.firstLine  = Some(line)
           case Some(_) =>
             emptyLines.foreach(currentBlock.lines +:= AST.Block.Line(None, _))
-            currentBlock.lines +:= AST.Block.Line(result, useLastOffset())
+            currentBlock.lines +:= AST.Block
+              .Line(result.current, off.use())
         }
         emptyLines = Nil
     }
-    result = None
+    result.current = None
   }
 
   def pushEmptyLine(): Unit = logger.trace {
-    emptyLines +:= useLastOffset()
+    emptyLines +:= off.use()
   }
 
   final def onBlockBegin(newIndent: Int): Unit = logger.trace {
-    pushAST()
+    result.push()
     pushBlock(newIndent)
     logger.beginGroup()
   }
@@ -584,12 +585,12 @@ case class ParserDef() extends Parser[AST] {
   final def onBlockNewline(): Unit = logger.trace {
     state.end()
     onWhitespace()
-    if (lastOffset == currentBlock.indent) {
+    if (off.current == currentBlock.indent) {
       submitLine()
-    } else if (lastOffset > currentBlock.indent) {
-      onBlockBegin(useLastOffset())
+    } else if (off.current > currentBlock.indent) {
+      onBlockBegin(off.use())
     } else {
-      onBlockEnd(useLastOffset())
+      onBlockEnd(off.use())
     }
   }
 
@@ -618,7 +619,7 @@ case class ParserDef() extends Parser[AST] {
   ////////////////
 
   final def onUnrecognized(): Unit = logger.trace {
-    app(AST.Unrecognized)
+    result.app(AST.Unrecognized)
   }
 
   final def onEOF(): Unit = logger.trace {

@@ -55,7 +55,7 @@ scalacOptions in ThisBuild ++= Seq(
   "-Ywarn-value-discard",             // Warn when non-Unit expression results are unused.
   "-language:implicitConversions",
 //  "-Xmacro-settings:-logging@org.enso"
-  "-Xmacro-settings:-logging@org.enso.flexer.NFA"
+  "-Xmacro-settings:-logging@org.enso.flexer.automata"
 )
 
 // Benchmark Configuration
