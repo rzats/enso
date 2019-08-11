@@ -1,9 +1,12 @@
 package org.enso.syntax.text
 
-import org.enso.flexer.Pattern.char
-import org.enso.flexer.Pattern.range
-import org.enso.flexer.Pattern._
+import org.enso.flexer.automata.Pattern.char
+import org.enso.flexer.automata.Pattern.range
+import org.enso.flexer.automata.Pattern._
 import org.enso.flexer._
+import org.enso.flexer.automata.None_
+import org.enso.flexer.automata.Pass
+import org.enso.flexer.automata.Pattern
 import org.enso.syntax.text.AST.Text.Quote
 import org.enso.syntax.text.AST.Text.Segment.EOL
 import org.enso.syntax.text.AST

@@ -1,6 +1,6 @@
 package org.enso.flexer.group
 
-import org.enso.flexer.Pattern
+import org.enso.flexer.automata.Pattern
 
 import scala.reflect.runtime.universe.Expr
 import scala.reflect.runtime.universe.Tree

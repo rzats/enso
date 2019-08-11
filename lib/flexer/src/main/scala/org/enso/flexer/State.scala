@@ -1,6 +1,13 @@
 package org.enso.flexer
 
+import org.enso.flexer.automata.Many
 import org.enso.flexer.automata.NFA
+import org.enso.flexer.automata.None_
+import org.enso.flexer.automata.Or
+import org.enso.flexer.automata.Pass
+import org.enso.flexer.automata.Pattern
+import org.enso.flexer.automata.Ran
+import org.enso.flexer.automata.Seq_
 import org.enso.flexer.group.Rule
 
 import scala.reflect.runtime.universe.Tree

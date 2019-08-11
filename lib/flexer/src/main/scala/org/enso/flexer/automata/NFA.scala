@@ -7,7 +7,7 @@ import scala.collection.mutable
 final class NFA {
   val logger: Logger                     = new Logger()
   val states: mutable.ArrayBuffer[State] = new mutable.ArrayBuffer()
-  val vocabulary                         = new Vocabulary()
+  val vocabulary                         = new Dict()
 
   //// API ////
 

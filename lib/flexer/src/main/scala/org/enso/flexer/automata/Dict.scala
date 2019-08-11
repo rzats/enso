@@ -2,7 +2,7 @@ package org.enso.flexer.automata
 
 import scala.collection.immutable
 
-final class Vocabulary extends Iterable[(Range, Int)] {
+final class Dict extends Iterable[(Range, Int)] {
   private var divisions = immutable.SortedSet[Int](0, Int.MaxValue)
 
   def insert(range: Range): Unit = {
@@ -19,5 +19,5 @@ final class Vocabulary extends Iterable[(Range, Int)] {
     }
 
   override def toString: String =
-    "Vocabulary(" + divisions.toList.map(_.toString).mkString(",") + ")"
+    "Dict(" + divisions.toList.map(_.toString).mkString(",") + ")"
 }
