@@ -197,9 +197,9 @@ case class ParserDef() extends Parser[AST] {
   val IDENT_SFX_CHECK = state.define("Identifier Suffix Check")
 
   // format: off
-  NORMAL          rule variable    run reify { onIdent(AST.Var(_)) }
-  NORMAL          rule constructor run reify { onIdent(AST.Cons(_)) }
-  NORMAL          rule "_"         run reify { onIdent(AST.Blank) }
+  ROOT          rule variable    run reify { onIdent(AST.Var(_)) }
+  ROOT          rule constructor run reify { onIdent(AST.Cons(_)) }
+  ROOT          rule "_"         run reify { onIdent(AST.Blank) }
   IDENT_SFX_CHECK rule identErrSfx run reify { onIdentErrSfx() }
   IDENT_SFX_CHECK rule pass        run reify { onNoIdentErrSfx() }
   // format: on
@@ -246,8 +246,8 @@ case class ParserDef() extends Parser[AST] {
   OPERATOR_MOD_CHECK.parent = OPERATOR_SFX_CHECK
 
   // format: off
-  NORMAL             rule operator       run reify { onOp(AST.Opr(_)) }
-  NORMAL             rule noModOperator  run reify { onNoModOp(AST.Opr(_)) }
+  ROOT             rule operator       run reify { onOp(AST.Opr(_)) }
+  ROOT             rule noModOperator  run reify { onNoModOp(AST.Opr(_)) }
   OPERATOR_MOD_CHECK rule "="            run reify { onModifier() }
   OPERATOR_SFX_CHECK rule operatorErrSfx run reify { onIdentErrSfx() }
   OPERATOR_SFX_CHECK rule pass           run reify { onNoIdentErrSfx() }
@@ -299,7 +299,7 @@ case class ParserDef() extends Parser[AST] {
   val NUMBER_PHASE2: State = state.define("Number Phase 2")
 
   // format: off
-  NORMAL        rule decimal                 run reify { onDecimal() }
+  ROOT        rule decimal                 run reify { onDecimal() }
   NUMBER_PHASE2 rule ("_" >> alphaNum.many1) run reify { onExplicitBase() }
   NUMBER_PHASE2 rule ("_")                   run reify { onDanglingBase() }
   NUMBER_PHASE2 rule pass                    run reify { onNoExplicitBase() }
@@ -439,7 +439,7 @@ case class ParserDef() extends Parser[AST] {
   }
 
   final def onInterpolateEnd(): Unit = logger.trace {
-    if (state.insideOf(INTERPOLATE)) {
+    if (state.isInside(INTERPOLATE)) {
       terminateGroupsTill(INTERPOLATE)
       submitTextSegment(AST.Text.Segment.Interpolation(result))
       popAST()
@@ -468,22 +468,22 @@ case class ParserDef() extends Parser[AST] {
   val TEXT: State        = state.define("Text")
   val RAWTEXT: State     = state.define("RawText")
   val INTERPOLATE: State = state.define("Interpolate")
-  INTERPOLATE.parent = NORMAL
+  INTERPOLATE.parent = ROOT
 
   // format: off
-  NORMAL  rule '`'            run reify { onInterpolateEnd() }
+  ROOT  rule '`'            run reify { onInterpolateEnd() }
   TEXT    rule '`'            run reify { onInterpolateBegin() }
   
-  NORMAL  rule "'"            run reify { onTextBegin(TEXT, AST.Text.Quote.Single) }
-  NORMAL  rule "'''"          run reify { onTextBegin(TEXT, AST.Text.Quote.Triple) }
+  ROOT  rule "'"            run reify { onTextBegin(TEXT, AST.Text.Quote.Single) }
+  ROOT  rule "'''"          run reify { onTextBegin(TEXT, AST.Text.Quote.Triple) }
   TEXT    rule "'"            run reify { onTextQuote(AST.Text.Quote.Single) }
   TEXT    rule "'''"          run reify { onTextQuote(AST.Text.Quote.Triple) }
   TEXT    rule stringSegment  run reify { onPlainTextSegment() }
   TEXT    rule eof            run reify { onTextEOF() }
   TEXT    rule '\n'           run reify { onTextEOL() }
 
-  NORMAL  rule "\""           run reify { onTextBegin(RAWTEXT, AST.Text.Quote.Single) }
-  NORMAL  rule "\"\"\""       run reify { onTextBegin(RAWTEXT, AST.Text.Quote.Triple) }
+  ROOT  rule "\""           run reify { onTextBegin(RAWTEXT, AST.Text.Quote.Single) }
+  ROOT  rule "\"\"\""       run reify { onTextBegin(RAWTEXT, AST.Text.Quote.Triple) }
   RAWTEXT rule "\""           run reify { onTextQuote(AST.Text.Quote.Single) }
   RAWTEXT rule "\"\"\""       run reify { onTextQuote(AST.Text.Quote.Triple) }
   RAWTEXT rule noneOf("\"\n") run reify { onPlainTextSegment() }
@@ -652,7 +652,7 @@ case class ParserDef() extends Parser[AST] {
   val NEWLINE = state.define("Newline")
 
   // format: off
-  NORMAL  rule newline                        run reify { onNewLine() }
+  ROOT  rule newline                        run reify { onNewLine() }
   NEWLINE rule ((whitespace|pass) >> newline) run reify { onEmptyLine() }
   NEWLINE rule ((whitespace|pass) >> eof)     run reify { onEOFLine() }
   NEWLINE rule  (whitespace|pass)             run reify { onBlockNewline() }
@@ -672,7 +672,7 @@ case class ParserDef() extends Parser[AST] {
     submitModule()
   }
 
-  NORMAL rule whitespace run reify { onWhitespace() }
-  NORMAL rule eof run reify { onEOF() }
-  NORMAL rule any run reify { onUnrecognized() }
+  ROOT rule whitespace run reify { onWhitespace() }
+  ROOT rule eof run reify { onEOF() }
+  ROOT rule any run reify { onUnrecognized() }
 }

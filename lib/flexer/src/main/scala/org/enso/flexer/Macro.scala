@@ -20,7 +20,7 @@ object Macro {
     val parser = c.eval(c.Expr[Base[T]](c.untypecheck(expr.duplicate)))
     val groups = c.internal
       .createImporter(u)
-      .importTree(u.Block(parser.groupsx.map(_.generate()): _*))
+      .importTree(u.Block(parser.states.map(_.generate()): _*))
 
     val superClassName = tree match {
       case Select(_, name) => name

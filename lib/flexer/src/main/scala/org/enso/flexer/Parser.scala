@@ -27,7 +27,7 @@ trait Parser[T] {
   var matchBuilder = new StringBuilder(64)
   var currentMatch = ""
 
-  val stateRunners: Array[Int => Int] = new Array(256)
+  val stateDefs: Array[Int => Int] = new Array(256)
 
   val logger = new Logger()
 
@@ -42,7 +42,7 @@ trait Parser[T] {
     codePoint = getNextCodePoint()
 
     var runResult = State.Status.EXIT.OK
-    while (runResult == State.Status.EXIT.OK) runResult = runCurrentGroup()
+    while (runResult == State.Status.EXIT.OK) runResult = runCurrentState()
 
     getResult() match {
       case None => InternalFailure(offset)
@@ -55,18 +55,22 @@ trait Parser[T] {
 
   //// Group management ////
 
-  var groupsx = new ArrayBuffer[State]()
+  var states = new ArrayBuffer[State]()
 
   // FIXME: This is a hack. Without it sbt crashes and needs to be completely
   //        cleaned to compile again.
   val state = _state
   object _state {
-    var stack: List[State] = Nil
-    var current: State     = null
-//    val labelMap: mutable.Map[Int, String] = mutable.Map()
 
-    def insideOf(g: State): Boolean =
-      current == g || stack.contains(g)
+    def define(label: String = "unnamed", finish: => Unit = {}): State = {
+      val groupIndex = states.length
+      val newState   = new State(label, groupIndex, () => finish)
+      states.append(newState)
+      newState
+    }
+
+    var stack: List[State] = Nil
+    var current: State     = define("Root")
 
     def begin(state: State): Unit = {
       logger.log(s"Begin ${state.label}")
@@ -78,30 +82,23 @@ trait Parser[T] {
       val old = current
       current = stack.head
       stack   = stack.tail
-      logger.log(
-        s"End ${old.label}, back to ${current.label}"
-      )
+      logger.log(s"End ${old.label}, back to ${current.label}")
     }
 
-    def define(label: String = "unnamed", finish: => Unit = {}): State = {
-      val groupIndex = groupsx.length
-      val newState   = new State(label, groupIndex, () => finish)
-      groupsx.append(newState)
-//      state.labelMap += (groupIndex -> label)
-      newState
-    }
+    def isInside(state: State): Boolean =
+      current == state || stack.contains(state)
+
   }
-  val NORMAL = state.define("Normal")
-  state.current = NORMAL
+  val ROOT = state.current
 
-  def runCurrentGroup(): Int = {
+  def runCurrentState(): Int = {
     val cstate      = state.current
-    val nextState   = stateRunners(cstate.ix)
+    val nextState   = stateDefs(cstate.ix)
     var status: Int = State.Status.INITIAL
     matchBuilder.setLength(0)
     while (State.valid(status)) {
       logger.log(
-        s"step (${cstate.ix}:$status) ${escapeStr(currentStr)}($codePoint)"
+        s"Step (${cstate.ix}:$status) ${escapeStr(currentStr)}($codePoint)"
       )
       status = nextState(status)
       if (State.valid(status)) {
@@ -115,14 +112,6 @@ trait Parser[T] {
   }
 
   def initialize(): Unit
-
-  def getGroup(g: Int): State = groupsx(g)
-
-//  def groupLabel(index: Int): String =
-//    state.labelMap.get(index) match {
-//      case None        => "unnamed"
-//      case Some(label) => label
-//    }
 
   def escapeChar(ch: Char): String = ch match {
     case '\b' => "\\b"
@@ -185,9 +174,6 @@ trait Parser[T] {
 
   final def charSize: Int =
     if (offset >= 0 && buffer(offset).isHighSurrogate) 2 else 1
-
-  def debugGeneratedOutput: String =
-    groupsx.map(g => showCode(g.generate())).mkString("\n")
 }
 
 object Parser {

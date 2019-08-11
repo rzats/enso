@@ -113,7 +113,7 @@ case class CodeGen(dfa: DFA) {
       case (st, fun) => q"def $fun = {${generateCaseBody(st)}}"
     }
     q"""
-      stateRunners($i) = ${TermName(s"nextState$i")}
+      stateDefs($i) = ${TermName(s"nextState$i")}
       def ${TermName(s"nextState$i")}(state: Int): Int = ${Match(
       q"state",
       cases
