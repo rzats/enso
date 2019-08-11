@@ -11,7 +11,7 @@ import org.enso.syntax.text.AST
 import scala.annotation.tailrec
 import scala.reflect.runtime.universe.reify
 
-case class ParserDef() extends ParserBase[AST] {
+case class ParserDef() extends Parser[AST] {
 
   val any: Pattern  = range(5, Int.MaxValue) // FIXME 5 -> 0
   val pass: Pattern = Pass
@@ -159,7 +159,7 @@ case class ParserDef() extends ParserBase[AST] {
 
   final def onIdent(ast: AST.Ident): Unit = logger.trace {
     identBody = Some(ast)
-    beginGroup(IDENT_SFX_CHECK)
+    group.begin(IDENT_SFX_CHECK)
   }
 
   final def submitIdent(): Unit = logger.trace {
@@ -174,13 +174,13 @@ case class ParserDef() extends ParserBase[AST] {
       val ast = AST.Ident.InvalidSuffix(body, currentMatch)
       app(ast)
       identBody = None
-      endGroup()
+      group.end()
     }
   }
 
   final def onNoIdentErrSfx(): Unit = logger.trace {
     submitIdent()
-    endGroup()
+    group.end()
   }
 
   final def finalizeIdent(): Unit = logger.trace {
@@ -218,12 +218,12 @@ case class ParserDef() extends ParserBase[AST] {
 
   final def onOp(ast: AST.Ident): Unit = logger.trace {
     identBody = Some(ast)
-    beginGroup(OPERATOR_MOD_CHECK)
+    group.begin(OPERATOR_MOD_CHECK)
   }
 
   final def onNoModOp(ast: AST.Ident): Unit = logger.trace {
     identBody = Some(ast)
-    beginGroup(OPERATOR_SFX_CHECK)
+    group.begin(OPERATOR_SFX_CHECK)
   }
 
   final def onModifier(): Unit = logger.trace {
@@ -272,25 +272,25 @@ case class ParserDef() extends ParserBase[AST] {
   }
 
   final def onDanglingBase(): Unit = logger.trace {
-    endGroup()
+    group.end()
     app(AST.Number.DanglingBase(numberPart2))
     numberReset()
   }
 
   final def onDecimal(): Unit = logger.trace {
     numberPart2 = currentMatch
-    beginGroup(NUMBER_PHASE2)
+    group.begin(NUMBER_PHASE2)
   }
 
   final def onExplicitBase(): Unit = logger.trace {
-    endGroup()
+    group.end()
     numberPart1 = numberPart2
     numberPart2 = currentMatch.substring(1)
     submitNumber()
   }
 
   final def onNoExplicitBase(): Unit = logger.trace {
-    endGroup()
+    group.end()
     submitNumber()
   }
 
@@ -336,9 +336,11 @@ case class ParserDef() extends ParserBase[AST] {
 
   final def finishCurrentTextBuilding(): AST.Text.Class[_] = logger.trace {
     withCurrentText(t => t.copy(segments = t.segments.reverse))
-    val txt = if (group == RAWTEXT.groupIx) currentText.raw else currentText
+    val txt =
+      if (group.current == RAWTEXT.groupIx) currentText.raw
+      else currentText
     popTextState()
-    endGroup()
+    group.end()
     val singleLine = !txt.segments.contains(EOL())
     if (singleLine || currentBlock.firstLine.isDefined || result.isDefined)
       txt
@@ -357,9 +359,9 @@ case class ParserDef() extends ParserBase[AST] {
     app(AST.Text.Unclosed(finishCurrentTextBuilding()))
   }
 
-  final def onTextBegin(group: Group, quoteSize: Quote): Unit = logger.trace {
+  final def onTextBegin(grp: Group, quoteSize: Quote): Unit = logger.trace {
     pushTextState(quoteSize)
-    beginGroup(group)
+    group.begin(grp)
   }
 
   final def submitPlainTextSegment(
@@ -379,7 +381,7 @@ case class ParserDef() extends ParserBase[AST] {
         && quoteSize == AST.Text.Quote.Single) onPlainTextSegment()
     else if (currentText.quote == AST.Text.Quote.Single
              && quoteSize == AST.Text.Quote.Triple) {
-      val groupIx = group
+      val groupIx = group.current
       submitText()
       submitEmptyText(groupIx, AST.Text.Quote.Single)
     } else
@@ -425,7 +427,7 @@ case class ParserDef() extends ParserBase[AST] {
   final def onInterpolateBegin(): Unit = logger.trace {
     pushAST()
     pushLastOffset()
-    beginGroup(INTERPOLATE)
+    group.begin(INTERPOLATE)
   }
 
   final def terminateGroupsTill(g: Group): Unit = logger.trace {
@@ -433,19 +435,19 @@ case class ParserDef() extends ParserBase[AST] {
   }
 
   final def terminateGroupsTill(g: Int): Unit = logger.trace {
-    while (g != group) {
-      getGroup(group).finish()
-      endGroup()
+    while (g != group.current) {
+      getGroup(group.current).finish()
+      group.end()
     }
   }
 
   final def onInterpolateEnd(): Unit = logger.trace {
-    if (insideOfGroup(INTERPOLATE)) {
+    if (group.insideOf(INTERPOLATE)) {
       terminateGroupsTill(INTERPOLATE)
       submitTextSegment(AST.Text.Segment.Interpolation(result))
       popAST()
       popLastOffset()
-      endGroup()
+      group.end()
     } else {
       onUnrecognized()
     }
@@ -617,18 +619,18 @@ case class ParserDef() extends ParserBase[AST] {
 
   final def onEOFLine(): Unit = logger.trace {
     submitLine()
-    endGroup()
+    group.end()
     onWhitespace(-1)
     onEOF()
   }
 
   final def onNewLine(): Unit = logger.trace {
 //    submitLine()
-    beginGroup(NEWLINE)
+    group.begin(NEWLINE)
   }
 
   final def onBlockNewline(): Unit = logger.trace {
-    endGroup()
+    group.end()
     onWhitespace()
     if (lastOffset == currentBlock.indent) {
       submitLine()

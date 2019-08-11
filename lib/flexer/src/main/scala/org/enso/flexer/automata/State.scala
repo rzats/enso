@@ -5,21 +5,14 @@ import org.feijoas.mango.common.{collect => Guava}
 import scala.collection.mutable
 
 class State {
-  import State._
-
-  val links: Link.Registry = new Link.Registry()
-
-//  var isos                                = Set[Int]()
-//  var isosId: Int                         = 0
-//  var isosComputed: State.IsoComputeState = State.NotComputed
-
-  var start: Boolean = false
-  var end: Boolean   = false
-  var rule: String   = ""
+  val links: State.Link.Registry = new State.Link.Registry()
+  var rule: Option[String]       = None
 }
 
 object State {
-  case class StateDesc(priority: Int, rule: String)
+  val missing = -1
+
+  case class Desc(priority: Int, rule: String)
 
   object Link {
     class Registry {

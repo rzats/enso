@@ -2,7 +2,7 @@ package org.enso.flexer
 
 import org.enso.flexer.CodeGen.MAX_ASCII_CODE
 import org.enso.flexer.CodeGen.MIN_ASCII_CODE
-import org.enso.flexer.automata.State.StateDesc
+import org.enso.flexer.automata.State
 import org.enso.flexer.Utils._
 import org.enso.flexer.automata.DFA
 
@@ -18,12 +18,13 @@ case class CodeGen(dfa: DFA) {
 
   def genBranchBody(
     trgState: Int,
-    maybeState: Option[StateDesc],
+    maybeState: Option[State.Desc],
     rulesOverlap: Boolean
   ): Tree = (trgState, maybeState, rulesOverlap) match {
-    case (-1, None, _)            => q"-2"
-    case (-1, Some(state), false) => q"call(${TermName(state.rule)})"
-    case (-1, Some(state), true)  => q"rewindThenCall(${TermName(state.rule)})"
+    case (State.missing, None, _)            => q"-2"
+    case (State.missing, Some(state), false) => q"call(${TermName(state.rule)})"
+    case (State.missing, Some(state), true) =>
+      q"rewindThenCall(${TermName(state.rule)})"
 
     case (targetState, _, _) =>
       val rulesOverlap_ = maybeState match {
@@ -112,7 +113,7 @@ case class CodeGen(dfa: DFA) {
       case (st, fun) => q"def $fun = {${generateCaseBody(st)}}"
     }
     q"""
-      groups($i) = ${TermName(s"nextState$i")}
+      stateRunners($i) = ${TermName(s"nextState$i")}
       def ${TermName(s"nextState$i")}(state: Int): Int = ${Match(
       q"state",
       cases
@@ -124,8 +125,6 @@ case class CodeGen(dfa: DFA) {
 }
 
 object CodeGen {
-
   val MIN_ASCII_CODE = 0
   val MAX_ASCII_CODE = 255
-
 }

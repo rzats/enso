@@ -1,9 +1,9 @@
 package org.enso.syntax.text
 
-import org.enso.flexer.ParserBase
+import org.enso.flexer.Parser
 import org.enso.syntax.text.AST._
 import org.enso.syntax.text.ast.Helpers._
-import org.enso.{flexer => Flexer}
+import org.enso.flexer
 import org.scalatest._
 import EDSL._
 import org.enso.syntax.text.AST.Text.Segment.EOL
@@ -14,7 +14,7 @@ class ParserSpec extends FlatSpec with Matchers {
   def assertModule(input: String, result: AST): Assertion = {
     val tt = Parser.run(input)
     tt match {
-      case Flexer.Success(value, offset) =>
+      case flexer.Success(value, offset) =>
         assert(value == result)
         assert(value.show() == input)
       case _ => fail(s"Parsing failed, consumed ${tt.offset} chars")
@@ -24,7 +24,7 @@ class ParserSpec extends FlatSpec with Matchers {
   def assertExpr(input: String, result: AST): Assertion = {
     val tt = Parser.run(input)
     tt match {
-      case Flexer.Success(value, offset) =>
+      case flexer.Success(value, offset) =>
         val module = value.asInstanceOf[Module]
         module.lines.tail match {
           case Nil =>
@@ -162,7 +162,8 @@ class ParserSpec extends FlatSpec with Matchers {
   //// Large Input ////
   /////////////////////
 
-  "BIG_INPUT_" * ParserBase.BUFFERSIZE ?= "BIG_INPUT_" * ParserBase.BUFFERSIZE
+  val BUFFER_SIZE = flexer.Parser.BUFFER_SIZE
+  "BIG_INPUT_" * BUFFER_SIZE ?= "BIG_INPUT_" * BUFFER_SIZE
 
   //////////////
   //// Text ////

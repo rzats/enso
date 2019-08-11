@@ -1,32 +1,33 @@
 package org.enso.flexer
 
 import org.enso.Logger
-import org.enso.flexer.ParserBase._
+import org.enso.flexer.Parser._
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.runtime.universe.showCode
 
-trait ParserBase[T] {
+trait Parser[T] {
+  import Parser._
   import java.io.Reader
   import java.io.StringReader
 
   import scala.collection.mutable.StringBuilder
 
-  var sreader: Reader     = null
-  val buffer: Array[Char] = new Array(BUFFERSIZE)
-  var bufferLen: Int      = 1
+  var reader: Reader      = null
+  val buffer: Array[Char] = new Array(BUFFER_SIZE)
+  var bufferLen: Int      = 0
 
-  var offset: Int          = 0
-  var charsToLastRule: Int = 0
   val eofChar: Char        = '\u0000'
   val etxChar: Char        = '\u0003'
+  var offset: Int          = 0
+  var charsToLastRule: Int = 0
   var codePoint: Int       = etxChar.toInt
 
   var matchBuilder = new StringBuilder(64)
   var currentMatch = ""
 
-  val groups: Array[Int => Int] = new Array(256)
+  val stateRunners: Array[Int => Int] = new Array(256)
 
   val logger = new Logger()
 
@@ -34,62 +35,72 @@ trait ParserBase[T] {
 
   def run(input: String): Result[T] = {
     initialize()
-    sreader = new StringReader(input)
-    val numRead = sreader.read(buffer, 1, buffer.length - 1)
+    reader = new StringReader(input)
+    // FIXME: why we have offset 1 here and -1 ?
+    val numRead = reader.read(buffer, 1, buffer.length - 1)
     bufferLen = if (numRead == -1) 1 else numRead + 1
     codePoint = getNextCodePoint()
 
-    var r = -1; while (r == -1) r = runGroup()
+    var runResult = State.EXIT.OK
+    while (runResult == State.EXIT.OK) runResult = runCurrentGroup()
 
     getResult() match {
       case None => InternalFailure(offset)
       case Some(result) =>
         if (offset >= bufferLen) Success(result, offset)
-        else if (r == -2) Failure(result, offset)
+        else if (runResult == State.EXIT.FAIL) Failure(result, offset)
         else Partial(result, offset)
     }
   }
 
-  // Group management
+  //// Group management ////
 
-  var groupStack: List[Int]                   = Nil
-  val groupLabelMap: mutable.Map[Int, String] = mutable.Map()
-  var group: Int                              = 0
+  object group {
+    var stack: List[Int]                   = Nil
+    val labelMap: mutable.Map[Int, String] = mutable.Map()
+    var current: Int                       = 0
 
-  def insideOfGroup(g: Group): Boolean = insideOfGroup(g.groupIx)
-  def insideOfGroup(g: Int):   Boolean = group == g || groupStack.contains(g)
+    def insideOf(g: Group): Boolean =
+      insideOf(g.groupIx)
 
-  def beginGroup(group: Group): Unit =
-    beginGroup(group.groupIx)
+    def insideOf(g: Int): Boolean =
+      current == g || stack.contains(g)
 
-  def beginGroup(g: Int): Unit = {
-    logger.log(s"Begin ${groupLabel(g)}")
-    groupStack +:= group
-    group = g
+    def begin(group: Group): Unit =
+      begin(group.groupIx)
+
+    def begin(g: Int): Unit = {
+      logger.log(s"Begin ${groupLabel(g)}")
+      stack +:= current
+      current = g
+    }
+
+    def end(): Unit = {
+      val old = current
+      current = stack.head
+      stack   = stack.tail
+      logger.log(
+        s"End ${groupLabel(old)}, back to ${groupLabel(current)}"
+      )
+    }
   }
 
-  def endGroup(): Unit = {
-    val oldGroup = group
-    group      = groupStack.head
-    groupStack = groupStack.tail
-    logger.log(s"End ${groupLabel(oldGroup)}, back to ${groupLabel(group)}")
-  }
-
-  def runGroup(): Int = {
-    val nextState  = groups(group)
-    var state: Int = 0
+  def runCurrentGroup(): Int = {
+    val grp       = group.current
+    val nextState = stateRunners(grp)
+    var sss: Int  = State.INITIAL
     matchBuilder.setLength(0)
-    while (state >= 0) {
-      logger.log(s"Step: state $group $state, code $codePoint ($currentChar)")
-      state = nextState(state)
-      if (state >= 0) {
+    while (State.valid(sss)) {
+      logger.log(s"Step: state ${grp} $sss, code $codePoint ($currentChar)")
+      sss = nextState(sss)
+      if (State.valid(sss)) {
         matchBuilder.append(buffer(offset))
         if (buffer(offset).isHighSurrogate)
           matchBuilder.append(buffer(offset + 1))
         codePoint = getNextCodePoint()
       }
     }
-    state
+    sss
   }
 
   def initialize(): Unit
@@ -98,16 +109,16 @@ trait ParserBase[T] {
 
   def defineGroup(label: String = "unnamed", finish: => Unit = {}): Group = {
     val groupIndex = groupsx.length
-    val group      = new Group(groupIndex, () => finish)
-    groupsx.append(group)
-    groupLabelMap += (groupIndex -> label)
-    group
+    val ggggg      = new Group(groupIndex, () => finish)
+    groupsx.append(ggggg)
+    group.labelMap += (groupIndex -> label)
+    ggggg
   }
 
   def getGroup(g: Int): Group = groupsx(g)
 
   def groupLabel(index: Int): String =
-    groupLabelMap.get(index) match {
+    group.labelMap.get(index) match {
       case None        => "unnamed"
       case Some(label) => label
     }
@@ -129,13 +140,13 @@ trait ParserBase[T] {
     if (offset >= bufferLen)
       return etxChar.toInt
     offset += charSize
-    if (offset > BUFFERSIZE - UTFCHARSIZE) {
-      val keepChars = Math.max(charsToLastRule, currentMatch.length) + UTFCHARSIZE - 1
+    if (offset > BUFFER_SIZE - UTF_CHAR_SIZE) {
+      val keepChars = Math.max(charsToLastRule, currentMatch.length) + UTF_CHAR_SIZE - 1
       for (i <- 1 to keepChars) buffer(keepChars - i) = buffer(bufferLen - i)
-      val numRead = sreader.read(buffer, keepChars, buffer.length - keepChars)
+      val numRead = reader.read(buffer, keepChars, buffer.length - keepChars)
       if (numRead == -1)
         return eofChar.toInt
-      offset    = keepChars - (BUFFERSIZE - offset)
+      offset    = keepChars - (BUFFER_SIZE - offset)
       bufferLen = keepChars + numRead
     } else if (offset == bufferLen)
       return eofChar.toInt
@@ -163,7 +174,8 @@ trait ParserBase[T] {
     -1
   }
 
-  final def currentChar: String = new String(Character.toChars(codePoint))
+  final def currentChar: String =
+    new String(Character.toChars(codePoint))
 
   final def charSize: Int =
     if (offset >= 0 && buffer(offset).isHighSurrogate) 2 else 1
@@ -172,9 +184,18 @@ trait ParserBase[T] {
     groupsx.map(g => showCode(g.generate())).mkString("\n")
 }
 
-object ParserBase {
+object Parser {
 
-  val BUFFERSIZE  = 16384
-  val UTFCHARSIZE = 2
+  val BUFFER_SIZE   = 16384
+  val UTF_CHAR_SIZE = 2
 
+  object State {
+    val INITIAL = 0
+    object EXIT {
+      val OK   = -1
+      val FAIL = -2
+    }
+    def valid(i: Int): Boolean =
+      i >= 0
+  }
 }

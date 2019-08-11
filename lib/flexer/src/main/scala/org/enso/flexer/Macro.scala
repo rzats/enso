@@ -4,7 +4,7 @@ import scala.reflect.runtime.{universe => u}
 
 object Macro {
 
-  type Base[T] = ParserBase[T]
+  type Base[T] = Parser[T]
   type In[T]   = () => Base[T]
   type Out[T]  = () => Base[T]
 
@@ -25,7 +25,7 @@ object Macro {
     val superClassName = tree match {
       case Select(_, name) => name
       case _ =>
-        println("ERROR: Wrong shape 51")
+        println("ERROR: Wrong shape 58")
         println("Expected Select(_, name), got:")
         println(showRaw(tree))
         throw new Error("Wrong shape")

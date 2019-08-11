@@ -33,30 +33,20 @@ class Group(val groupIx: Int, val finish: () => Unit) {
       case (rule, ix) => buildRuleAutomata(nfa, start, ix, rule)
     }
     val end = nfa.addState()
-    nfa.state(end).end = true
+    nfa.state(end).rule = Some("")
     for (endpoint <- endpoints) {
       nfa.link(endpoint, end)
     }
     nfa
   }
 
-  def buildRuleAutomata(
-    nfa: NFA,
-    last: Int,
-    ruleIx: Int,
-    rule: Rule
-  ): Int = {
+  def buildRuleAutomata(nfa: NFA, last: Int, ruleIx: Int, rule: Rule): Int = {
     val end = buildExprAutomata(nfa, last, rule.pattern)
-    nfa.state(end).end  = true
-    nfa.state(end).rule = ruleName(ruleIx)
+    nfa.state(end).rule = Some(ruleName(ruleIx))
     end
   }
 
-  def buildExprAutomata(
-    nfa: NFA,
-    last: Int,
-    expr: Pattern
-  ): Int = {
+  def buildExprAutomata(nfa: NFA, last: Int, expr: Pattern): Int = {
     val current = nfa.addState()
     nfa.link(last, current)
     expr match {

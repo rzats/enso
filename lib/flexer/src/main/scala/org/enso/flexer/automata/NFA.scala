@@ -1,7 +1,6 @@
 package org.enso.flexer.automata
 
 import org.enso.Logger
-import org.enso.flexer.Vocabulary
 
 import scala.collection.mutable
 
@@ -69,8 +68,6 @@ final class NFA {
     arr.map(_.links)
   }
 
-  private val matMissing = -1
-
   private def nfaMatrix(): Array[Array[Int]] = {
     logger.group("Computing NFA Matrix") {
       val matrix = Array.ofDim[Int](states.length, vocabulary.size)
@@ -79,7 +76,7 @@ final class NFA {
         for ((range, vocIx) <- vocabulary) {
           s.links.ranged.get(range.start) match {
             case Some(tgt) => matrix(stateIx)(vocIx) = tgt
-            case None      => matrix(stateIx)(vocIx) = matMissing
+            case None      => matrix(stateIx)(vocIx) = State.missing
           }
         }
       }
@@ -101,7 +98,7 @@ final class NFA {
         dfaEpsMap += (epsSet -> id)
         dfaEpsIxs += epsSet
         dfaRows += 1
-        dfaMat :+= Array.fill(vocabulary.size)(matMissing)
+        dfaMat :+= Array.fill(vocabulary.size)(State.missing)
         logger.log(s"DFA[$id] = $epsSet")
         id
       }
@@ -120,7 +117,7 @@ final class NFA {
               var epsSet = Set[Int]()
               for (epsIx <- epsIxs) {
                 val tgt = nfaMat(epsIx)(vocIx)
-                if (tgt != matMissing)
+                if (tgt != State.missing)
                   epsSet = epsSet ++ epsMat(tgt)
               }
               if (epsSet.nonEmpty) {
@@ -139,21 +136,16 @@ final class NFA {
 
       val nfaEndStatePriorityMap = mutable.Map[Int, Int]()
       for (i <- nfaMat.indices) {
-        if (state(i).end) {
+        if (state(i).rule.isDefined)
           nfaEndStatePriorityMap += (i -> (nfaMat.length - i))
-        }
       }
 
-      val dfaEndStatePriorityMap = mutable.Map[Int, State.StateDesc]()
-      for ((isos, dfaIx) <- dfaEpsIxs.zipWithIndex) {
-        val iso = isos.maxBy(nfaEndStatePriorityMap.getOrElse(_, matMissing))
-        nfaEndStatePriorityMap.get(iso) match {
-          case None =>
-          case Some(p) =>
-            dfaEndStatePriorityMap += dfaIx -> State.StateDesc(
-              p,
-              state(iso).rule
-            )
+      val dfaEndStatePriorityMap = mutable.Map[Int, State.Desc]()
+      for ((epss, dfaIx) <- dfaEpsIxs.zipWithIndex) {
+        val eps = epss.maxBy(nfaEndStatePriorityMap.getOrElse(_, State.missing))
+        nfaEndStatePriorityMap.get(eps).foreach { priority =>
+          val rule = state(eps).rule.getOrElse("")
+          dfaEndStatePriorityMap += dfaIx -> State.Desc(priority, rule)
         }
       }
       DFA(vocabulary, dfaMat, dfaEndStatePriorityMap)
