@@ -52,8 +52,8 @@ class State(val label: String, val ix: Int, val finish: () => Unit) {
     val current = nfa.addState()
     nfa.link(last, current)
     expr match {
-      case Never => nfa.addState()
-      case Empty => current
+      case Never  => nfa.addState()
+      case Always => current
       case Range(start, end) =>
         val state = nfa.addState()
         nfa.link(current, state, scala.Range(start, end))

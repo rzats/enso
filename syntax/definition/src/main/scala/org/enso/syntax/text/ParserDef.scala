@@ -14,53 +14,6 @@ import scala.reflect.runtime.universe.reify
 
 case class ParserDef() extends Parser[AST] {
 
-  val any: Pattern  = range(5, Int.MaxValue) // FIXME 5 -> 0
-  val pass: Pattern = Empty
-  val eof: Pattern  = char('\u0000')
-  val none: Pattern = Never
-
-  final def anyOf(chars: String): Pattern =
-    anyOf(chars.map(char))
-
-  final def anyOf(alts: scala.Seq[Pattern]): Pattern =
-    alts.fold(none)(_ | _)
-
-  final def noneOf(chars: String): Pattern = {
-    val pointCodes  = chars.map(_.toInt).sorted
-    val startPoints = 5 +: pointCodes.map(_ + 1) // FIXME 5 -> 0
-    val endPoints   = pointCodes.map(_ - 1) :+ Int.MaxValue
-    val ranges      = startPoints.zip(endPoints)
-    val validRanges = ranges.filter { case (s, e) => e >= s }
-    val patterns    = validRanges.map { case (s, e) => range(s, e) }
-    anyOf(patterns)
-  }
-
-  final def not(char: Char): Pattern =
-    noneOf(char.toString)
-
-  def repeat(p: Pattern, min: Int, max: Int): Pattern = {
-    val minPat = repeat(p, min)
-    _repeatAlt(p, max - min, minPat, minPat)
-  }
-
-  def repeat(p: Pattern, num: Int): Pattern =
-    _repeat(p, num, pass)
-
-  @tailrec
-  final def _repeat(p: Pattern, num: Int, out: Pattern): Pattern = num match {
-    case 0 => out
-    case _ => _repeat(p, num - 1, out >> p)
-  }
-
-  @tailrec
-  final def _repeatAlt(p: Pattern, i: Int, ch: Pattern, out: Pattern): Pattern =
-    i match {
-      case 0 => out
-      case _ =>
-        val ch2 = ch >> p
-        _repeatAlt(p, i - 1, ch2, out | ch2)
-    }
-
   final def withSome[T, S](opt: Option[T])(f: T => S): S = opt match {
     case None    => throw new Error("Internal Error")
     case Some(a) => f(a)
@@ -203,7 +156,7 @@ case class ParserDef() extends Parser[AST] {
   ROOT          rule constructor run reify { onIdent(AST.Cons(_)) }
   ROOT          rule "_"         run reify { onIdent(AST.Blank) }
   IDENT_SFX_CHECK rule identErrSfx run reify { onIdentErrSfx() }
-  IDENT_SFX_CHECK rule pass        run reify { onNoIdentErrSfx() }
+  IDENT_SFX_CHECK rule always        run reify { onNoIdentErrSfx() }
   // format: on
 
   //////////////////
@@ -252,7 +205,7 @@ case class ParserDef() extends Parser[AST] {
   ROOT             rule noModOperator  run reify { onNoModOp(AST.Opr(_)) }
   OPERATOR_MOD_CHECK rule "="            run reify { onModifier() }
   OPERATOR_SFX_CHECK rule operatorErrSfx run reify { onIdentErrSfx() }
-  OPERATOR_SFX_CHECK rule pass           run reify { onNoIdentErrSfx() }
+  OPERATOR_SFX_CHECK rule always           run reify { onNoIdentErrSfx() }
   // format: on
 
   ////////////////////////////////////
@@ -304,7 +257,7 @@ case class ParserDef() extends Parser[AST] {
   ROOT        rule decimal                 run reify { onDecimal() }
   NUMBER_PHASE2 rule ("_" >> alphaNum.many1) run reify { onExplicitBase() }
   NUMBER_PHASE2 rule ("_")                   run reify { onDanglingBase() }
-  NUMBER_PHASE2 rule pass                    run reify { onNoExplicitBase() }
+  NUMBER_PHASE2 rule always                    run reify { onNoExplicitBase() }
   // format: on
 
   //////////////
@@ -655,9 +608,9 @@ case class ParserDef() extends Parser[AST] {
 
   // format: off
   ROOT  rule newline                        run reify { onNewLine() }
-  NEWLINE rule ((whitespace|pass) >> newline) run reify { onEmptyLine() }
-  NEWLINE rule ((whitespace|pass) >> eof)     run reify { onEOFLine() }
-  NEWLINE rule  (whitespace|pass)             run reify { onBlockNewline() }
+  NEWLINE rule ((whitespace|always) >> newline) run reify { onEmptyLine() }
+  NEWLINE rule ((whitespace|always) >> eof)     run reify { onEOFLine() }
+  NEWLINE rule  (whitespace|always)             run reify { onBlockNewline() }
   // format: on
 
   ////////////////

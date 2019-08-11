@@ -13,11 +13,9 @@ trait Parser[T] {
   val buffer: Array[Char] = new Array(BUFFER_SIZE)
   var bufferLen: Int      = 0
 
-  val eofChar: Char        = '\u0000'
-  val etxChar: Char        = '\u0003'
   var offset: Int          = 0
   var charsToLastRule: Int = 0
-  var codePoint: Int       = etxChar.toInt
+  var codePoint: Int       = etxCodePoint
 
   var matchBuilder = new mutable.StringBuilder(64)
   var currentMatch = ""
@@ -112,18 +110,18 @@ trait Parser[T] {
   //       without proper explanation.
   def getNextCodePoint(): Int = {
     if (offset >= bufferLen)
-      return etxChar.toInt
+      return etxCodePoint
     offset += charSize()
     if (offset > BUFFER_SIZE - UTF_CHAR_SIZE) {
       val keepChars = Math.max(charsToLastRule, currentMatch.length) + UTF_CHAR_SIZE - 1
       for (i <- 1 to keepChars) buffer(keepChars - i) = buffer(bufferLen - i)
       val numRead = reader.read(buffer, keepChars, buffer.length - keepChars)
       if (numRead == -1)
-        return eofChar.toInt
+        return eofCodePoint
       offset    = keepChars - (BUFFER_SIZE - offset)
       bufferLen = keepChars + numRead
     } else if (offset == bufferLen)
-      return eofChar.toInt
+      return eofCodePoint
     Character.codePointAt(buffer, offset)
   }
 
@@ -152,7 +150,7 @@ trait Parser[T] {
   }
 
   final def currentStr: String =
-    new String(Character.toChars(codePoint))
+    if (codePoint < 0) "" else new String(Character.toChars(codePoint))
 
   final def charSize(): Int =
     if (offset >= 0 && buffer(offset).isHighSurrogate) 2 else 1
@@ -162,6 +160,9 @@ object Parser {
 
   val BUFFER_SIZE   = 16384
   val UTF_CHAR_SIZE = 2
+
+  val eofCodePoint: Int = -1
+  val etxCodePoint: Int = -2
 
   object State {
     object Status {
