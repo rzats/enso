@@ -4,8 +4,6 @@ import org.enso.flexer.automata.Pattern.char
 import org.enso.flexer.automata.Pattern.range
 import org.enso.flexer.automata.Pattern._
 import org.enso.flexer._
-import org.enso.flexer.automata.None_
-import org.enso.flexer.automata.Pass
 import org.enso.flexer.automata.Pattern
 import org.enso.syntax.text.AST.Text.Quote
 import org.enso.syntax.text.AST.Text.Segment.EOL
@@ -17,14 +15,14 @@ import scala.reflect.runtime.universe.reify
 case class ParserDef() extends Parser[AST] {
 
   val any: Pattern  = range(5, Int.MaxValue) // FIXME 5 -> 0
-  val pass: Pattern = Pass
+  val pass: Pattern = Empty
   val eof: Pattern  = char('\u0000')
-  val none: Pattern = None_
+  val none: Pattern = Never
 
   final def anyOf(chars: String): Pattern =
     anyOf(chars.map(char))
 
-  final def anyOf(alts: Seq[Pattern]): Pattern =
+  final def anyOf(alts: scala.Seq[Pattern]): Pattern =
     alts.fold(none)(_ | _)
 
   final def noneOf(chars: String): Pattern = {

@@ -1,13 +1,7 @@
 package org.enso.flexer
 
-import org.enso.flexer.automata.Many
 import org.enso.flexer.automata.NFA
-import org.enso.flexer.automata.None_
-import org.enso.flexer.automata.Or
-import org.enso.flexer.automata.Pass
 import org.enso.flexer.automata.Pattern
-import org.enso.flexer.automata.Ran
-import org.enso.flexer.automata.Seq_
 import org.enso.flexer.group.Rule
 
 import scala.reflect.runtime.universe.Tree
@@ -54,16 +48,17 @@ class State(val label: String, val ix: Int, val finish: () => Unit) {
   }
 
   def buildExprAutomata(nfa: NFA, last: Int, expr: Pattern): Int = {
+    import Pattern._
     val current = nfa.addState()
     nfa.link(last, current)
     expr match {
-      case None_ => nfa.addState()
-      case Pass  => current
-      case Ran(start, end) =>
+      case Never => nfa.addState()
+      case Empty => current
+      case Range(start, end) =>
         val state = nfa.addState()
-        nfa.link(current, state, Range(start, end))
+        nfa.link(current, state, scala.Range(start, end))
         state
-      case Seq_(first, second) =>
+      case Seq(first, second) =>
         val s1 = buildExprAutomata(nfa, current, first)
         buildExprAutomata(nfa, s1, second)
       case Many(body) =>
