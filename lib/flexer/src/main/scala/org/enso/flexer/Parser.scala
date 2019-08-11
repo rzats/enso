@@ -38,13 +38,15 @@ trait Parser[T] {
     var runResult = State.Status.Exit.OK
     while (runResult == State.Status.Exit.OK) runResult = state.runCurrent()
 
-    getResult() match {
-      case None => InternalFailure(offset)
+    val value: Result.Value[T] = getResult() match {
+      case None => Result.Failure(None)
       case Some(result) =>
-        if (offset >= bufferLen) Success(result, offset)
-        else if (runResult == State.Status.Exit.FAIL) Failure(result, offset)
-        else Partial(result, offset)
+        if (offset >= bufferLen) Result.Success(result)
+        else if (runResult == State.Status.Exit.FAIL)
+          Result.Failure(Some(result))
+        else Result.Partial(result)
     }
+    Result(offset, value)
   }
 
   //// State management ////
@@ -178,25 +180,25 @@ object Parser {
       i >= 0
   }
 
-  import org.enso.flexer.Macro
   def compile[T](p: Macro.In[T]): Macro.Out[T] =
     macro Macro.compileImpl[T]
 
-  trait Result[T] {
-    val offset: Int
-    def map[S](fn: T => S): Result[S]
+  case class Result[T](offset: Int, value: Result.Value[T]) {
+    def map[S](fn: T => S): Result[S] = copy(value = value.map(fn))
+  }
+  object Result {
+    sealed trait Value[T] {
+      def map[S](fn: T => S): Value[S]
+    }
+    final case class Success[T](result: T) extends Value[T] {
+      def map[S](fn: T => S) = copy(fn(result))
+    }
+    final case class Partial[T](result: T) extends Value[T] {
+      def map[S](fn: T => S) = copy(fn(result))
+    }
+    final case class Failure[T](result: Option[T]) extends Value[T] {
+      def map[S](fn: T => S) = copy(result.map(fn))
+    }
   }
 
-  final case class Success[T](value: T, offset: Int) extends Result[T] {
-    def map[S](fn: T => S) = Success(fn(value), offset)
-  }
-  final case class Partial[T](value: T, offset: Int) extends Result[T] {
-    def map[S](fn: T => S) = Partial(fn(value), offset)
-  }
-  final case class Failure[T](value: T, offset: Int) extends Result[T] {
-    def map[S](fn: T => S) = Failure(fn(value), offset)
-  }
-  final case class InternalFailure[T](offset: Int) extends Result[T] {
-    def map[S](fn: T => S) = InternalFailure(offset)
-  }
 }

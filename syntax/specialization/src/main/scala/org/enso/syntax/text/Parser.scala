@@ -40,7 +40,7 @@ object Main extends App {
   pprint.pprintln(out, width = 50, height = 10000)
 
   out match {
-    case flexer.Parser.Success(v, _) =>
+    case flexer.Parser.Result(_, flexer.Parser.Result.Success(v)) =>
       println(v.show() == inp)
       println("------")
       println(v.show().replace(' ', '.'))
