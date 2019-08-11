@@ -90,9 +90,8 @@ class Group(val groupIx: Int, val finish: () => Unit) {
 
   def generate(): Tree = {
     import scala.reflect.runtime.universe._
-    val nfa = buildAutomata()
-    nfa.computeIsos()
-    val dfa   = nfa.computeDFA()
+    val nfa   = buildAutomata()
+    val dfa   = nfa.toDFA()
     val state = CodeGen(dfa).generate(groupIx)
     val rs = rules.zipWithIndex.map {
       case (rule, ruleIx) =>

@@ -9,9 +9,9 @@ class State {
 
   val links: Link.Registry = new Link.Registry()
 
-  var isos                                = Set[Int]()
-  var isosId: Int                         = 0
-  var isosComputed: State.IsoComputeState = State.NotComputed
+//  var isos                                = Set[Int]()
+//  var isosId: Int                         = 0
+//  var isosComputed: State.IsoComputeState = State.NotComputed
 
   var start: Boolean = false
   var end: Boolean   = false
@@ -20,11 +20,6 @@ class State {
 
 object State {
   case class StateDesc(priority: Int, rule: String)
-
-  trait IsoComputeState
-  case object NotComputed extends IsoComputeState
-  case object InProgress  extends IsoComputeState
-  case object Computed    extends IsoComputeState
 
   object Link {
     class Registry {
