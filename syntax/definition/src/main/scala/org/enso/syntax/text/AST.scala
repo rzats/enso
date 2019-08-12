@@ -516,12 +516,15 @@ object AST {
   //// Template ////
   //////////////////
 
-  trait Template extends AST
+  trait Template extends AST {}
   object Template {
 
     final case class Valid(segments: Shifted.List1[Segment.Valid])
         extends Template {
       val repr = R + segments.map(_.repr)
+
+      def path(): List1[AST] =
+        segments.toList1.map(_.el.head)
     }
 
     final case class Invalid(segments: Shifted.List1[Segment])
@@ -589,6 +592,7 @@ object AST {
         case object End                      extends Pattern
         case object Skip                     extends Pattern
         case object AnyToken                 extends Pattern
+        case object TokenList                extends Pattern
         case class Opt(pat: Pattern)         extends Pattern
         case class Many(pat: Pattern)        extends Pattern
         case class Seq(pats: List1[Pattern]) extends Pattern
@@ -621,16 +625,16 @@ object AST {
           def toStream() = List(t)
         }
 
-        case class Many(t: List1[Body]) extends Body {
+        case class Many(t: List[Body]) extends Body {
           val repr       = Repr.of(t)
-          def toStream() = t.toList.flatMap(_.toStream)
+          def toStream() = t.flatMap(_.toStream)
         }
-
-        object Many {
-          def apply(head: Body, tail: List[Body]): Many =
-            Many(List1(head, tail))
-          def apply(head: Body): Many = Many(List1(head))
-        }
+//
+//        object Many {
+//          def apply(head: Body, tail: List[Body]): Many =
+//            Many(List1(head, tail))
+//          def apply(head: Body): Many = Many(List1(head))
+//        }
       }
     }
 

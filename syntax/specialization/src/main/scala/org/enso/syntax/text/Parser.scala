@@ -41,10 +41,28 @@ object Main extends App {
 
   out match {
     case flexer.Parser.Result(_, flexer.Parser.Result.Success(v)) =>
+      v.lines.head.elem match {
+        case Some(ast) =>
+          ast match {
+            case t: AST.Template.Valid =>
+              println("\n---\n")
+              Template.hardcodedRegistry.get(t.path()) match {
+                case None => println(":(")
+                case Some(spec) =>
+                  println("COMPUTING")
+                  val out = spec.finalizer(t.segments.toList)
+                  println(out)
+              }
+            case _ =>
+          }
+        case _ =>
+      }
+
       println(v.show() == inp)
       println("------")
       println(v.show().replace(' ', '.'))
       println("------")
+
   }
   println()
 }

@@ -1,5 +1,7 @@
 package org.enso.data
 
+import org.enso.data
+
 case class Shifted[+T](off: Int, el: T) {
   def map[S](f: T => S): Shifted[S] =
     Shifted(off, f(el))
@@ -13,7 +15,10 @@ object Shifted {
       List1(f(head), tail.map(_.map(f)))
 
     def toList(): List[Shifted[T]] =
-      Shifted(0, head) :: tail
+      toList1.toList
+
+    def toList1: data.List1[Shifted[T]] =
+      data.List1(Shifted(0, head), tail)
 
     def +:[B >: T](t: (Int, B)): List1[B] =
       List1(t._2, Shifted(t._1, head) :: tail)

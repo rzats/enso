@@ -9,6 +9,8 @@ import org.enso.syntax.text.AST.Template.Segment.Body
 
 import scala.annotation.tailrec
 
+import cats.implicits._
+
 object Template {
 
   val Template = AST.Template
@@ -35,6 +37,10 @@ object Template {
 
     def insert(t: Definition.Spec[Definition]): Unit =
       tree += t.el.segments.toList.map(_._1) -> t.map(_.segments.map(_._2))
+
+    def get(path: List1[AST]): Option[Registry.Value] =
+      tree.getValue(path.toList)
+
   }
 
   object Registry {
@@ -146,6 +152,9 @@ object Template {
         case Pattern.Skip =>
           ret(Empty, stream)
 
+        case Pattern.TokenList =>
+          ret(Body.Many(stream.map(Expr)), Nil)
+
         case Pattern.AnyToken =>
           buildAST2(stream.reverse).flatMap(e => ret(Expr(e), Nil))
 
@@ -160,7 +169,7 @@ object Template {
             case None => None
             case Some(t) =>
               val (tail, stream2) = resolveList(p2, t.stream)
-              ret(Body.Many(t.elem, tail), stream2)
+              ret(Body.Many(t.elem :: tail), stream2)
           }
 
         case Pattern.Seq(pats) =>
@@ -173,7 +182,7 @@ object Template {
             case Nil =>
               revOut.reverse match {
                 case Nil     => None
-                case s :: ss => ret(Many(s, ss), stream)
+                case s :: ss => ret(Many(s :: ss), stream)
               }
             case p :: ps =>
               resolveStep(p, stream) match {
@@ -224,6 +233,126 @@ object Template {
     var revSegs: List[SegmentBuilder]  = List()
   }
 
+  def buildHardcodedRegistry(): Registry = {
+    import Template.Segment.Pattern
+    import Body._
+
+    val groupDef = Definition.Restricted(
+      Opr("(") -> Pattern.Opt(Pattern.AnyToken),
+      Opr(")") -> Pattern.Skip
+    ) {
+      case List(s1, s2) =>
+        (s1.el.body, s2.el.body) match {
+          case (Expr(e), Empty) => AST.Group(e.off, e.el, s2.off)
+          case (Empty, Empty)   => AST.Group(s2.off)
+        }
+    }
+
+    val defDef = Definition.Unrestricted(
+      Var("def") -> Pattern.Seq(
+        Pattern.Opt(Pattern.Token[AST.Cons]),
+        Pattern.Opt(Pattern.Many(Pattern.NotToken[AST.Block])),
+        Pattern.Opt(Pattern.Token[AST.Block])
+      )
+    ) {
+      case List(s1) =>
+        s1.el.body match {
+          case Many(lst) =>
+            val nameParam = lst(0)
+            val argsParam = lst(1)
+            val bodyParam = lst(2)
+            val name = nameParam match {
+              case Expr(Shifted(off, t @ AST.Cons(_))) =>
+                Shifted(off, t)
+              case Empty => Shifted(AST.Missing)
+              case _     => throw new Error("Internal Parser Error")
+            }
+            val args = argsParam.toStream()
+            val body: Option[Shifted[AST]] = bodyParam match {
+              case Expr(n @ Shifted(_, _: AST.Block)) => Some(n)
+              case Empty                              => None
+              case _ =>
+                throw new Error("Internal Parser Error")
+            }
+            AST.Def(name, args, body)
+        }
+    }
+
+    def seqSplit[L, R <: L](lst: List[Either[L, R]]): Either[List[L], List[R]] =
+      lst.sequence match {
+        case Right(t) => Right(t)
+        case Left(_)  => Left(lst.map(_.merge))
+      }
+
+    def splitOn[T, S <: T](lst: List[T])(
+      test: T => Option[S]
+    ): (List[List[T]], List[S]) = {
+      @tailrec
+      def go(
+        lst: List[T],
+        current: List[T],
+        chunks: List[List[T]],
+        divs: List[S]
+      ): (List[List[T]], List[S]) =
+        lst match {
+          case Nil => (current :: chunks, divs)
+          case l :: ls =>
+            test(l) match {
+              case Some(l) => go(ls, List(), current :: chunks, l :: divs)
+              case None    => go(ls, l :: current, chunks, divs)
+            }
+        }
+      go(lst, Nil, Nil, Nil)
+    }
+
+    val importDef = Definition.Unrestricted(
+      Var("import") -> Pattern.TokenList
+    ) {
+      case List(s1) =>
+        val stream = s1.el.body.toStream()
+        val (chunks, divs) = splitOn(stream) { sast =>
+          sast.el match {
+            case t @ AST.Opr(".") => Some(sast.copy(el = t))
+            case _                => None
+          }
+        }
+
+        val chunks2: List[List[Either[SAST, Shifted[AST.Ident]]]] =
+          chunks.map { chunk =>
+            chunk.map { sast =>
+              sast.el match {
+                case t: AST.Cons => Right(sast.copy(el = t))
+                case t: AST.Var  => Right(sast.copy(el = t))
+                case _           => Left(sast)
+              }
+            }
+          }
+
+        val chunks3 = chunks2.map(seqSplit)
+        pprint.pprintln(chunks3, width = 50, height = 10000)
+//        stream.part
+        ???
+      case _ => throw new Error("Internal Parser Error")
+    }
+
+    Registry(
+      groupDef,
+      Definition.Unrestricted(
+        Var("if")   -> Pattern.AnyToken,
+        Var("then") -> Pattern.AnyToken
+      )(a => ???),
+      Definition.Unrestricted(
+        Var("if")   -> Pattern.AnyToken,
+        Var("then") -> Pattern.AnyToken,
+        Var("else") -> Pattern.AnyToken
+      )(a => ???),
+      importDef,
+      defDef
+    )
+  }
+
+  val hardcodedRegistry = buildHardcodedRegistry()
+
   def partition(t: AST): AST = {
 
     var builder: MixfixBuilder = new MixfixBuilder(Blank)
@@ -260,71 +389,6 @@ object Template {
     }
 
     import Template._
-
-    def buildHardcodedRegistry(): Registry = {
-      import Template.Segment.Pattern
-      import Body._
-
-      val groupDef = Definition.Restricted(
-        Opr("(") -> Pattern.Opt(Pattern.AnyToken),
-        Opr(")") -> Pattern.Skip
-      ) {
-        case List(s1, s2) =>
-          (s1.el.body, s2.el.body) match {
-            case (Expr(e), Empty) => AST.Group(e.off, e.el, s2.off)
-            case (Empty, Empty)   => AST.Group(s2.off)
-          }
-      }
-
-      val defDef = Definition.Unrestricted(
-        Var("def") -> Pattern.Seq(
-          Pattern.Opt(Pattern.Token[AST.Cons]),
-          Pattern.Opt(Pattern.Many(Pattern.NotToken[AST.Block])),
-          Pattern.Opt(Pattern.Token[AST.Block])
-        )
-      ) {
-        case List(s1) =>
-          s1.el.body match {
-            case Many(lst) =>
-              val nameParam = lst.head
-              val argsParam = lst.tail(0)
-              val bodyParam = lst.tail(1)
-              val name = nameParam match {
-                case Expr(Shifted(off, t @ AST.Cons(_))) =>
-                  Shifted(off, t)
-                case Empty => Shifted(AST.Missing)
-                case _     => throw new Error("Internal Parser Error")
-              }
-              val args = argsParam.toStream()
-              val body: Option[Shifted[AST]] = bodyParam match {
-                case Expr(n @ Shifted(_, _: AST.Block)) => Some(n)
-                case Empty                              => None
-                case _ =>
-                  throw new Error("Internal Parser Error")
-              }
-              AST.Def(name, args, body)
-          }
-      }
-
-      Registry(
-        groupDef,
-        Definition.Unrestricted(
-          Var("if") -> Pattern.AnyToken,
-          Var("then") -> Pattern.AnyToken
-        )(a => ???),
-        Definition.Unrestricted(
-          Var("if") -> Pattern.AnyToken,
-          Var("then") -> Pattern.AnyToken,
-          Var("else") -> Pattern.AnyToken
-        )(a => ???),
-        Definition.Unrestricted(
-          Var("import") -> Pattern.AnyToken
-        )(a => ???),
-        defDef
-      )
-    }
-
-    val hardcodedRegistry = buildHardcodedRegistry()
 
     val root = Context(hardcodedRegistry.tree)
 
