@@ -27,7 +27,7 @@ case class ParserDef() extends Parser[AST] {
   /////////////
 
   override def run(input: String) = {
-    onBlockBegin(0)
+    block.onBegin(0)
     super.run(input)
   }
 
@@ -41,7 +41,7 @@ case class ParserDef() extends Parser[AST] {
   val hex: Pattern         = digit | range('a', 'f') | range('A', 'F')
   val alphaNum: Pattern    = digit | lowerLetter | upperLetter
   val whitespace0: Pattern = ' '.many
-  val whitespace: Pattern  = ' '.many1
+  val space: Pattern       = ' '.many1
   val newline: Pattern     = '\n'
 
   ////////////////
@@ -102,6 +102,7 @@ case class ParserDef() extends Parser[AST] {
     }
 
     def on(): Unit = on(0)
+
     def on(shift: Int): Unit = logger.trace {
       val diff = currentMatch.length + shift
       current += diff
@@ -160,11 +161,21 @@ case class ParserDef() extends Parser[AST] {
     val SFX_CHECK = state.define("Identifier Suffix Check")
   }
 
-  ROOT            % ident._var   -> reify { ident.on(AST.Var) }
-  ROOT            % ident.cons   -> reify { ident.on(AST.Cons) }
-  ROOT            % "_"          -> reify { ident.on(AST.Blank) }
-  ident.SFX_CHECK % ident.errSfx -> reify { ident.onErrSfx() }
-  ident.SFX_CHECK % always       -> reify { ident.onNoErrSfx() }
+  ROOT % ident._var -> reify {
+    ident.on(AST.Var)
+  }
+  ROOT % ident.cons -> reify {
+    ident.on(AST.Cons)
+  }
+  ROOT % "_" -> reify {
+    ident.on(AST.Blank)
+  }
+  ident.SFX_CHECK % ident.errSfx -> reify {
+    ident.onErrSfx()
+  }
+  ident.SFX_CHECK % always -> reify {
+    ident.onNoErrSfx()
+  }
 
   //////////////////
   //// Operator ////
@@ -208,11 +219,22 @@ case class ParserDef() extends Parser[AST] {
     val MOD_CHECK = state.define("Operator Modifier Check")
     MOD_CHECK.parent = SFX_CHECK
   }
-  ROOT          % opr.body     -> reify { opr.on(AST.Opr(_)) }
-  ROOT          % opr.opsNoMod -> reify { opr.onNoMod(AST.Opr(_)) }
-  opr.MOD_CHECK % "="          -> reify { opr.onMod() }
-  opr.SFX_CHECK % opr.errSfx   -> reify { ident.onErrSfx() }
-  opr.SFX_CHECK % always       -> reify { ident.onNoErrSfx() }
+
+  ROOT % opr.body -> reify {
+    opr.on(AST.Opr(_))
+  }
+  ROOT % opr.opsNoMod -> reify {
+    opr.onNoMod(AST.Opr(_))
+  }
+  opr.MOD_CHECK % "=" -> reify {
+    opr.onMod()
+  }
+  opr.SFX_CHECK % opr.errSfx -> reify {
+    ident.onErrSfx()
+  }
+  opr.SFX_CHECK % always -> reify {
+    ident.onNoErrSfx()
+  }
 
   ////////////////
   //// NUMBER ////
@@ -262,10 +284,18 @@ case class ParserDef() extends Parser[AST] {
     val PHASE2: State = state.define("Number Phase 2")
   }
 
-  ROOT       % num.decimal             -> reify { num.onDecimal() }
-  num.PHASE2 % ("_" >> alphaNum.many1) -> reify { num.onExplicitBase() }
-  num.PHASE2 % "_"                     -> reify { num.onDanglingBase() }
-  num.PHASE2 % always                  -> reify { num.onNoExplicitBase() }
+  ROOT % num.decimal -> reify {
+    num.onDecimal()
+  }
+  num.PHASE2 % ("_" >> alphaNum.many1) -> reify {
+    num.onExplicitBase()
+  }
+  num.PHASE2 % "_" -> reify {
+    num.onDanglingBase()
+  }
+  num.PHASE2 % always -> reify {
+    num.onNoExplicitBase()
+  }
 
   //////////////
   //// Text ////
@@ -303,12 +333,12 @@ case class ParserDef() extends Parser[AST] {
       pop()
       state.end()
       val singleLine = !txt.segments.contains(EOL())
-      if (singleLine || currentBlock.firstLine.isDefined || result.current.isDefined)
+      if (singleLine || block.current.firstLine.isDefined || result.current.isDefined)
         txt
       else {
         val segs =
-          AST.Text.MultiLine.stripOffset(currentBlock.indent, txt.segments)
-        AST.Text.MultiLine(currentBlock.indent, txt.quoteChar, txt.quote, segs)
+          AST.Text.MultiLine.stripOffset(block.current.indent, txt.segments)
+        AST.Text.MultiLine(block.current.indent, txt.quoteChar, txt.quote, segs)
       }
     }
 
@@ -428,24 +458,56 @@ case class ParserDef() extends Parser[AST] {
     INTERPOLATE.parent = ROOT
   }
 
-  ROOT      % '`' -> reify { text.onInterpolateEnd() }
-  text.INTP % '`' -> reify { text.onInterpolateBegin() }
+  ROOT % '`' -> reify {
+    text.onInterpolateEnd()
+  }
+  text.INTP % '`' -> reify {
+    text.onInterpolateBegin()
+  }
 
-  ROOT      % "'"      -> reify { text.onBegin(text.INTP, AST.Text.Quote.Single) }
-  ROOT      % "'''"    -> reify { text.onBegin(text.INTP, AST.Text.Quote.Triple) }
-  text.INTP % "'"      -> reify { text.onQuote(AST.Text.Quote.Single) }
-  text.INTP % "'''"    -> reify { text.onQuote(AST.Text.Quote.Triple) }
-  text.INTP % text.seg -> reify { text.onPlainSegment() }
-  text.INTP % eof      -> reify { text.onEOF() }
-  text.INTP % '\n'     -> reify { text.onEOL() }
+  ROOT % "'" -> reify {
+    text.onBegin(text.INTP, AST.Text.Quote.Single)
+  }
+  ROOT % "'''" -> reify {
+    text.onBegin(text.INTP, AST.Text.Quote.Triple)
+  }
+  text.INTP % "'" -> reify {
+    text.onQuote(AST.Text.Quote.Single)
+  }
+  text.INTP % "'''" -> reify {
+    text.onQuote(AST.Text.Quote.Triple)
+  }
+  text.INTP % text.seg -> reify {
+    text.onPlainSegment()
+  }
+  text.INTP % eof -> reify {
+    text.onEOF()
+  }
+  text.INTP % '\n' -> reify {
+    text.onEOL()
+  }
 
-  ROOT     % "\""           -> reify { text.onBegin(text.RAW, AST.Text.Quote.Single) }
-  ROOT     % "\"\"\""       -> reify { text.onBegin(text.RAW, AST.Text.Quote.Triple) }
-  text.RAW % "\""           -> reify { text.onQuote(AST.Text.Quote.Single) }
-  text.RAW % "\"\"\""       -> reify { text.onQuote(AST.Text.Quote.Triple) }
-  text.RAW % noneOf("\"\n") -> reify { text.onPlainSegment() }
-  text.RAW % eof            -> reify { text.onEOF() }
-  text.RAW % '\n'           -> reify { text.onEOL() }
+  ROOT % "\"" -> reify {
+    text.onBegin(text.RAW, AST.Text.Quote.Single)
+  }
+  ROOT % "\"\"\"" -> reify {
+    text.onBegin(text.RAW, AST.Text.Quote.Triple)
+  }
+  text.RAW % "\"" -> reify {
+    text.onQuote(AST.Text.Quote.Single)
+  }
+  text.RAW % "\"\"\"" -> reify {
+    text.onQuote(AST.Text.Quote.Triple)
+  }
+  text.RAW % noneOf("\"\n") -> reify {
+    text.onPlainSegment()
+  }
+  text.RAW % eof -> reify {
+    text.onEOF()
+  }
+  text.RAW % '\n' -> reify {
+    text.onEOL()
+  }
 
   AST.Text.Segment.Escape.Character.codes.foreach { ctrl =>
     import scala.reflect.runtime.universe._
@@ -461,158 +523,174 @@ case class ParserDef() extends Parser[AST] {
     text.INTP % s"\\$ctrl" -> func
   }
 
-  text.INTP % text.escape_u16           -> reify { text.onEscapeU16() }
-  text.INTP % text.escape_u32           -> reify { text.onEscapeU32() }
-  text.INTP % text.escape_int           -> reify { text.onEscapeInt() }
-  text.INTP % "\\\\"                    -> reify { text.onEscapeSlash() }
-  text.INTP % "\\'"                     -> reify { text.onEscapeQuote() }
-  text.INTP % "\\\""                    -> reify { text.onEscapeRawQuote() }
-  text.INTP % ("\\" >> text.stringChar) -> reify { text.onInvalidEscape() }
-  text.INTP % "\\"                      -> reify { text.onPlainSegment() }
+  text.INTP % text.escape_u16 -> reify {
+    text.onEscapeU16()
+  }
+  text.INTP % text.escape_u32 -> reify {
+    text.onEscapeU32()
+  }
+  text.INTP % text.escape_int -> reify {
+    text.onEscapeInt()
+  }
+  text.INTP % "\\\\" -> reify {
+    text.onEscapeSlash()
+  }
+  text.INTP % "\\'" -> reify {
+    text.onEscapeQuote()
+  }
+  text.INTP % "\\\"" -> reify {
+    text.onEscapeRawQuote()
+  }
+  text.INTP % ("\\" >> text.stringChar) -> reify {
+    text.onInvalidEscape()
+  }
+  text.INTP % "\\" -> reify {
+    text.onPlainSegment()
+  }
 
   //////////////
   /// Blocks ///
   //////////////
 
-  class BlockState(
-    var isValid: Boolean,
-    var indent: Int,
-    var emptyLines: List[Int],
-    var firstLine: Option[AST.Block.Line.Required],
-    var lines: List[AST.Block.Line]
-  )
-  var blockStack: List[BlockState] = Nil
-  var emptyLines: List[Int]        = Nil
-  var currentBlock: BlockState     = new BlockState(true, 0, Nil, None, Nil)
+  object block {
 
-  final def pushBlock(newIndent: Int): Unit = logger.trace {
-    blockStack +:= currentBlock
-    currentBlock =
-      new BlockState(true, newIndent, emptyLines.reverse, None, Nil)
-    emptyLines = Nil
-  }
+    class State(
+      var isValid: Boolean,
+      var indent: Int,
+      var emptyLines: List[Int],
+      var firstLine: Option[AST.Block.Line.Required],
+      var lines: List[AST.Block.Line]
+    )
 
-  final def popBlock(): Unit = logger.trace {
-    currentBlock = blockStack.head
-    blockStack   = blockStack.tail
-  }
+    var stack: List[State]    = Nil
+    var emptyLines: List[Int] = Nil
+    var current: State        = new State(true, 0, Nil, None, Nil)
 
-  final def buildBlock(): AST.Block = logger.trace {
-    submitLine()
-    println(result.current)
-    withSome(currentBlock.firstLine) { firstLine =>
-      AST.Block(
-        currentBlock.indent,
-        currentBlock.emptyLines.reverse,
-        firstLine,
-        currentBlock.lines.reverse
-      )
+    final def push(newIndent: Int): Unit = logger.trace {
+      stack +:= current
+      current    = new State(true, newIndent, emptyLines.reverse, None, Nil)
+      emptyLines = Nil
     }
-  }
 
-  final def submitBlock(): Unit = logger.trace {
-    val block = buildBlock()
-    val block2 =
-      if (currentBlock.isValid) block
-      else AST.Block.InvalidIndentation(block)
-
-    result.pop()
-    popBlock()
-    result.app(block2)
-    logger.endGroup()
-  }
-
-  final def submitModule(): Unit = logger.trace {
-    submitLine()
-    val el  = currentBlock.emptyLines.reverse.map(AST.Block.Line(_))
-    val el2 = emptyLines.reverse.map(AST.Block.Line(_))
-    val firstLines = currentBlock.firstLine match {
-      case None            => el
-      case Some(firstLine) => firstLine.toOptional :: el
+    final def pop(): Unit = logger.trace {
+      current = stack.head
+      stack   = stack.tail
     }
-    val lines  = firstLines ++ currentBlock.lines.reverse ++ el2
-    val module = AST.Module(lines.head, lines.tail)
-    result.current = Some(module)
-    logger.endGroup()
-  }
 
-  final def submitLine(): Unit = logger.trace {
-    result.current match {
-      case None => pushEmptyLine()
-      case Some(r) =>
-        currentBlock.firstLine match {
-          case None =>
-            val line = AST.Block.Line.Required(r, off.use())
-            currentBlock.emptyLines = emptyLines
-            currentBlock.firstLine  = Some(line)
-          case Some(_) =>
-            emptyLines.foreach(currentBlock.lines +:= AST.Block.Line(None, _))
-            currentBlock.lines +:= AST.Block
-              .Line(result.current, off.use())
-        }
-        emptyLines = Nil
-    }
-    result.current = None
-  }
-
-  def pushEmptyLine(): Unit = logger.trace {
-    emptyLines +:= off.use()
-  }
-
-  final def onBlockBegin(newIndent: Int): Unit = logger.trace {
-    result.push()
-    pushBlock(newIndent)
-    logger.beginGroup()
-  }
-
-  final def onEmptyLine(): Unit = logger.trace {
-    pushEmptyLine()
-    off.on(-1)
-  }
-
-  final def onEOFLine(): Unit = logger.trace {
-    submitLine()
-    state.end()
-    off.on(-1)
-    onEOF()
-  }
-
-  final def onNewLine(): Unit = logger.trace {
-//    submitLine()
-    state.begin(NEWLINE)
-  }
-
-  final def onBlockNewline(): Unit = logger.trace {
-    state.end()
-    off.on()
-    if (off.current == currentBlock.indent) {
+    final def build(): AST.Block = logger.trace {
       submitLine()
-    } else if (off.current > currentBlock.indent) {
-      onBlockBegin(off.use())
-    } else {
-      onBlockEnd(off.use())
+      println(result.current)
+      withSome(current.firstLine) { firstLine =>
+        AST.Block(
+          current.indent,
+          current.emptyLines.reverse,
+          firstLine,
+          current.lines.reverse
+        )
+      }
     }
+
+    final def submit(): Unit = logger.trace {
+      val block = build()
+      val block2 =
+        if (current.isValid) block
+        else AST.Block.InvalidIndentation(block)
+
+      result.pop()
+      pop()
+      result.app(block2)
+      logger.endGroup()
+    }
+
+    final def submitModule(): Unit = logger.trace {
+      submitLine()
+      val el  = current.emptyLines.reverse.map(AST.Block.Line(_))
+      val el2 = emptyLines.reverse.map(AST.Block.Line(_))
+      val firstLines = current.firstLine match {
+        case None            => el
+        case Some(firstLine) => firstLine.toOptional :: el
+      }
+      val lines  = firstLines ++ current.lines.reverse ++ el2
+      val module = AST.Module(lines.head, lines.tail)
+      result.current = Some(module)
+      logger.endGroup()
+    }
+
+    final def submitLine(): Unit = logger.trace {
+      result.current match {
+        case None => pushEmptyLine()
+        case Some(r) =>
+          current.firstLine match {
+            case None =>
+              val line = AST.Block.Line.Required(r, off.use())
+              current.emptyLines = emptyLines
+              current.firstLine  = Some(line)
+            case Some(_) =>
+              emptyLines.foreach(current.lines +:= AST.Block.Line(None, _))
+              current.lines +:= AST.Block
+                .Line(result.current, off.use())
+          }
+          emptyLines = Nil
+      }
+      result.current = None
+    }
+
+    def pushEmptyLine(): Unit = logger.trace {
+      emptyLines +:= off.use()
+    }
+
+    final def onBegin(newIndent: Int): Unit = logger.trace {
+      result.push()
+      push(newIndent)
+      logger.beginGroup()
+    }
+
+    final def onEmptyLine(): Unit = logger.trace {
+      pushEmptyLine()
+      off.on(-1)
+    }
+
+    final def onEOFLine(): Unit = logger.trace {
+      submitLine()
+      state.end()
+      off.on(-1)
+      onEOF()
+    }
+
+    final def onNewLine(): Unit = logger.trace {
+      state.begin(NEWLINE)
+    }
+
+    final def onBlockNewline(): Unit = logger.trace {
+      state.end()
+      off.on()
+      if (off.current == current.indent) {
+        submitLine()
+      } else if (off.current > current.indent) {
+        onBegin(off.use())
+      } else {
+        onEnd(off.use())
+      }
+    }
+
+    final def onEnd(newIndent: Int): Unit = logger.trace {
+      while (newIndent < current.indent) {
+        submit()
+      }
+      if (newIndent > current.indent) {
+        logger.log("Block with invalid indentation")
+        onBegin(newIndent)
+        current.isValid = false
+      }
+    }
+
+    val NEWLINE = state.define("Newline")
   }
 
-  final def onBlockEnd(newIndent: Int): Unit = logger.trace {
-    while (newIndent < currentBlock.indent) {
-      submitBlock()
-    }
-    if (newIndent > currentBlock.indent) {
-      logger.log("Block with invalid indentation")
-      onBlockBegin(newIndent)
-      currentBlock.isValid = false
-    }
-  }
-
-  val NEWLINE = state.define("Newline")
-
-  // format: off
-  ROOT  rule newline                        run reify { onNewLine() }
-  NEWLINE rule ((whitespace|always) >> newline) run reify { onEmptyLine() }
-  NEWLINE rule ((whitespace|always) >> eof)     run reify { onEOFLine() }
-  NEWLINE rule  (whitespace|always)             run reify { onBlockNewline() }
-  // format: on
+  ROOT          % newline                -> reify { block.onNewLine() }
+  block.NEWLINE % (space.opt >> newline) -> reify { block.onEmptyLine() }
+  block.NEWLINE % (space.opt >> eof)     -> reify { block.onEOFLine() }
+  block.NEWLINE % space.opt              -> reify { block.onBlockNewline() }
 
   ////////////////
   /// Defaults ///
@@ -624,11 +702,11 @@ case class ParserDef() extends Parser[AST] {
 
   final def onEOF(): Unit = logger.trace {
     ident.finalizer()
-    onBlockEnd(0)
-    submitModule()
+    block.onEnd(0)
+    block.submitModule()
   }
 
-  ROOT rule whitespace run reify { off.on() }
+  ROOT rule space run reify { off.on() }
   ROOT rule eof run reify { onEOF() }
   ROOT rule any run reify { onUnrecognized() }
 }

@@ -10,6 +10,7 @@ trait Pattern {
   def >>(that: Pattern): Pattern = Seq(this, that)
   def many:              Pattern = Many(this)
   def many1:             Pattern = this >> many
+  def opt:               Pattern = this | always
 }
 
 object Pattern {
