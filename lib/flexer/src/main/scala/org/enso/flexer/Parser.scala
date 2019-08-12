@@ -82,6 +82,13 @@ trait Parser[T] {
         stack   = tail
     }
 
+    final def endTill(s: State): Unit = logger.trace {
+      while (s != state.current) {
+        state.current.finish()
+        state.end()
+      }
+    }
+
     def isInside(state: State): Boolean =
       current == state || stack.contains(state)
 

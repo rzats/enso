@@ -113,9 +113,14 @@ object Logger {
     import c.universe._
     val target = c.macroApplication match {
       case Apply(TypeApply(Select(base, name), tp), body2) =>
-        val newName   = TermName("_" + name.toString)
-        val owner     = c.internal.enclosingOwner.asMethod
-        val ownerName = Literal(Constant(owner.name.toString))
+        val newName      = TermName("_" + name.toString)
+        val owner        = c.internal.enclosingOwner.asMethod
+        val owner2       = owner.owner
+        val parentObject = !owner2.isStatic
+        val oname =
+          if (parentObject) owner2.name.toString + "." + owner.name.toString
+          else owner.name.toString
+        val ownerName = Literal(Constant(oname))
         owner.paramLists match {
           case lst :: _ =>
             val lst2 = lst.map(x => q"$x")

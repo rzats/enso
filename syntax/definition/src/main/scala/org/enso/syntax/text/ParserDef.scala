@@ -3,7 +3,6 @@ package org.enso.syntax.text
 import org.enso.flexer._
 import org.enso.flexer.automata.Pattern
 import org.enso.flexer.automata.Pattern._
-import org.enso.syntax.text.AST.Text.Quote
 import org.enso.syntax.text.AST.Text.Segment.EOL
 
 import scala.reflect.runtime.universe.reify
@@ -13,13 +12,6 @@ case class ParserDef() extends Parser[AST] {
   final def withSome[T, S](opt: Option[T])(f: T => S): S = opt match {
     case None    => throw new Error("Internal Error")
     case Some(a) => f(a)
-  }
-
-  final def terminateGroupsTill(g: State): Unit = logger.trace {
-    while (g != state.current) {
-      state.current.finish()
-      state.end()
-    }
   }
 
   /////////////
@@ -161,21 +153,11 @@ case class ParserDef() extends Parser[AST] {
     val SFX_CHECK = state.define("Identifier Suffix Check")
   }
 
-  ROOT % ident._var -> reify {
-    ident.on(AST.Var)
-  }
-  ROOT % ident.cons -> reify {
-    ident.on(AST.Cons)
-  }
-  ROOT % "_" -> reify {
-    ident.on(AST.Blank)
-  }
-  ident.SFX_CHECK % ident.errSfx -> reify {
-    ident.onErrSfx()
-  }
-  ident.SFX_CHECK % always -> reify {
-    ident.onNoErrSfx()
-  }
+  ROOT            % ident._var   -> reify { ident.on(AST.Var) }
+  ROOT            % ident.cons   -> reify { ident.on(AST.Cons) }
+  ROOT            % "_"          -> reify { ident.on(AST.Blank) }
+  ident.SFX_CHECK % ident.errSfx -> reify { ident.onErrSfx() }
+  ident.SFX_CHECK % always       -> reify { ident.onNoErrSfx() }
 
   //////////////////
   //// Operator ////
@@ -220,21 +202,11 @@ case class ParserDef() extends Parser[AST] {
     MOD_CHECK.parent = SFX_CHECK
   }
 
-  ROOT % opr.body -> reify {
-    opr.on(AST.Opr(_))
-  }
-  ROOT % opr.opsNoMod -> reify {
-    opr.onNoMod(AST.Opr(_))
-  }
-  opr.MOD_CHECK % "=" -> reify {
-    opr.onMod()
-  }
-  opr.SFX_CHECK % opr.errSfx -> reify {
-    ident.onErrSfx()
-  }
-  opr.SFX_CHECK % always -> reify {
-    ident.onNoErrSfx()
-  }
+  ROOT          % opr.body     -> reify { opr.on(AST.Opr(_)) }
+  ROOT          % opr.opsNoMod -> reify { opr.onNoMod(AST.Opr(_)) }
+  opr.MOD_CHECK % "="          -> reify { opr.onMod() }
+  opr.SFX_CHECK % opr.errSfx   -> reify { ident.onErrSfx() }
+  opr.SFX_CHECK % always       -> reify { ident.onNoErrSfx() }
 
   ////////////////
   //// NUMBER ////
@@ -284,22 +256,16 @@ case class ParserDef() extends Parser[AST] {
     val PHASE2: State = state.define("Number Phase 2")
   }
 
-  ROOT % num.decimal -> reify {
-    num.onDecimal()
-  }
-  num.PHASE2 % ("_" >> alphaNum.many1) -> reify {
-    num.onExplicitBase()
-  }
-  num.PHASE2 % "_" -> reify {
-    num.onDanglingBase()
-  }
-  num.PHASE2 % always -> reify {
-    num.onNoExplicitBase()
-  }
+  ROOT       % num.decimal             -> reify { num.onDecimal() }
+  num.PHASE2 % ("_" >> alphaNum.many1) -> reify { num.onExplicitBase() }
+  num.PHASE2 % "_"                     -> reify { num.onDanglingBase() }
+  num.PHASE2 % always                  -> reify { num.onNoExplicitBase() }
 
   //////////////
   //// Text ////
   //////////////
+
+  import AST.Text.Quote
 
   object text {
     var stack: List[AST.Text.Interpolated] = Nil
@@ -372,13 +338,13 @@ case class ParserDef() extends Parser[AST] {
     }
 
     final def onQuote(quoteSize: Quote): Unit = logger.trace {
-      if (current.quote == AST.Text.Quote.Triple
-          && quoteSize == AST.Text.Quote.Single) onPlainSegment()
-      else if (current.quote == AST.Text.Quote.Single
-               && quoteSize == AST.Text.Quote.Triple) {
+      if (current.quote == Quote.Triple
+          && quoteSize == Quote.Single) onPlainSegment()
+      else if (current.quote == Quote.Single
+               && quoteSize == Quote.Triple) {
         val groupIx = state.current
         submit()
-        submitEmpty(groupIx, AST.Text.Quote.Single)
+        submitEmpty(groupIx, Quote.Single)
       } else
         submit()
     }
@@ -427,7 +393,7 @@ case class ParserDef() extends Parser[AST] {
 
     final def onInterpolateEnd(): Unit = logger.trace {
       if (state.isInside(INTERPOLATE)) {
-        terminateGroupsTill(INTERPOLATE)
+        state.endTill(INTERPOLATE)
         submit(AST.Text.Segment.Interpolation(result.current))
         result.pop()
         off.pop()
@@ -458,56 +424,23 @@ case class ParserDef() extends Parser[AST] {
     INTERPOLATE.parent = ROOT
   }
 
-  ROOT % '`' -> reify {
-    text.onInterpolateEnd()
-  }
-  text.INTP % '`' -> reify {
-    text.onInterpolateBegin()
-  }
+  ROOT      % '`'      -> reify { text.onInterpolateEnd() }
+  text.INTP % '`'      -> reify { text.onInterpolateBegin() }
+  ROOT      % "'"      -> reify { text.onBegin(text.INTP, Quote.Single) }
+  ROOT      % "'''"    -> reify { text.onBegin(text.INTP, Quote.Triple) }
+  text.INTP % "'"      -> reify { text.onQuote(Quote.Single) }
+  text.INTP % "'''"    -> reify { text.onQuote(Quote.Triple) }
+  text.INTP % text.seg -> reify { text.onPlainSegment() }
+  text.INTP % eof      -> reify { text.onEOF() }
+  text.INTP % '\n'     -> reify { text.onEOL() }
 
-  ROOT % "'" -> reify {
-    text.onBegin(text.INTP, AST.Text.Quote.Single)
-  }
-  ROOT % "'''" -> reify {
-    text.onBegin(text.INTP, AST.Text.Quote.Triple)
-  }
-  text.INTP % "'" -> reify {
-    text.onQuote(AST.Text.Quote.Single)
-  }
-  text.INTP % "'''" -> reify {
-    text.onQuote(AST.Text.Quote.Triple)
-  }
-  text.INTP % text.seg -> reify {
-    text.onPlainSegment()
-  }
-  text.INTP % eof -> reify {
-    text.onEOF()
-  }
-  text.INTP % '\n' -> reify {
-    text.onEOL()
-  }
-
-  ROOT % "\"" -> reify {
-    text.onBegin(text.RAW, AST.Text.Quote.Single)
-  }
-  ROOT % "\"\"\"" -> reify {
-    text.onBegin(text.RAW, AST.Text.Quote.Triple)
-  }
-  text.RAW % "\"" -> reify {
-    text.onQuote(AST.Text.Quote.Single)
-  }
-  text.RAW % "\"\"\"" -> reify {
-    text.onQuote(AST.Text.Quote.Triple)
-  }
-  text.RAW % noneOf("\"\n") -> reify {
-    text.onPlainSegment()
-  }
-  text.RAW % eof -> reify {
-    text.onEOF()
-  }
-  text.RAW % '\n' -> reify {
-    text.onEOL()
-  }
+  ROOT     % "\""           -> reify { text.onBegin(text.RAW, Quote.Single) }
+  ROOT     % "\"\"\""       -> reify { text.onBegin(text.RAW, Quote.Triple) }
+  text.RAW % "\""           -> reify { text.onQuote(Quote.Single) }
+  text.RAW % "\"\"\""       -> reify { text.onQuote(Quote.Triple) }
+  text.RAW % noneOf("\"\n") -> reify { text.onPlainSegment() }
+  text.RAW % eof            -> reify { text.onEOF() }
+  text.RAW % '\n'           -> reify { text.onEOL() }
 
   AST.Text.Segment.Escape.Character.codes.foreach { ctrl =>
     import scala.reflect.runtime.universe._
@@ -523,30 +456,14 @@ case class ParserDef() extends Parser[AST] {
     text.INTP % s"\\$ctrl" -> func
   }
 
-  text.INTP % text.escape_u16 -> reify {
-    text.onEscapeU16()
-  }
-  text.INTP % text.escape_u32 -> reify {
-    text.onEscapeU32()
-  }
-  text.INTP % text.escape_int -> reify {
-    text.onEscapeInt()
-  }
-  text.INTP % "\\\\" -> reify {
-    text.onEscapeSlash()
-  }
-  text.INTP % "\\'" -> reify {
-    text.onEscapeQuote()
-  }
-  text.INTP % "\\\"" -> reify {
-    text.onEscapeRawQuote()
-  }
-  text.INTP % ("\\" >> text.stringChar) -> reify {
-    text.onInvalidEscape()
-  }
-  text.INTP % "\\" -> reify {
-    text.onPlainSegment()
-  }
+  text.INTP % text.escape_u16           -> reify { text.onEscapeU16() }
+  text.INTP % text.escape_u32           -> reify { text.onEscapeU32() }
+  text.INTP % text.escape_int           -> reify { text.onEscapeInt() }
+  text.INTP % "\\\\"                    -> reify { text.onEscapeSlash() }
+  text.INTP % "\\'"                     -> reify { text.onEscapeQuote() }
+  text.INTP % "\\\""                    -> reify { text.onEscapeRawQuote() }
+  text.INTP % ("\\" >> text.stringChar) -> reify { text.onInvalidEscape() }
+  text.INTP % "\\"                      -> reify { text.onPlainSegment() }
 
   //////////////
   /// Blocks ///
@@ -706,7 +623,7 @@ case class ParserDef() extends Parser[AST] {
     block.submitModule()
   }
 
-  ROOT rule space run reify { off.on() }
-  ROOT rule eof run reify { onEOF() }
-  ROOT rule any run reify { onUnrecognized() }
+  ROOT % space -> reify { off.on() }
+  ROOT % eof   -> reify { onEOF() }
+  ROOT % any   -> reify { onUnrecognized() }
 }
