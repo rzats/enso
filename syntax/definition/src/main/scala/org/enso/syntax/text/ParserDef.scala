@@ -47,22 +47,22 @@ case class ParserDef() extends Parser[AST] {
     var current: Option[AST]     = None
     var stack: List[Option[AST]] = Nil
 
-    final def push(): Unit = logger.trace {
+    def push(): Unit = logger.trace {
       logger.log(s"Pushed: $current")
       stack +:= current
       current = None
     }
 
-    final def pop(): Unit = logger.trace {
+    def pop(): Unit = logger.trace {
       current = stack.head
       stack   = stack.tail
       logger.log(s"New result: $current")
     }
 
-    final def app(fn: String => AST): Unit =
+    def app(fn: String => AST): Unit =
       app(fn(currentMatch))
 
-    final def app(t: AST): Unit = logger.trace {
+    def app(t: AST): Unit = logger.trace {
       current = Some(current match {
         case None    => t
         case Some(r) => AST.App(r, off.use(), t)
@@ -78,24 +78,24 @@ case class ParserDef() extends Parser[AST] {
     var current: Int     = 0
     var stack: List[Int] = Nil
 
-    final def push(): Unit = logger.trace {
+    def push(): Unit = logger.trace {
       stack +:= current
       current = 0
     }
 
-    final def pop(): Unit = logger.trace {
+    def pop(): Unit = logger.trace {
       current = stack.head
       stack   = stack.tail
     }
 
-    final def use(): Int = logger.trace {
+    def use(): Int = logger.trace {
       val offset = current
       current = 0
       offset
     }
 
-    final def on(): Unit = on(0)
-    final def on(shift: Int): Unit = logger.trace {
+    def on(): Unit = on(0)
+    def on(shift: Int): Unit = logger.trace {
       val diff = currentMatch.length + shift
       current += diff
       logger.log(s"lastOffset + $diff = $current")
@@ -109,23 +109,23 @@ case class ParserDef() extends Parser[AST] {
   object ident {
     var current: Option[AST.Ident] = None
 
-    final def on(cons: String => AST.Ident): Unit = logger.trace_ {
+    def on(cons: String => AST.Ident): Unit = logger.trace_ {
       on(cons(currentMatch))
     }
 
-    final def on(ast: AST.Ident): Unit = logger.trace {
+    def on(ast: AST.Ident): Unit = logger.trace {
       current = Some(ast)
       state.begin(SFX_CHECK)
     }
 
-    final def submit(): Unit = logger.trace {
+    def submit(): Unit = logger.trace {
       withSome(current) { b =>
         result.app(b)
         current = None
       }
     }
 
-    final def onErrSfx(): Unit = logger.trace {
+    def onErrSfx(): Unit = logger.trace {
       withSome(current) { b =>
         val ast = AST.Ident.InvalidSuffix(b, currentMatch)
         result.app(ast)
@@ -134,12 +134,12 @@ case class ParserDef() extends Parser[AST] {
       }
     }
 
-    final def onNoErrSfx(): Unit = logger.trace {
+    def onNoErrSfx(): Unit = logger.trace {
       submit()
       state.end()
     }
 
-    final def finalizer(): Unit = logger.trace {
+    def finalizer(): Unit = logger.trace {
       if (current.isDefined) submit()
     }
 
@@ -163,55 +163,55 @@ case class ParserDef() extends Parser[AST] {
   //// Operator ////
   //////////////////
 
-  object opr {}
-  final def oprOn(cons: String => AST.Ident): Unit = logger.trace {
-    oprOn(cons(currentMatch))
-  }
-
-  final def oprOnNoMod(cons: String => AST.Ident): Unit = logger.trace {
-    oprOnNoMod(cons(currentMatch))
-  }
-
-  final def oprOn(ast: AST.Ident): Unit = logger.trace {
-    ident.current = Some(ast)
-    state.begin(OPERATOR_MOD_CHECK)
-  }
-
-  final def oprOnNoMod(ast: AST.Ident): Unit = logger.trace {
-    ident.current = Some(ast)
-    state.begin(OPERATOR_SFX_CHECK)
-  }
-
-  final def oprOnMod(): Unit = logger.trace {
-    withSome(ident.current) { body =>
-      ident.current = Some(AST.Opr.Mod(body.asInstanceOf[AST.Opr].name))
+  object opr {
+    def on(cons: String => AST.Ident): Unit = logger.trace {
+      on(cons(currentMatch))
     }
+
+    def onNoMod(cons: String => AST.Ident): Unit = logger.trace {
+      onNoMod(cons(currentMatch))
+    }
+
+    def on(ast: AST.Ident): Unit = logger.trace {
+      ident.current = Some(ast)
+      state.begin(MOD_CHECK)
+    }
+
+    def onNoMod(ast: AST.Ident): Unit = logger.trace {
+      ident.current = Some(ast)
+      state.begin(SFX_CHECK)
+    }
+
+    def onMod(): Unit = logger.trace {
+      withSome(ident.current) { body =>
+        ident.current = Some(AST.Opr.Mod(body.asInstanceOf[AST.Opr].name))
+      }
+    }
+
+    val char: Pattern     = anyOf("!$%&*+-/<>?^~|:\\")
+    val errChar: Pattern  = char | "=" | "," | "."
+    val errSfx: Pattern   = errChar.many1
+    val body: Pattern     = char.many1
+    val opsEq: Pattern    = "=" | "==" | ">=" | "<=" | "/=" | "#="
+    val opsDot: Pattern   = "." | ".." | "..." | ","
+    val opsGrp: Pattern   = anyOf("()[]{}")
+    val opsNoMod: Pattern = opsEq | opsDot | opsGrp
+
+    val SFX_CHECK = state.define("Operator Suffix Check")
+    val MOD_CHECK = state.define("Operator Modifier Check")
+    MOD_CHECK.parent = SFX_CHECK
   }
-
-  val operatorChar: Pattern    = anyOf("!$%&*+-/<>?^~|:\\")
-  val operatorErrChar: Pattern = operatorChar | "=" | "," | "."
-  val operatorErrSfx: Pattern  = operatorErrChar.many1
-  val eqOperators: Pattern     = "=" | "==" | ">=" | "<=" | "/=" | "#="
-  val dotOperators: Pattern    = "." | ".." | "..." | ","
-  val operator: Pattern        = operatorChar.many1
-  val groupOperators: Pattern  = anyOf("()[]{}")
-  val noModOperator: Pattern   = eqOperators | dotOperators | groupOperators
-
-  val OPERATOR_SFX_CHECK = state.define("Operator Suffix Check")
-  val OPERATOR_MOD_CHECK = state.define("Operator Modifier Check")
-  OPERATOR_MOD_CHECK.parent = OPERATOR_SFX_CHECK
-
-  // format: off
-  ROOT             rule operator       run reify { oprOn(AST.Opr(_)) }
-  ROOT             rule noModOperator  run reify { oprOnNoMod(AST.Opr(_)) }
-  OPERATOR_MOD_CHECK rule "="            run reify { oprOnMod() }
-  OPERATOR_SFX_CHECK rule operatorErrSfx run reify { ident.onErrSfx() }
-  OPERATOR_SFX_CHECK rule always           run reify { ident.onNoErrSfx() }
-  // format: on
+  ROOT          % opr.body     -> reify { opr.on(AST.Opr(_)) }
+  ROOT          % opr.opsNoMod -> reify { opr.onNoMod(AST.Opr(_)) }
+  opr.MOD_CHECK % "="          -> reify { opr.onMod() }
+  opr.SFX_CHECK % opr.errSfx   -> reify { ident.onErrSfx() }
+  opr.SFX_CHECK % always       -> reify { ident.onNoErrSfx() }
 
   ////////////////////////////////////
   //// NUMBER (e.g. 16_ff0000.ff) ////
   ////////////////////////////////////
+
+  object num {}
 
   var numberPart1: String = ""
   var numberPart2: String = ""
