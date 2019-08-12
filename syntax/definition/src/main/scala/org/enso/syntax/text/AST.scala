@@ -453,6 +453,9 @@ object AST {
     def apply(indent: Int, firstLine: Line.Required, lines: List[Line]): Block =
       Block(indent, List(), firstLine, lines)
 
+    def apply(indent: Int, firstLine: AST, lines: AST*): Block =
+      Block(indent, Line.Required(firstLine), lines.toList.map(Line(_)))
+
     def unapply(t: Block): Option[(Int, Line.Required, List[Line])] =
       Some((t.indent, t.firstLine, t.lines))
 

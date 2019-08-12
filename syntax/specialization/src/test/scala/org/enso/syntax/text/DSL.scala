@@ -3,9 +3,8 @@ package org.enso.syntax.text
 import org.enso.data.Tree
 import org.enso.syntax.text.AST._
 import org.enso.data.Shifted
-import org.enso.syntax.text.ast.Repr.R
 
-object EDSL {
+object DSL {
 
   trait MixfixBldr[T] {
     def add(m: Template.Valid, i: Int, t: T): Template.Valid

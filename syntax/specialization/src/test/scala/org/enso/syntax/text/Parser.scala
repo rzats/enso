@@ -2,11 +2,11 @@ package org.enso.syntax.text
 
 import org.enso.flexer.Parser
 import org.enso.syntax.text.AST._
-import org.enso.syntax.text.ast.Helpers._
+import org.enso.syntax.text.ast.DSL._
 import org.enso.flexer
 import org.enso.flexer.Parser.Result
 import org.scalatest._
-import EDSL._
+import DSL._
 import org.enso.syntax.text.AST.Text.Segment.EOL
 import org.enso.syntax.text.AST.Text.Segment.Plain
 
@@ -118,17 +118,6 @@ class ParserSpec extends FlatSpec with Matchers {
   "^ + *"         ?= App.Infix("^", 1, "+", 1, "*")
   "* + ^"         ?= App.Infix("*", 1, "+", 1, "^")
 
-  //  "a+b"    ?=
-  //  "()"        ?= "(" $ ")" // Group()
-  //  "(())"      ?= "(" $ "(" $ ")" $ ")" // Group(Group())
-  //  "(()"       ?= "(" $ "(" $ ")" // Group.Unclosed(Group())
-  //  "(("        ?= "(" $ "(" // Group.Unclosed(Group.Unclosed())
-  //  "( "        ?= "(" // Group.Unclosed()
-  //  ")"         ?= ")" // Group.UnmatchedClose
-  //  ")("        ?= ")" $ "(" // Group.UnmatchedClose $ Group.Unclosed()
-  //  "a ( b c )" ?= "a" $_ "(" $_ "b" $_ "c" $_ ")" // ("a" $_ Group(1, "b" $_ "c", 1))
-  //  "(a (b c))" ?= "(" $ "a" $_ "(" $ "b" $_ "c" $ ")" $ ")" // Group("a" $_ Group("b" $_ "c"))
-
   ////////////////
   //// Layout ////
   ////////////////
@@ -138,9 +127,6 @@ class ParserSpec extends FlatSpec with Matchers {
   "  \n "      ?= Module(Block.Line(2), Block.Line(1))
   "\n\n"       ?= Module(Block.Line(), Block.Line(), Block.Line())
   " \n  \n   " ?= Module(Block.Line(1), Block.Line(2), Block.Line(3))
-  //  test module "(a)"  ==? GroupBegin  :: Var("a") :: GroupEnd
-  //  test module "[a]"  ==? ListBegin   :: Var("a") :: ListEnd
-  //  test module "{a}"  ==? RecordBegin :: Var("a") :: RecordEnd
 
   /////////////////
   //// Numbers ////
@@ -164,7 +150,7 @@ class ParserSpec extends FlatSpec with Matchers {
   /////////////////////
 
   val BUFFER_SIZE = flexer.Parser.BUFFER_SIZE
-  "BIG_INPUT_" * BUFFER_SIZE ?= "BIG_INPUT_" * BUFFER_SIZE
+//  "BIG_INPUT_" * BUFFER_SIZE ?= "BIG_INPUT_" * BUFFER_SIZE
 
   //////////////
   //// Text ////
@@ -275,5 +261,11 @@ class ParserSpec extends FlatSpec with Matchers {
   "if (a then)" ?= "if" I_ ("(" I ("a" $_ "then") I ")") Ixx (_then_else: _*)
 
   //  "import Std.Math" ?= "foo"
+
+  ////////////////
+  //// Blocks ////
+  ////////////////
+
+  "foo\n bar" ?= "foo" $ Block(1, "bar")
 
 }

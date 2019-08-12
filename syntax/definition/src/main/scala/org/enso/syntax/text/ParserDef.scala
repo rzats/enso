@@ -580,8 +580,10 @@ case class ParserDef() extends Parser[AST] {
 
     final def onBlockNewline(): Unit = logger.trace {
       state.end()
+      off.push()
       off.on()
       if (off.current == current.indent) {
+        off.pop()
         submitLine()
       } else if (off.current > current.indent) {
         onBegin(off.use())
