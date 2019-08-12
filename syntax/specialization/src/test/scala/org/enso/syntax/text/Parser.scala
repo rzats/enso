@@ -268,4 +268,10 @@ class ParserSpec extends FlatSpec with Matchers {
 
   "foo  \n bar" ?= "foo" $__ Block(1, "bar")
 
+  /////////////////
+  //// Imports ////
+  /////////////////
+
+  "import Std.Math" ?= "foo" $__ Block(1, "bar")
+
 }

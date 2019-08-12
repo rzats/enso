@@ -34,7 +34,7 @@ object Main extends App {
   val p1 = new Parser()
   val p2 = new Parser()
 
-  val inp = "foo  \n bar"
+  val inp = "import Std.Math"
   val out = p1.run(inp)
 
   pprint.pprintln(out, width = 50, height = 10000)
