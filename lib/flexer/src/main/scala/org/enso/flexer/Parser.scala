@@ -164,7 +164,7 @@ trait Parser[T] {
     if (codePoint < 0) "" else new String(Character.toChars(codePoint))
 
   final def charSize(): Int =
-    if (offset >= 0 && buffer(offset).isHighSurrogate) 2 else 1
+    if (buffer(offset).isHighSurrogate) 2 else 1
 }
 
 object Parser {
