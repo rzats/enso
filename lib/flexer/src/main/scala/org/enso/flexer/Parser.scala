@@ -4,6 +4,7 @@ import org.enso.Logger
 
 import scala.collection.mutable
 import org.enso.flexer.debug.Escape
+import org.enso.flexer.spec.Macro
 
 trait Parser[T] {
   import Parser._
