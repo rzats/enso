@@ -266,6 +266,6 @@ class ParserSpec extends FlatSpec with Matchers {
   //// Blocks ////
   ////////////////
 
-  "foo\n bar" ?= "foo" $ Block(1, "bar")
+  "foo  \n bar" ?= "foo" $__ Block(1, "bar")
 
 }
