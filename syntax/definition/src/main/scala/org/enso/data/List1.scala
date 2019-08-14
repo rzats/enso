@@ -7,5 +7,7 @@ package object data {
   object List1 {
     def apply[T](el: T, tail: List[T]): List1[T] = new List1(el, tail)
     def apply[T](el: T, tail: T*):      List1[T] = new List1(el, tail.toList)
+
+    def unapply[T](t: List1[T]): Option[(T, List[T])] = Some((t.head, t.tail))
   }
 }

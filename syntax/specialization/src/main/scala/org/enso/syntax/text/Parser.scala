@@ -34,7 +34,8 @@ object Main extends App {
   val p1 = new Parser()
   val p2 = new Parser()
 
-  val inp = "import Std.Math"
+//  val inp = "(a b)"
+  val inp = "import + + - * ds s ds"
   val out = p1.run(inp)
 
   pprint.pprintln(out, width = 50, height = 10000)
@@ -50,8 +51,8 @@ object Main extends App {
                 case None => println(":(")
                 case Some(spec) =>
                   println("COMPUTING")
-                  val out = spec.finalizer(t.segments.toList)
-                  println(out)
+//                  val out = spec.finalizer(t.segments.toList)
+//                  println(out)
               }
             case _ =>
           }
@@ -60,7 +61,7 @@ object Main extends App {
 
       println(v.show() == inp)
       println("------")
-      println(v.show().replace(' ', '.'))
+      println(v.show())
       println("------")
 
   }

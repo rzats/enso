@@ -5,11 +5,10 @@ import org.enso.data.Shifted
 import org.enso.data
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST._
-import org.enso.syntax.text.AST.Template.Segment.Body
 
 import scala.annotation.tailrec
-
 import cats.implicits._
+import org.enso.syntax.text.AST.Template.Segment.Pattern
 
 object Template {
 
@@ -120,20 +119,20 @@ object Template {
 
     //////////////////////////////////////
 
-    case class ResolveResult(
-      elem: Body,
-      stream: AST.Stream
-    )
+    case class ResolveResult(elem: Pattern.Match_, stream: AST.Stream) {
+      def map(fn: Pattern.Match_ => Pattern.Match_): ResolveResult =
+        copy(elem = fn(elem))
+    }
 
     def resolveList(
       p: Pattern,
       stream: AST.Stream
-    ): (List[Body], AST.Stream) = {
+    ): (List[Pattern.Match_], AST.Stream) = {
       @tailrec
       def go(
         stream: AST.Stream,
-        revOut: List[Body]
-      ): (List[Body], AST.Stream) =
+        revOut: List[Pattern.Match_]
+      ): (List[Pattern.Match_], AST.Stream) =
         resolveStep(p, stream) match {
           case None    => (revOut.reverse, stream)
           case Some(t) => go(t.stream, t.elem :: revOut)
@@ -142,83 +141,180 @@ object Template {
     }
 
     def resolveStep(p: Pattern, stream: AST.Stream): Option[ResolveResult] = {
-      import Body._
+      import Pattern._
 
-      def ret(result: Body, stream: AST.Stream) =
+      def ret(result: Pattern.Match_, stream: AST.Stream) =
         Some(ResolveResult(result, stream))
 
       p match {
 
-        case Pattern.Skip =>
-          ret(Empty, stream)
+        case p @ Pattern.Nothing() =>
+          ret(Pattern.Match(p, ()), stream)
 
-        case Pattern.TokenList =>
-          ret(Body.Many(stream.map(Expr)), Nil)
+        case p @ Pattern.Tag(tag, pat2) =>
+          resolveStep(pat2, stream).map(_.map(Pattern.Match(p, _)))
 
-        case Pattern.AnyToken =>
-          buildAST2(stream.reverse).flatMap(e => ret(Expr(e), Nil))
+        case p @ Pattern.Build(pat2) =>
+          resolveStep(pat2, stream).map(
+            _.map(x => Pattern.Match(p, buildAST2(x.toStream.reverse).get))
+          )
 
-        case Pattern.Opt(p2) =>
-          resolveStep(p2, stream) match {
-            case None    => ret(Empty, stream)
-            case Some(r) => Some(r)
-          }
-
-        case Pattern.Many(p2) =>
-          resolveStep(p2, stream) match {
+        case p @ Pattern.Seq(pat1, pat2) =>
+          resolveStep(pat1, stream) match {
             case None => None
-            case Some(t) =>
-              val (tail, stream2) = resolveList(p2, t.stream)
-              ret(Body.Many(t.elem :: tail), stream2)
-          }
-
-        case Pattern.Seq(pats) =>
-          @tailrec
-          def go(
-            inp: scala.List[Pattern],
-            revOut: scala.List[Body],
-            stream: AST.Stream
-          ): scala.Option[ResolveResult] = inp match {
-            case Nil =>
-              revOut.reverse match {
-                case Nil     => None
-                case s :: ss => ret(Many(s :: ss), stream)
-              }
-            case p :: ps =>
-              resolveStep(p, stream) match {
-                case None    => None
-                case Some(r) => go(ps, r.elem :: revOut, r.stream)
+            case Some(r1) =>
+              resolveStep(pat2, r1.stream) match {
+                case None => None
+                case Some(r2) =>
+                  ret(Pattern.Match(p, (r1.elem, r2.elem)), r2.stream)
               }
           }
-          go(pats.head :: pats.tail, scala.List(), stream)
 
-        case Pattern.Alt(pats) =>
-          @tailrec
-          def go(
-            inp: scala.List[Pattern],
-            stream: AST.Stream
-          ): scala.Option[ResolveResult] = inp match {
-            case Nil => None
-            case p :: ps =>
-              resolveStep(p, stream) match {
-                case None    => go(ps, stream)
-                case Some(r) => ret(r.elem, r.stream)
-              }
-          }
-          go(pats.head :: pats.tail, stream)
-
-        case p: Pattern.Token[_] =>
+        case p @ Pattern.Cls() =>
           stream match {
-            case Shifted(off, p.tag(t)) :: ss => ret(Expr(Shifted(off, t)), ss)
-            case _                            => None
+            case Shifted(off, p.tag(t)) :: ss =>
+              ret(Pattern.Match(p, Shifted(off, t)), ss)
+            case _ => None
           }
 
-        case p: Pattern.NotToken[_] =>
-          stream match {
-            case Shifted(off, p.tag(t)) :: ss => None
-            case Shifted(off, t) :: ss        => ret(Expr(Shifted(off, t)), ss)
-            case _                            => None
+        case p @ Pattern.Many(p2) =>
+          val (lst, stream2) = resolveList(p2, stream)
+          ret(Pattern.Match(p, lst), stream2)
+
+        case p @ Pattern.Opt(p2) =>
+          resolveStep(p2, stream) match {
+            case None    => ret(Pattern.Match(p, None), stream)
+            case Some(r) => ret(Pattern.Match(p, Some(r.elem)), r.stream)
           }
+
+        case p @ Or(p1, p2) =>
+          resolveStep(p1, stream) match {
+            case Some(t) => Some(t)
+            case None    => resolveStep(p2, stream)
+          }
+
+        case p @ Pattern.Tok(tok) =>
+          stream match {
+            case Shifted(off, t) :: ss =>
+              if (tok == t) ret(Pattern.Match(p, Shifted(off, t)), ss) else None
+            case _ => None
+          }
+
+        case p @ Pattern.Err(_, p1) =>
+          resolveStep(p1, stream).map(_.map(Pattern.Match(p, _)))
+
+        case p @ Not(p1) =>
+          resolveStep(p1, stream) match {
+            case Some(_) => None
+            case None    => ret(Pattern.Match(p, ()), stream)
+          }
+
+//        case p @ Pattern.Many1(pat2) =>
+//          resolveStep(pat2, stream) match {
+//            case None => None
+//            case Some(t) =>
+//              val (tail, stream2) = resolveList(pat2, t.stream)
+//              ret(Pattern.Match(p, (t.elem, Pattern.Match(p.p2,List(tail)))), stream2)
+//          }
+
+//        case Pattern.Skip =>
+//          ret(Empty, stream)
+//
+//        case Pattern.TokenList =>
+//          ret(Pattern.Match_.Many(stream.map(Expr)), Nil)
+//
+//        case Pattern.Expr =>
+//          buildAST2(stream.reverse).flatMap(e => ret(Expr(e), Nil))
+//
+
+//
+//        case Pattern.Opt2(p2) =>
+//          resolveStep(p2, stream) match {
+//            case None    => ret(Pattern.Match_.Opt(None), stream)
+//            case Some(r) => ret(Pattern.Match_.Opt(Some(r.elem)), r.stream)
+//          }
+//
+//        case Pattern.Req(p2) =>
+//          resolveStep(p2, stream) match {
+//            case None    => ret(Pattern.Match_.Req(None), stream)
+//            case Some(r) => ret(Pattern.Match_.Req(Some(r.elem)), r.stream)
+//          }
+//
+//        case Pattern.Many(p2) =>
+//          resolveStep(p2, stream) match {
+//            case None => None
+//            case Some(t) =>
+//              val (tail, stream2) = resolveList(p2, t.stream)
+//              ret(Pattern.Match_.Many(t.elem :: tail), stream2)
+//          }
+//
+//        case Pattern.Seq(pats) =>
+//          @tailrec
+//          def go(
+//            inp: scala.List[Pattern],
+//            revOut: scala.List[Pattern.Match_],
+//            stream: AST.Stream
+//          ): scala.Option[ResolveResult] = inp match {
+//            case Nil =>
+//              revOut.reverse match {
+//                case Nil     => None
+//                case s :: ss => ret(Many(s :: ss), stream)
+//              }
+//            case p :: ps =>
+//              resolveStep(p, stream) match {
+//                case None    => None
+//                case Some(r) => go(ps, r.elem :: revOut, r.stream)
+//              }
+//          }
+//          go(pats.head :: pats.tail, scala.List(), stream)
+//
+//        case Pattern.Alt(pats) =>
+//          @tailrec
+//          def go(
+//            inp: scala.List[Pattern],
+//            stream: AST.Stream
+//          ): scala.Option[ResolveResult] = inp match {
+//            case Nil => None
+//            case p :: ps =>
+//              resolveStep(p, stream) match {
+//                case None    => go(ps, stream)
+//                case Some(r) => ret(r.elem, r.stream)
+//              }
+//          }
+//          go(pats.head :: pats.tail, stream)
+//
+//        case Pattern.Seq2(pat1, pat2) =>
+//          resolveStep(pat1, stream) match {
+//            case None => None
+//            case Some(r1) =>
+//              resolveStep(pat2, r1.stream) match {
+//                case None => None
+//                case Some(r2) =>
+//                  ret(Pattern.Match_.Seq2(r1.elem, r2.elem), r2.stream)
+//              }
+//          }
+//
+
+//
+//        case Pattern.NotToken(tok) =>
+//          stream match {
+//            case Shifted(off, t) :: ss =>
+//              if (tok == t) None else ret(Body.NotToken(Shifted(off, t)), ss)
+//            case _ => None
+//          }
+//
+//        case p: Pattern.TokenCls[_] =>
+//          stream match {
+//            case Shifted(off, p.tag(t)) :: ss => ret(Expr(Shifted(off, t)), ss)
+//            case _                            => None
+//          }
+//
+//        case p: Pattern.NotTokenCls[_] =>
+//          stream match {
+//            case Shifted(off, p.tag(t)) :: ss => None
+//            case Shifted(off, t) :: ss        => ret(Expr(Shifted(off, t)), ss)
+//            case _                            => None
+//          }
       }
     }
 
@@ -235,48 +331,48 @@ object Template {
 
   def buildHardcodedRegistry(): Registry = {
     import Template.Segment.Pattern
-    import Body._
-
+//    import Body._
+//
     val groupDef = Definition.Restricted(
-      Opr("(") -> Pattern.Opt(Pattern.AnyToken),
-      Opr(")") -> Pattern.Skip
+      Opr("(") -> Pattern.Opt(Pattern.Expr()),
+      Opr(")") -> Pattern.Nothing()
     ) {
-      case List(s1, s2) =>
-        (s1.el.body, s2.el.body) match {
-          case (Expr(e), Empty) => AST.Group(e.off, e.el, s2.off)
-          case (Empty, Empty)   => AST.Group(s2.off)
-        }
+      case List(s1, s2) => ???
+//        (s1.el.body, s2.el.body) match {
+//          case (Expr(e), Empty) => AST.Group(e.off, e.el, s2.off)
+//          case (Empty, Empty)   => AST.Group(s2.off)
+//        }
     }
-
-    val defDef = Definition.Unrestricted(
-      Var("def") -> Pattern.Seq(
-        Pattern.Opt(Pattern.Token[AST.Cons]),
-        Pattern.Opt(Pattern.Many(Pattern.NotToken[AST.Block])),
-        Pattern.Opt(Pattern.Token[AST.Block])
-      )
-    ) {
-      case List(s1) =>
-        s1.el.body match {
-          case Many(lst) =>
-            val nameParam = lst(0)
-            val argsParam = lst(1)
-            val bodyParam = lst(2)
-            val name = nameParam match {
-              case Expr(Shifted(off, t @ AST.Cons(_))) =>
-                Shifted(off, t)
-              case Empty => Shifted(AST.Missing)
-              case _     => throw new Error("Internal Parser Error")
-            }
-            val args = argsParam.toStream()
-            val body: Option[Shifted[AST]] = bodyParam match {
-              case Expr(n @ Shifted(_, _: AST.Block)) => Some(n)
-              case Empty                              => None
-              case _ =>
-                throw new Error("Internal Parser Error")
-            }
-            AST.Def(name, args, body)
-        }
-    }
+//
+//    val defDef = Definition.Unrestricted(
+//      Var("def") -> Pattern.Seq(
+//        Pattern.Opt(Pattern.TokenCls[AST.Cons]),
+//        Pattern.Opt(Pattern.Many(Pattern.NotTokenCls[AST.Block])),
+//        Pattern.Opt(Pattern.TokenCls[AST.Block])
+//      )
+//    ) {
+//      case List(s1) =>
+//        s1.el.body match {
+//          case Many(lst) =>
+//            val nameParam = lst(0)
+//            val argsParam = lst(1)
+//            val bodyParam = lst(2)
+//            val name = nameParam match {
+//              case Expr(Shifted(off, t @ AST.Cons(_))) =>
+//                Shifted(off, t)
+//              case Empty => Shifted(AST.Missing)
+//              case _     => throw new Error("Internal Parser Error")
+//            }
+//            val args = argsParam.toStream()
+//            val body: Option[Shifted[AST]] = bodyParam match {
+//              case Expr(n @ Shifted(_, _: AST.Block)) => Some(n)
+//              case Empty                              => None
+//              case _ =>
+//                throw new Error("Internal Parser Error")
+//            }
+//            AST.Def(name, args, body)
+//        }
+//    }
 
     def seqSplit[L, R <: L](lst: List[Either[L, R]]): Either[List[L], List[R]] =
       lst.sequence match {
@@ -306,48 +402,50 @@ object Template {
     }
 
     val importDef = Definition.Unrestricted(
-      Var("import") -> Pattern.TokenList
+      Var("import") ->
+      Pattern.SepList(Pattern.Cls[Cons], AST.Opr("."), "expected module name")
     ) {
-      case List(s1) =>
-        val stream = s1.el.body.toStream()
-        val (chunks, divs) = splitOn(stream) { sast =>
-          sast.el match {
-            case t @ AST.Opr(".") => Some(sast.copy(el = t))
-            case _                => None
-          }
-        }
 
-        val chunks2: List[List[Either[SAST, Shifted[AST.Ident]]]] =
-          chunks.map { chunk =>
-            chunk.map { sast =>
-              sast.el match {
-                case t: AST.Cons => Right(sast.copy(el = t))
-                case t: AST.Var  => Right(sast.copy(el = t))
-                case _           => Left(sast)
-              }
-            }
-          }
-
-        val chunks3 = chunks2.map(seqSplit)
-        pprint.pprintln(chunks3, width = 50, height = 10000)
-//        stream.part
-        ???
-      case _ => throw new Error("Internal Parser Error")
+      case List(s1) => ???
+//        val stream = s1.el.body.toStream()
+//        val (chunks, divs) = splitOn(stream) { sast =>
+//          sast.el match {
+//            case t @ AST.Opr(".") => Some(sast.copy(el = t))
+//            case _                => None
+//          }
+//        }
+//
+//        val chunks2: List[List[Either[SAST, Shifted[AST.Ident]]]] =
+//          chunks.map { chunk =>
+//            chunk.map { sast =>
+//              sast.el match {
+//                case t: AST.Cons => Right(sast.copy(el = t))
+//                case t: AST.Var  => Right(sast.copy(el = t))
+//                case _           => Left(sast)
+//              }
+//            }
+//          }
+//
+//        val chunks3 = chunks2.map(seqSplit)
+//        pprint.pprintln(chunks3, width = 50, height = 10000)
+////        stream.part
+//        ???
+//      case _ => throw new Error("Internal Parser Error")
     }
 
     Registry(
       groupDef,
-      Definition.Unrestricted(
-        Var("if")   -> Pattern.AnyToken,
-        Var("then") -> Pattern.AnyToken
-      )(a => ???),
-      Definition.Unrestricted(
-        Var("if")   -> Pattern.AnyToken,
-        Var("then") -> Pattern.AnyToken,
-        Var("else") -> Pattern.AnyToken
-      )(a => ???),
-      importDef,
-      defDef
+//      Definition.Unrestricted(
+//        Var("if")   -> Pattern.Expr,
+//        Var("then") -> Pattern.Expr
+//      )(a => ???),
+//      Definition.Unrestricted(
+//        Var("if")   -> Pattern.Expr,
+//        Var("then") -> Pattern.Expr,
+//        Var("else") -> Pattern.Expr
+//      )(a => ???),
+      importDef
+//      defDef
     )
   }
 
@@ -359,11 +457,12 @@ object Template {
     builder.mixfix = Some(
       Definition.Spec(
         Definition.Scope.Unrestricted, {
-          case Shifted(_, Segment.Valid(_, Body.Expr(e))) :: Nil => e.el
+          case Shifted(_, Segment.Valid(_, Pattern.Match(Pattern.Expr(), e))) :: Nil =>
+            ??? //(e: AST)
 
           case _ => throw new scala.Error("Impossible happened")
         },
-        List1(Template.Segment.Pattern.AnyToken, Nil)
+        List1(Template.Segment.Pattern.Expr(), Nil)
       )
     )
     var builderStack: List[MixfixBuilder] = Nil
@@ -474,14 +573,14 @@ object Template {
 
     @tailrec
     def go(input: AST.Stream): AST = {
-      import Template.Segment.Body._
+//      import Template.Segment.Body._
       input match {
         case Nil =>
           if (builderStack.isEmpty) {
 //            println("End of input (not in stack)")
             close().head.el match {
               case Template.Valid(segs) =>
-                segs.head.body.toStream() match {
+                segs.head.body.toStream match {
                   case Nil    => throw new scala.Error("Impossible happened.")
                   case s :: _ => s.el
                 }
