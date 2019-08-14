@@ -68,7 +68,7 @@ object AST {
     val repr = str
   }
 
-  final case class Unexpected(stream: Stream) extends Invalid {
+  final case class Unexpected(msg: String, stream: Stream) extends Invalid {
     val repr = R + stream
   }
 
@@ -422,6 +422,14 @@ object AST {
     }
   }
 
+  ////////////////
+  //// Import ////
+  ////////////////
+
+  case class Import(path: List1[Cons]) extends AST {
+    val repr = R
+  }
+
   ///////////////
   //// Block ////
   ///////////////
@@ -588,114 +596,6 @@ object AST {
           (Segment.Valid(head, body), stream.toList)
       }
 
-//
-//        case class Body[T](pat: X[T], el: T)
-//      }
-
-      sealed trait Pattern2 {
-        import Pattern2._
-//        def >>(that: Pattern2): Seq  = Seq(this, that)
-//        def |(that: Pattern2):  Or   = Or(this, that)
-//        def many:               Many = Many(this)
-
-      }
-      object Pattern2 {
-
-        sealed trait Of[T] extends Pattern2
-
-        type Match_ = Match[_]
-        case class Match[T: Repr.Of](pat: Of[T], el: T)
-
-        object Match {
-          object Nothing {
-            def apply() = Match(Pattern2.Nothing(), ())
-          }
-        }
-
-        //// Primitive ////
-
-        case class Nothing()                     extends Of[Unit]
-        case class Tok(tok: AST)                 extends Of[SAST]
-        case class Opt[T](pat: Of[T])            extends Of[Option[T]]
-        case class Many[T](pat: Of[T])           extends Of[List[T]]
-        case class Seq(p1: Pattern, p2: Pattern) extends Of[(Match_, Match_)]
-        case class Build(pat: Pattern)           extends Of[SAST]
-        case class Not(pat: Pattern)             extends Of[Unit]
-        case class Or(p1: Pattern, p2: Pattern)  extends Of[Match_]
-
-        case class Cls[T <: AST]()(implicit val tag: ClassTag[T])
-            extends Of[Shifted[T]]
-
-        case class Tag(tag: String, pat: Pattern) extends Of[Match_]
-        case class Err(msg: String, pat: Pattern) extends Of[Match_]
-
-        object Seq {
-          def apply(p1: Pattern, p2: Pattern, ps: Pattern*): Pattern =
-            ps.headOption match {
-              case None     => Seq(p1, p2)
-              case Some(p3) => Seq(Seq(p1, p2), p3, ps.tail: _*)
-            }
-        }
-
-        //// Derived ////
-
-        object Any {
-          def apply(): Pattern = Cls[AST]()
-          def unapply(t: Pattern)(implicit astCls: ClassTag[AST]): Boolean =
-            t match {
-              case t @ Cls() => t.tag == astCls
-              case _         => false
-            }
-        }
-
-        object NotThen {
-          def apply(not: Pattern, pat: Pattern): Pattern = Not(not) >> pat
-          def unapply(t: Pattern): Option[(Pattern, Pattern)] = t match {
-            case Seq(Not(p1), p2) => Some((p1, p2))
-            case _                => None
-          }
-        }
-
-        object AnyBut {
-          def apply(pat: Pattern): Pattern = NotThen(pat, Any())
-          def unapply(t: Pattern): Option[Pattern] = t match {
-            case NotThen(pat, Any()) => Some(pat)
-            case _                   => None
-          }
-        }
-
-        object Many1 {
-          def apply(pat: Pattern): Seq = Seq(pat, Many(pat))
-          def unapply(p: Seq): Option[Pattern] = p match {
-            case Seq(p1, Many(p2)) => if (p == p1) Some(p) else None
-          }
-        }
-
-        object AnyTill {
-          def apply(pat: Pattern): Many = Many(AnyBut(pat))
-        }
-
-        object Expr {
-          def apply() = Build(Many1(Any()))
-          def unapply(t: Pattern): Boolean = t match {
-            case Build(Many1(Any())) => true
-            case _                   => false
-          }
-        }
-
-        object SepList {
-          def apply(pat: Pattern, div: Pattern): Seq = pat >> (div >> pat).many
-          def apply(pat: Pattern, div: Pattern, err: String): Seq = {
-            val seg = pat | Err(err, AnyTill(div))
-            SepList(seg, div)
-          }
-        }
-
-        //// Conversions ////
-
-        implicit def fromAST(ast: AST): Pattern = Tok(ast)
-      }
-
       sealed trait Pattern {
         import Pattern._
         def >>(that: Pattern): Seq  = Seq(this, that)
@@ -730,10 +630,9 @@ object AST {
         sealed trait Of[T] extends Pattern
 
         type Match_ = Match[_]
-        case class Match[T: Repr.Of](pat: Of[T], el: T)(
-          implicit val ev: IsStream[T]
-        ) extends Repr.Provider {
-          def toStream: AST.Stream = ev.toStream(el)
+        case class Match[T: Repr.Of: IsStream](pat: Of[T], el: T)
+            extends Repr.Provider {
+          def toStream: AST.Stream = implicitly[IsStream[T]].toStream(el)
           val repr = Repr.of(el)
         }
 
@@ -742,7 +641,27 @@ object AST {
             def apply() = Match(Pattern.Nothing(), ())
           }
 
-//          implicit def repr: Repr.Of[Match[_]] = t => R // Repr.of(t.el)
+          object Seq {
+            def unapply(t: Match_): Option[(Match_, Match_)] = t match {
+              case Match(_: Pattern.Seq, t) => Some(t)
+              case _                        => None
+            }
+          }
+
+          object Many {
+            def unapply(t: Match_): Option[List[Match_]] = t match {
+              case Match(_: Pattern.Many, t) => Some(t)
+              case _                         => None
+            }
+          }
+
+          object Tok {
+            def unapply(t: Match_): Option[AST] = t match {
+              case Match(_: Pattern.Tok, t) => Some(t.el)
+              case _                        => None
+            }
+          }
+
         }
 
         //// Primitive ////
@@ -760,7 +679,7 @@ object AST {
             extends Of[Shifted[T]]
 
         case class Tag(tag: String, pat: Pattern) extends Of[Match_]
-        case class Err(msg: String, pat: Pattern) extends Of[Match_]
+        case class Err(msg: String, pat: Pattern) extends Of[SAST]
 
         object Seq {
           def apply(p1: Pattern, p2: Pattern, ps: Pattern*): Pattern =
@@ -829,103 +748,6 @@ object AST {
         implicit def fromAST(ast: AST): Pattern = Tok(ast)
       }
 
-//      sealed trait Pattern
-//      object Pattern {
-//        case class Tag(tag: String, pat: Pattern)     extends Pattern
-//        case class Seq2(pat1: Pattern, pat2: Pattern) extends Pattern
-//        case class Opt2(pat: Pattern)                 extends Pattern
-//
-//        case class Opt(pat: Pattern)         extends Pattern
-//        case object End                      extends Pattern
-//        case object Skip                     extends Pattern
-//        case object Expr                     extends Pattern
-//        case object TokenList                extends Pattern
-//        case class Req(pat: Pattern)         extends Pattern
-//        case class Many(pat: Pattern)        extends Pattern
-//        case class Many1(pat: Pattern)       extends Pattern
-//        case class Seq(pats: List1[Pattern]) extends Pattern
-//        case class Alt(pats: List1[Pattern]) extends Pattern
-//        case class Token(tok: AST)           extends Pattern
-//        case class NotToken(tok: AST)        extends Pattern
-//
-//        case class TokenCls[T <: AST]()(implicit val tag: ClassTag[T])
-//            extends Pattern
-//        case class NotTokenCls[T <: AST]()(implicit val tag: ClassTag[T])
-//            extends Pattern
-//
-//        object Seq {
-//          def apply(pat: Pattern, pats: Pattern*): Seq =
-//            Seq(List1(pat, pats.toList))
-//        }
-//      }
-//
-//      //// Body ////
-//
-//      sealed trait Body extends Repr.Provider {
-//        def toStream(): AST.Stream
-//      }
-//      object Body {
-//
-//        case class Tag(tag: String, el: Body) extends Body {
-//          val repr       = el.repr
-//          def toStream() = el.toStream()
-//        }
-//
-//        case class Seq2(first: Body, second: Body) extends Body {
-//          val repr       = first.repr + second.repr
-//          def toStream() = first.toStream() ++ second.toStream()
-//        }
-//
-//        case class Opt(el: Option[Body]) extends Body {
-//          val repr       = Repr.of(el)
-//          def toStream() = el.map(_.toStream()).getOrElse(List())
-//          override def toString: String = el.toString
-//        }
-//
-//        ///
-//
-//        case object Empty extends Body {
-//          val repr       = R
-//          def toStream() = List()
-//        }
-//
-//        case class Expr(t: SAST) extends Body {
-//          val repr       = Repr.of(t)
-//          def toStream() = List(t)
-//        }
-//
-//        case class Token(t: SAST) extends Body {
-//          val repr       = Repr.of(t)
-//          def toStream() = List(t)
-//        }
-//
-//        case class NotToken(t: SAST) extends Body {
-//          val repr       = Repr.of(t)
-//          def toStream() = List(t)
-//        }
-//
-//        case class Many1(t: List1[Body]) extends Body {
-//          val repr       = Repr.of(t)
-//          def toStream() = t.toList.flatMap(_.toStream)
-//        }
-//
-//        case class Many(t: List[Body]) extends Body {
-//          val repr       = Repr.of(t)
-//          def toStream() = t.flatMap(_.toStream)
-//        }
-//
-//        case class Req(el: Option[Body]) extends Body {
-//          val repr       = Repr.of(el)
-//          def toStream() = el.map(_.toStream()).getOrElse(List())
-//          override def toString: String = el.toString
-//        }
-////
-////        object Many {
-////          def apply(head: Body, tail: List[Body]): Many =
-////            Many(List1(head, tail))
-////          def apply(head: Body): Many = Many(List1(head))
-////        }
-//      }
     }
 
     //// Definition ////
