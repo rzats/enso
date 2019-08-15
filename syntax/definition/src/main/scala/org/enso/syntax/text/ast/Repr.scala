@@ -15,7 +15,7 @@ sealed trait Repr extends Repr.Provider {
   val span: Int
   def build(out: StringBuilder): Unit
 
-  def +[T: Repr.Of](that: T) =
+  def +[T: Repr.Of](that: T): Repr =
     Seq(this, implicitly[Repr.Of[T]].of(that))
 
   def show(): String = {

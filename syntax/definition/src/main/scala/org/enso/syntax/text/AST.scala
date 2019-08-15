@@ -12,37 +12,35 @@ import org.enso.syntax.text.ast.Repr
 import org.enso.syntax.text.ast.opr
 import org.enso.syntax.text.ast.text
 
-import scala.reflect.ClassTag
-
 sealed trait AST extends AST.Symbol
 
 object AST {
-  type SAST = Shifted[AST]
 
-  ///////////////////
-  //// Reexports ////
-  ///////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Reexports ///////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
   type Assoc = opr.Assoc
 
   val Assoc = opr.Assoc
   val Prec  = opr.Prec
 
-  ////////////////////
-  //// Definition ////
-  ////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Definition //////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
+  type SAST    = Shifted[AST]
   type Stream  = List[SAST]
   type Stream1 = List1[SAST]
 
-  trait Symbol extends Repr.Provider {
+  sealed trait Symbol extends Repr.Provider {
     def span:   Int    = repr.span
     def show(): String = repr.show()
   }
 
-  /////////////////////
-  //// Conversions ////
-  /////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Conversions /////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
   implicit def fromString(str: String): AST =
     fromStringRaw(str) match {
@@ -59,9 +57,9 @@ object AST {
     else Opr(str)
   }
 
-  /////////////////
-  //// Invalid ////
-  /////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Invalid /////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
   trait Invalid extends AST
 
@@ -73,13 +71,9 @@ object AST {
     val repr = R + stream
   }
 
-  final case object Missing extends Invalid {
-    val repr = R
-  }
-
-  /////////////////
-  //// Literal ////
-  /////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Literal /////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
   sealed trait Literal extends AST
 
@@ -102,9 +96,9 @@ object AST {
     }
   }
 
-  ////////////////////////////
-  //// Var / Cons / Blank ////
-  ////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Var / Cons / Blank //////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
   final case object Blank extends Ident {
     val name = "_"
@@ -119,9 +113,9 @@ object AST {
     val repr = name
   }
 
-  /////////////
-  //// Opr ////
-  /////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Opr /////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
   final case class Opr(name: String) extends Opr.Class {
     val (prec, assoc) = Opr.Info.of(name)
@@ -129,7 +123,7 @@ object AST {
   }
 
   object Opr {
-    trait Class extends Ident
+    sealed trait Class extends Ident
 
     final case class Mod(name: String) extends Opr.Class {
       override val repr = name + '='
@@ -148,9 +142,9 @@ object AST {
     implicit def fromString(str: String): Opr = Opr(str)
   }
 
-  /////////////
-  //// App ////
-  /////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// App /////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
   type App = _App
   final case class _App(func: AST, off: Int = 1, arg: AST) extends AST {
@@ -223,9 +217,9 @@ object AST {
     }
   }
 
-  ////////////////
-  //// Number ////
-  ////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Number //////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
   final case class Number(base: Option[String], int: String) extends AST {
     val repr = base.map(_ + "_").getOrElse("") + int
@@ -244,16 +238,16 @@ object AST {
     }
   }
 
-  //////////////
-  //// Text ////
-  //////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Text ////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
   sealed trait Text extends AST
   object Text {
 
     //// Abstraction ////
 
-    trait Class[This] extends Text {
+    sealed trait Class[This] extends Text {
       type Segment <: Text.Segment
 
       val quoteChar: Char
@@ -333,7 +327,6 @@ object AST {
     }
 
     object MultiLine {
-
       def stripOffset(
         offset: Int,
         rawSegments: List[Segment]
@@ -361,8 +354,7 @@ object AST {
     }
 
     object Raw {
-      trait Segment extends Text.Interpolated.Segment
-
+      sealed trait Segment extends Text.Interpolated.Segment
       def apply():                      Raw = Raw(Quote.Single, Nil)
       def apply(q: Quote):              Raw = Raw(q, Nil)
       def apply(q: Quote, s: Segment*): Raw = Raw(q, s.to[List])
@@ -371,8 +363,7 @@ object AST {
     }
 
     object Interpolated {
-      trait Segment extends Text.Segment
-
+      sealed trait Segment extends Text.Segment
       def apply():                      I = I(Quote.Single, Nil)
       def apply(q: Quote):              I = I(q, Nil)
       def apply(q: Quote, s: Segment*): I = I(q, s.to[List])
@@ -392,8 +383,7 @@ object AST {
 
     //// Segment ////
 
-    trait Segment extends Symbol
-
+    sealed trait Segment extends Symbol
     object Segment {
       type Raw          = Text.Raw.Segment
       type Interpolated = Text.Interpolated.Segment
@@ -423,20 +413,9 @@ object AST {
     }
   }
 
-  ////////////////
-  //// Import ////
-  ////////////////
-
-  case class Import(path: List1[Cons]) extends AST {
-    val repr = R
-  }
-  object Import {
-    def apply(head: Cons, tail: List[Cons]): Import = Import(List1(head, tail))
-  }
-
-  ///////////////
-  //// Block ////
-  ///////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Block ///////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
   type Block = _Block
   final case class _Block(
@@ -474,6 +453,8 @@ object AST {
     final case class InvalidIndentation(block: Block) extends AST.Invalid {
       val repr = R + block
     }
+
+    //// Line ////
 
     type Line = _Line
     final case class _Line(elem: Option[AST], off: Int)
@@ -514,7 +495,7 @@ object AST {
           val offset = zipper(Offset(lens))
         }
 
-        case class Offset[S](lens: AST.Zipper.Path[S, Line])
+        final case class Offset[S](lens: AST.Zipper.Path[S, Line])
             extends AST.Zipper.Path[Line, Int] {
           val path = GenLens[Line](_.off).asOptional
         }
@@ -524,16 +505,36 @@ object AST {
     }
   }
 
-  ////////////////
-  //// Mixfix ////
-  ////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Module //////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
-  case class Mixfix(name: List1[Ident], args: List1[AST]) extends AST {
-    val repr = {
-      val lastRepr = if (name.length - args.length > 0) List(R) else List()
-      val argsRepr = args.toList.map(R + " " + _) ++ lastRepr
-      val nameRepr = name.toList.map(Repr.of(_))
-      R + (nameRepr, argsRepr).zipped.map(_ + _)
+  def intersperse[T](t: T, lst: List[T]): List[T] = lst match {
+    case Nil             => Nil
+    case s1 :: s2 :: Nil => s1 :: t :: intersperse(t, s2 :: Nil)
+    case s1 :: Nil       => s1 :: Nil
+  }
+
+  import Block.Line
+
+  final case class Module(lines: List1[Line]) extends AST {
+    val repr = R + lines.map(R + _).intercalate(R + '\n')
+
+    def map(f: Line => Line): Module =
+      Module(lines.map(f))
+  }
+
+  object Module {
+    def apply(l: Line):                 Module = Module(List1(l))
+    def apply(l: Line, ls: Line*):      Module = Module(List1(l, ls.to[List]))
+    def apply(l: Line, ls: List[Line]): Module = Module(List1(l, ls))
+
+    object Zipper {
+      final case class Lines() extends AST.Zipper.Path[Module, List1[Line]] {
+        val path = GenLens[Module](_.lines).asOptional
+      }
+      val lines          = zipper(Lines())
+      def line(idx: Int) = lines.index(idx)
     }
   }
 
@@ -570,7 +571,7 @@ object AST {
 
     //// Unmatched ////
 
-    case class Unmatched(
+    final case class Unmatched(
       segs: Shifted.List1[Unmatched.Segment],
       paths: Tree[AST, Unit]
     ) extends Template {
@@ -578,7 +579,7 @@ object AST {
 
     }
     object Unmatched {
-      case class Segment(head: AST, body: Option[SAST]) extends Symbol {
+      final case class Segment(head: AST, body: Option[SAST]) extends Symbol {
         val repr = R + head + body
       }
     }
@@ -586,7 +587,7 @@ object AST {
     //// Definition ////
 
     type Definition = _Definition
-    case class _Definition(
+    final case class _Definition(
       segments: List1[Definition.Segment],
       finalizer: Definition.Finalizer
     )
@@ -635,9 +636,39 @@ object AST {
     }
   }
 
-  ///////////////
-  //// Group ////
-  ///////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Space - unaware AST /////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  //////////////////////////////////////////////////////////////////////////////
+  //// Import //////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  final case class Import(path: List1[Cons]) extends AST {
+    val repr = R
+  }
+  object Import {
+    def apply(head: Cons, tail: List[Cons]): Import = Import(List1(head, tail))
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  //// Mixfix //////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  final case class Mixfix(name: List1[Ident], args: List1[AST]) extends AST {
+    val repr = {
+      val lastRepr = if (name.length - args.length > 0) List(R) else List()
+      val argsRepr = args.toList.map(R + " " + _) ++ lastRepr
+      val nameRepr = name.toList.map(Repr.of(_))
+      R + (nameRepr, argsRepr).zipped.map(_ + _)
+    }
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  //// Group ///////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
   final case class Group(body: Option[AST] = None) extends AST {
     val repr = R + body
@@ -648,12 +679,12 @@ object AST {
     def apply():           Group = Group(None)
   }
 
-  /////////////
-  //// Def ////
-  /////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Def /////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
   type Def = _Def
-  case class _Def(
+  final case class _Def(
     nameOff: Int = 1,
     name: AST,
     argsOff: List[Int] = List(),
@@ -695,69 +726,33 @@ object AST {
       }
   }
 
-  ////////////////
-  //// Module ////
-  ////////////////
-
-  def intersperse[T](t: T, lst: List[T]): List[T] = lst match {
-    case Nil             => Nil
-    case s1 :: s2 :: Nil => s1 :: t :: intersperse(t, s2 :: Nil)
-    case s1 :: Nil       => s1 :: Nil
-  }
-
-  def intersperse2[T](t: T, lst: List1[T]): List1[T] =
-    List1(lst.head, lst.tail.flatMap(s => List(t, s)))
-
-  import Block.Line
-
-  final case class Module(lines: List1[Line]) extends AST {
-    val repr = R + intersperse2(R + '\n', lines.map(R + _))
-
-    def map(f: Line => Line): Module =
-      Module(lines.map(f))
-  }
-
-  object Module {
-    def apply(l: Line):                 Module = Module(List1(l))
-    def apply(l: Line, ls: Line*):      Module = Module(List1(l, ls.to[List]))
-    def apply(l: Line, ls: List[Line]): Module = Module(List1(l, ls))
-
-    object Zipper {
-      case class Lines() extends AST.Zipper.Path[Module, List1[Line]] {
-        val path = GenLens[Module](_.lines).asOptional
-      }
-      val lines          = zipper(Lines())
-      def line(idx: Int) = lines.index(idx)
-    }
-  }
-
-  ////////////////
-  //// Zipper ////
-  ////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Zipper //////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
 
   /**
     * This is just a stub implementation. It shows how zippers could be
     * implemented for AST.
     */
-  trait Zipper[Begin, End]
+  sealed trait Zipper[Begin, End]
   object Zipper {
 
-    trait Path[Begin, End] {
+    sealed trait Path[Begin, End] {
       val path: monocle.Optional[Begin, End]
     }
 
-    trait Has { type Zipper[_] }
+    sealed trait Has { type Zipper[_] }
 
-    trait Provider[Begin, End] {
+    sealed trait Provider[Begin, End] {
       type Zipper
       def focus: Path[Begin, End] => Zipper
     }
     object Provider {
-      trait Inferred[Begin, End <: Has] extends Provider[Begin, End] {
+      sealed trait Inferred[Begin, End <: Has] extends Provider[Begin, End] {
         type Zipper = End#Zipper[Begin]
 
       }
-      trait Terminated[Begin, End] extends Provider[Begin, End] {
+      sealed trait Terminated[Begin, End] extends Provider[Begin, End] {
         type Zipper = Terminator[Begin, End]
       }
 
@@ -779,7 +774,7 @@ object AST {
   )(implicit ev: Zipper.Provider[S, T]): ev.Zipper =
     ev.focus(lens)
 
-  case class Terminator[S, T](zipper: Zipper.Path[S, T])
+  final case class Terminator[S, T](zipper: Zipper.Path[S, T])
       extends AST.Zipper[S, T]
 
   implicit def ZipperTarget_List1[S, T]
@@ -789,7 +784,7 @@ object AST {
       def focus = List1Target(_)
     }
 
-  case class List1Target[S, T](lens: AST.Zipper.Path[S, List1[T]])
+  final case class List1Target[S, T](lens: AST.Zipper.Path[S, List1[T]])
       extends AST.Zipper[S, List1[T]] {
     def index(
       idx: Int
@@ -797,7 +792,7 @@ object AST {
       zipper(List1Zipper[S, T](lens, idx))
   }
 
-  case class List1Zipper[S, T](
+  final case class List1Zipper[S, T](
     zipper: AST.Zipper.Path[S, List1[T]],
     idx: Int
   ) extends AST.Zipper.Path[List1[T], T] {
