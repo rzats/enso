@@ -91,20 +91,20 @@ object DSL {
       )
     )
 
-    def unmatched(tree: Tree[AST, Unit]): Template.Partial =
-      Template.Partial(
+    def unmatched(tree: Tree[AST, Unit]): Template.Unmatched =
+      Template.Unmatched(
         Shifted
-          .List1(Template.Partial.Segment(fromStringRaw(t), None), List()),
+          .List1(Template.Unmatched.Segment(fromStringRaw(t), None), List()),
         tree
       )
 
-    def unmatched(lst: Seq[String]): Template.Partial = {
+    def unmatched(lst: Seq[String]): Template.Unmatched = {
       val args = lst.map(k => List(fromStringRaw(k)) -> (()))
       val tree = Tree[AST, Unit](args: _*)
       unmatched(tree)
     }
 
-    def unmatched_lst(lst: Seq[List[String]]): Template.Partial = {
+    def unmatched_lst(lst: Seq[List[String]]): Template.Unmatched = {
       val args = lst.map(k => k.map(fromStringRaw) -> (()))
       val tree = Tree[AST, Unit](args: _*)
       unmatched(tree)
@@ -121,9 +121,9 @@ object DSL {
     def I________I(s: String):  Template.Matched = empty(8, s)
     def I_________I(s: String): Template.Matched = empty(9, s)
 
-    def Ix(t: Tree[AST, Unit]): Template.Partial = unmatched(t)
-    def Ix(t: String*):         Template.Partial = unmatched(t)
-    def Ixx(t: List[String]*):  Template.Partial = unmatched_lst(t)
+    def Ix(t: Tree[AST, Unit]): Template.Unmatched = unmatched(t)
+    def Ix(t: String*):         Template.Unmatched = unmatched(t)
+    def Ixx(t: List[String]*):  Template.Unmatched = unmatched_lst(t)
 
     def I(s: AST):          Template.Matched = fromStringRaw(t)._addSeg_(0)(s)
     def I_(s: AST):         Template.Matched = fromStringRaw(t)._addSeg_(1)(s)
@@ -194,32 +194,32 @@ object DSL {
     def add[T: M](i: Int, s: T)   = implicitly[M[T]].add(t, i, s)
     def add1[T: M1](i: Int, s: T) = implicitly[M1[T]].add1(t, i, s)
 
-    def unmatched(tree: Tree[AST, Unit]): Template.Partial = {
+    def unmatched(tree: Tree[AST, Unit]): Template.Unmatched = {
       val segments2 = t.segments.map {
         case seg: Template.Segment.Matched =>
           seg.body match {
             case Template.Segment.Body.Expr(e) =>
-              Template.Partial.Segment(seg.head, Some(e))
-            case _ => Template.Partial.Segment(seg.head, None)
+              Template.Unmatched.Segment(seg.head, Some(e))
+            case _ => Template.Unmatched.Segment(seg.head, None)
           }
       }
-      Template.Partial(segments2, tree)
+      Template.Unmatched(segments2, tree)
     }
 
-    def unmatched(lst: Seq[String]): Template.Partial = {
+    def unmatched(lst: Seq[String]): Template.Unmatched = {
       val args = lst.map(k => List(fromStringRaw(k)) -> (()))
       val tree = Tree[AST, Unit](args: _*)
       unmatched(tree)
     }
 
-    def unmatched_lst(lst: Seq[List[String]]): Template.Partial = {
+    def unmatched_lst(lst: Seq[List[String]]): Template.Unmatched = {
       val args = lst.map(k => k.map(fromStringRaw) -> (()))
       val tree = Tree[AST, Unit](args: _*)
       unmatched(tree)
     }
 
-    def Ix(t: String*):        Template.Partial = unmatched(t)
-    def Ixx(t: List[String]*): Template.Partial = unmatched_lst(t)
+    def Ix(t: String*):        Template.Unmatched = unmatched(t)
+    def Ixx(t: List[String]*): Template.Unmatched = unmatched_lst(t)
 
     def I[T: M](s: T)          = add(0, s)
     def I_[T: M](s: T)         = add(1, s)

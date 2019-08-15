@@ -544,21 +544,38 @@ object AST {
   trait Template extends AST {}
   object Template {
 
-    final case class Matched(segments: Shifted.List1[Segment.Matched])
+    //// Matched ////
+
+    final case class Matched(segments: Shifted.List1[Matched.Segment])
         extends Template {
       val repr = R + segments.map(_.repr)
+      def path(): List1[AST] = segments.toList1.map(_.el.head)
+    }
+    object Matched {
+      import Template.Segment.Pattern._
+      final case class Segment(head: Ident, body: Match_) {
+        val repr = R + head + body
 
-      def path(): List1[AST] =
-        segments.toList1.map(_.el.head)
+        def toStream: AST.Stream = Shifted(head) :: body.toStream
+        def isValid:  Boolean    = body.isValid
+
+        def map(f: Match_ => Match_): Segment = copy(body = f(body))
+      }
+      object Segment {
+        def apply(head: Ident): Segment = Segment(head, Match.Nothing())
+      }
     }
 
-    case class Partial(
-      segments: Shifted.List1[Partial.Segment],
-      possiblePaths: Tree[AST, Unit]
+    //// Unmatched ////
+
+    case class Unmatched(
+      segs: Shifted.List1[Unmatched.Segment],
+      paths: Tree[AST, Unit]
     ) extends Template {
-      val repr = R + segments.map(_.repr)
+      val repr = R + segs.map(_.repr)
+
     }
-    object Partial {
+    object Unmatched {
       case class Segment(head: AST, body: Option[SAST]) extends Symbol {
         val repr = R + head + body
       }
@@ -567,23 +584,6 @@ object AST {
     object Segment {
 
       //// Segment Types ////
-
-      final case class Matched(head: Ident, body: Pattern.Match_) {
-        val repr = R + head + body
-
-        def toStream: AST.Stream =
-          Shifted(head) :: body.toStream
-
-        def isValid: Boolean =
-          body.isValid
-
-        def map(f: Pattern.Match_ => Pattern.Match_): Matched =
-          copy(body = f(body))
-      }
-      object Matched {
-        def apply(head: Ident): Matched =
-          new Matched(head, Pattern.Match.Nothing())
-      }
 
       sealed trait Pattern {
         import Pattern._
@@ -836,15 +836,15 @@ object AST {
             .mapLast(_.map(dummyLastSeg))
 
         def skipDefaultChecks(
-          segs: List[Segment.Matched]
-        ): List[Segment.Matched] =
+          segs: List[Matched.Segment]
+        ): List[Matched.Segment] =
           segs.map(_.map {
             case Match.Seq(p, _) => p
             case _               => throw new Error("Internal error")
           })
 
         val segments2 = addDefaultChecks(segments)
-        def finalizer2(segs: List[Segment.Matched]) = {
+        def finalizer2(segs: List[Matched.Segment]) = {
           if (!segs.forall(_.isValid)) {
             val stream = segs.flatMap(_.toStream)
             AST.Unexpected("Invalid statement", stream)
@@ -857,7 +857,7 @@ object AST {
         Definition(List1(t1, ts: _*), finalizer)
 
       type Segment   = (AST, Segment.Pattern)
-      type Finalizer = List[Segment.Matched] => AST
+      type Finalizer = List[Matched.Segment] => AST
 
 //      case class Spec[T](finalizer: Finalizer, el: T) {
 //        def map[S](fn: T => S): Spec[S] = Spec(finalizer, fn(el))

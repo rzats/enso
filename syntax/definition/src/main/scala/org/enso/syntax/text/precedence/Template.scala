@@ -111,7 +111,7 @@ object Template {
         case seg1 :: seg2_ => Some(Operator.rebuild(List1(seg1, seg2_)))
       }
 
-    def build(tp: Pattern): (Shifted[Segment.Matched], AST.Stream) = {
+    def build(tp: Pattern): (Shifted[Matched.Segment], AST.Stream) = {
       val stream = revBody.reverse
       resolveStep(tp, stream) match {
         case None =>
@@ -120,7 +120,7 @@ object Template {
           )
         //Segment.Unmatched(tp, ast, stream)
         case Some(rr) =>
-          (Shifted(offset, Segment.Matched(ast, rr.elem)), rr.stream)
+          (Shifted(offset, Matched.Segment(ast, rr.elem)), rr.stream)
 //          rr.stream match {
 //            case Nil     => Segment.Valid(ast, rr.elem)
 //            case s :: ss => Segment.Unsaturated(ast, rr.elem, List1(s, ss))
@@ -439,13 +439,13 @@ object Template {
           case None =>
             val revSegs = revSegBldrs.map { segBldr =>
               val optAst = segBldr.buildAST()
-              Shifted(segBldr.offset, Partial.Segment(segBldr.ast, optAst))
+              Shifted(segBldr.offset, Unmatched.Segment(segBldr.ast, optAst))
             }
             val segments = revSegs.reverse
             val head     = segments.head
             val tail     = segments.tail
             val paths    = builder.context.tree.dropValues()
-            val template = Partial(Shifted.List1(head.el, tail), paths)
+            val template = Unmatched(Shifted.List1(head.el, tail), paths)
             val newTok   = Shifted(head.off, template)
             List1(newTok)
 
