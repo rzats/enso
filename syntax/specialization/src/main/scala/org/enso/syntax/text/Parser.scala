@@ -35,7 +35,7 @@ object Main extends App {
   val p2 = new Parser()
 
 //  val inp = "(a b)"
-  val inp = "import Foo.a b.Math"
+  val inp = "(a b)"
   val out = p1.run(inp)
 
   pprint.pprintln(out, width = 50, height = 10000)
@@ -52,7 +52,7 @@ object Main extends App {
                 case Some(spec) =>
                   println("COMPUTING")
                   val out = spec.finalizer(t.segments.toList)
-                  println(out.show())
+                  println(out)
               }
             case _ =>
           }

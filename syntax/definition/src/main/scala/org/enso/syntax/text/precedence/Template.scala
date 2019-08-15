@@ -86,7 +86,7 @@ object Template {
   //// Builder ////
   /////////////////
 
-  class SegmentBuilder(val ast: AST) {
+  class SegmentBuilder(val ast: Ident) {
     import Template.Segment.Pattern
     import Template._
 
@@ -144,7 +144,7 @@ object Template {
     def resolveStep(p: Pattern, stream: AST.Stream): Option[ResolveResult] = {
       import Pattern._
 
-      def ret2[S: IsStream: Repr.Of](
+      def ret2[S: Repr.Of](
         pat: Pattern.Of[S],
         res: S,
         stream: AST.Stream
@@ -223,26 +223,30 @@ object Template {
       s"SegmentBuilder($offset, $revBody)"
   }
 
-  class MixfixBuilder(ast: AST) {
+  class MixfixBuilder(ast: Ident) {
     var context: Context               = Context()
     var mixfix: Option[Registry.Value] = None
     var current: SegmentBuilder        = new SegmentBuilder(ast)
     var revSegs: List[SegmentBuilder]  = List()
   }
 
-  def buildHardcodedRegistry(): Registry = {
+  def mkBuiltInRegistry(): Registry = {
+
+    def internalError = throw new Error("Internal error")
+
     import Template.Segment.Pattern
-//    import Body._
-//
+
     val groupDef = Definition.Restricted(
-      Opr("(") -> Pattern.Opt(Pattern.Expr()),
+      Opr("(") -> Pattern.Opt(Pattern.Cls[Ident]),
       Opr(")") -> Pattern.Nothing()
     ) {
-      case List(s1, s2) => ???
-//        (s1.el.body, s2.el.body) match {
-//          case (Expr(e), Empty) => AST.Group(e.off, e.el, s2.off)
-//          case (Empty, Empty)   => AST.Group(s2.off)
-//        }
+      case List(s1, s2) =>
+        s1.el.body.toStream match {
+          case List()  => AST.Group()
+          case List(t) => AST.Group(t)
+          case _       => internalError
+        }
+      case _ => internalError
     }
 //
 //    val defDef = Definition.Unrestricted(
@@ -306,40 +310,58 @@ object Template {
       Var("import") ->
       Pattern.SepList(Pattern.Cls[Cons], AST.Opr("."), "expected module name")
     ) {
-
       case List(s1) =>
         import Pattern.Match._
-
-        s1.el.body match {
-          case Seq(headMatch, Many(tailMatch)) =>
-            def unwrapSeg(lseg: Pattern.Match_): Either[AST, Cons] =
-              lseg.toStream match {
-                case List(Shifted(_, t @ Cons(_)))          => Right(t)
-                case List(Shifted(_, t @ Unexpected(_, _))) => Left(t)
-                case _ =>
-                  throw new Error("Internal error")
+        val body = s1.el.body
+        if (!body.isValid) {
+          val toks = Shifted(s1.el.head) :: body.toStream
+          AST.Unexpected("wrong import statement", toks)
+        } else {
+          s1.el.body match {
+            case Seq(headMatch, Many(tailMatch)) =>
+              def unwrapSeg(lseg: Pattern.Match_): Cons =
+                lseg.toStream match {
+                  case List(Shifted(_, t @ Cons(_))) => t
+                  case _                             => internalError
+                }
+              val head = unwrapSeg(headMatch)
+              val tail = tailMatch.map {
+                case Seq(Tok(Shifted(_, Opr("."))), seg) => unwrapSeg(seg)
+                case _                                   => internalError
               }
-            val head = unwrapSeg(headMatch)
-            val tail = tailMatch.map {
-              case Seq(Tok(Opr(".")), seg) => unwrapSeg(seg)
-              case _                       => throw new Error("Internal error")
-            }
-            (head, tail.sequence) match {
-              case (Right(h), Right(t)) => AST.Import(List1(h, t))
-              case (h, t) =>
-                val lst = s1.el.head :: head.merge :: tail.map(_.merge)
-                AST.Unexpected("wrong import statement", lst.map(Shifted(_)))
-            }
-
+              AST.Import(head, tail)
+          }
         }
+      case _ => internalError
+    }
+
+    val ifThenDef = Definition.Unrestricted(
+      Var("if")   -> Pattern.Expr(),
+      Var("then") -> Pattern.Expr()
+    ) {
+      case List(s1, s2) =>
+        val body1   = s1.el.body
+        val body2   = s2.el.body
+        val isValid = body1.isValid && body2.isValid
+        if (!isValid) {
+          val stream = s1.el.toStream ++ s2.el.toStream
+          AST.Unexpected("Invalid conditional statement", stream)
+        } else {
+          (body1.toStream, body2.toStream) match {
+            case (List(t1), List(t2)) =>
+              AST.Mixfix(
+                List1(s1.el.head, List(s2.el.head)),
+                List1(t1.el, List(t2.el))
+              )
+            case _ => internalError
+          }
+        }
+      case _ => internalError
     }
 
     Registry(
       groupDef,
-//      Definition.Unrestricted(
-//        Var("if")   -> Pattern.Expr,
-//        Var("then") -> Pattern.Expr
-//      )(a => ???),
+      ifThenDef,
 //      Definition.Unrestricted(
 //        Var("if")   -> Pattern.Expr,
 //        Var("then") -> Pattern.Expr,
@@ -350,7 +372,7 @@ object Template {
     )
   }
 
-  val hardcodedRegistry = buildHardcodedRegistry()
+  val hardcodedRegistry = mkBuiltInRegistry()
 
   def partition(t: AST): AST = {
 
@@ -368,7 +390,7 @@ object Template {
     )
     var builderStack: List[MixfixBuilder] = Nil
 
-    def pushBuilder(ast: AST, off: Int): Unit = {
+    def pushBuilder(ast: Ident, off: Int): Unit = {
 //      println(s"pushBuilder($off)")
       builderStack +:= builder
       builder                = new MixfixBuilder(ast)
@@ -381,7 +403,7 @@ object Template {
       builderStack = builderStack.tail
     }
 
-    def pushSegment(ast: AST, off: Int): Unit = {
+    def pushSegment(ast: Ident, off: Int): Unit = {
 //      println(s"pushSegment($off)")
       builder.revSegs ::= builder.current
       builder.current        = new SegmentBuilder(ast)
@@ -494,36 +516,35 @@ object Template {
             close2()
             go(input)
           }
-        case t1 :: t2_ =>
+        case (t1 @ Shifted(_, el1: Ident)) :: t2_ =>
 //          println(s"> $t1")
-
-          builder.context.get(t1.el) match {
+          builder.context.get(el1) match {
             case Some(tr) =>
 //              println(">> New segment")
-              pushSegment(t1.el, t1.off)
+              pushSegment(el1, t1.off)
 //              builder.mixfix  = builder.mixfix.map(Some(_)).getOrElse(tr.value)
               builder.mixfix  = tr.value.map(Some(_)).getOrElse(builder.mixfix)
               builder.context = builder.context.copy(tree = tr)
               go(t2_)
 
             case None =>
-              root.get(t1.el) match {
+              root.get(el1) match {
                 case Some(tr) =>
 //                  println(">> Root")
                   val context = builder.context
-                  pushBuilder(t1.el, t1.off)
+                  pushBuilder(el1, t1.off)
                   builder.mixfix  = tr.value
                   builder.context = Context(tr, Some(context))
                   go(t2_)
                 case None =>
-//                  println(s"PARENT CHECK (${builder.current.ast}, ${t1.el})")
+//                  println(s"PARENT CHECK (${builder.current.ast}, ${el1})")
                   val currentClosed = builder.context.isEmpty
-                  val parentPrecWin = (builder.current.ast, t1.el) match {
+                  val parentPrecWin = (builder.current.ast, el1) match {
                     case (_: Opr, _) => false
                     case (_, _: Opr) => true
                     case _           => false
                   }
-                  val parentBreak = builder.context.parentCheck(t1.el)
+                  val parentBreak = builder.context.parentCheck(el1)
                   (currentClosed || parentPrecWin) && parentBreak match {
                     case true =>
 //                      println("Parent close")
@@ -536,6 +557,9 @@ object Template {
                   }
               }
           }
+        case t1 :: t2_ =>
+          builder.current.revBody ::= t1
+          go(t2_)
 
       }
     }

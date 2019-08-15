@@ -2,6 +2,7 @@ package org.enso.syntax.text.ast
 
 import org.enso.data.List1
 import org.enso.data.Shifted
+import cats.Monoid
 
 //////////////
 //// Repr ////
@@ -69,6 +70,13 @@ object Repr {
   implicit def fromChar(a: Char):     Repr = Repr(a)
 
   implicit def _Provider_[T: Repr.Of](t: T): Provider = of(t)
+
+  //// Instances ////
+
+  implicit val monoid: Monoid[Repr] = new Monoid[Repr] {
+    def empty:                     Repr = R
+    def combine(l: Repr, r: Repr): Repr = l + r
+  }
 
   /////////////////////////////
   ///// Repr.Of Type Class ////

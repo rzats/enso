@@ -429,6 +429,9 @@ object AST {
   case class Import(path: List1[Cons]) extends AST {
     val repr = R
   }
+  object Import {
+    def apply(head: Cons, tail: List[Cons]): Import = Import(List1(head, tail))
+  }
 
   ///////////////
   //// Block ////
@@ -520,6 +523,19 @@ object AST {
     }
   }
 
+  ////////////////
+  //// Mixfix ////
+  ////////////////
+
+  case class Mixfix(name: List1[Ident], args: List1[AST]) extends AST {
+    val repr = {
+      val lastRepr = if (name.length - args.length > 0) List(R) else List()
+      val argsRepr = args.toList.map(R + " " + _) ++ lastRepr
+      val nameRepr = name.toList.map(Repr.of(_))
+      R + (nameRepr, argsRepr).zipped.map(_ + _)
+    }
+  }
+
   //////////////////
   //// Template ////
   //////////////////
@@ -571,12 +587,16 @@ object AST {
 
       //// Segment Types ////
 
-      final case class Valid(head: AST, body: Pattern.Match_) extends Segment {
+      final case class Valid(head: Ident, body: Pattern.Match_)
+          extends Segment {
         val repr = R + head + body
         def strip(): (Segment.Valid, AST.Stream) = (this, List())
+
+        def toStream: AST.Stream =
+          Shifted(head) :: body.toStream
       }
       object Valid {
-        def apply(head: AST): Valid = new Valid(head, Pattern.Match.Nothing())
+        def apply(head: Ident): Valid = new Valid(head, Pattern.Match.Nothing())
       }
 
       case class Unmatched(pat: Pattern, head: AST, stream: AST.Stream)
@@ -587,7 +607,7 @@ object AST {
       }
 
       case class Unsaturated(
-        head: AST,
+        head: Ident,
         body: Pattern.Match_,
         stream: AST.Stream1
       ) extends Segment {
@@ -605,40 +625,48 @@ object AST {
       }
       object Pattern {
 
-        trait IsStream[T] {
-          def toStream(t: T): AST.Stream
-        }
-        object IsStream {
-          implicit def unit:    IsStream[Unit]   = _ => List()
-          implicit def match_ : IsStream[Match_] = _.toStream
-          implicit def ast:     IsStream[SAST]   = List(_)
-
-          implicit def list[T](implicit ev: IsStream[T]): IsStream[List[T]] =
-            _.flatMap(ev.toStream)
-
-          implicit def opt[T](implicit ev: IsStream[T]): IsStream[Option[T]] =
-            _.map(ev.toStream).getOrElse(List())
-
-          implicit def tup2[T1, T2](
-            implicit ev1: IsStream[T1],
-            ev2: IsStream[T2]
-          ): IsStream[(T1, T2)] =
-            t => ev1.toStream(t._1) ++ ev2.toStream(t._2)
-
-        }
-
         sealed trait Of[T] extends Pattern
 
         type Match_ = Match[_]
-        case class Match[T: Repr.Of: IsStream](pat: Of[T], el: T)
-            extends Repr.Provider {
-          def toStream: AST.Stream = implicitly[IsStream[T]].toStream(el)
+        case class Match[T: Repr.Of](pat: Of[T], el: T) extends Repr.Provider {
           val repr = Repr.of(el)
+
+          def toStream: AST.Stream = this match {
+            case Match.Nothing() => List()
+            case Match.Tok(t)    => List(t)
+            case Match.Opt(t)    => t.map(_.toStream).getOrElse(List())
+            case Match.Many(t)   => t.flatMap(_.toStream)
+            case Match.Seq(l, r) => l.toStream ++ r.toStream
+            case Match.Build(t)  => List(t)
+            case Match.Not()     => List()
+            case Match.Or(t)     => t.toStream
+            case Match.Cls(t)    => List(t)
+            case Match.Tag(t)    => t.toStream
+            case Match.Err(t)    => List(t)
+          }
+
+          def isValid: Boolean = this match {
+            case Match.Nothing() => true
+            case Match.Tok(_)    => true
+            case Match.Opt(t)    => t.forall(_.isValid)
+            case Match.Many(t)   => t.forall(_.isValid)
+            case Match.Seq(l, r) => l.isValid && r.isValid
+            case Match.Build(_)  => true
+            case Match.Not()     => true
+            case Match.Or(t)     => t.isValid
+            case Match.Cls(_)    => true
+            case Match.Tag(t)    => t.isValid
+            case Match.Err(_)    => false
+          }
         }
 
         object Match {
           object Nothing {
             def apply() = Match(Pattern.Nothing(), ())
+            def unapply(t: Match_): Boolean = t match {
+              case Match(_: Pattern.Nothing, t) => true
+              case _                            => false
+            }
           }
 
           object Seq {
@@ -656,8 +684,57 @@ object AST {
           }
 
           object Tok {
-            def unapply(t: Match_): Option[AST] = t match {
-              case Match(_: Pattern.Tok, t) => Some(t.el)
+            def unapply(t: Match_): Option[SAST] = t match {
+              case Match(_: Pattern.Tok, t) => Some(t)
+              case _                        => None
+            }
+          }
+
+          object Opt {
+            def unapply(t: Match_): Option[Option[Match_]] = t match {
+              case Match(_: Pattern.Opt, t) => Some(t)
+              case _                        => None
+            }
+          }
+
+          object Build {
+            def unapply(t: Match_): Option[SAST] = t match {
+              case Match(_: Pattern.Build, t) => Some(t)
+              case _                          => None
+            }
+          }
+
+          object Not {
+            def unapply(t: Match_): Boolean = t match {
+              case Match(_: Pattern.Not, t) => true
+              case _                        => false
+            }
+          }
+
+          object Or {
+            def unapply(t: Match_): Option[Match_] = t match {
+              case Match(_: Pattern.Or, t) => Some(t)
+              case _                       => None
+            }
+          }
+
+          object Cls {
+            def unapply(t: Match_): Option[SAST] = t match {
+              case Match(_: Pattern.Cls[_], t) => Some(t)
+              case _                           => None
+            }
+          }
+
+          object Tag {
+            def unapply(t: Match_): Option[Match_] = t match {
+              case Match(_: Pattern.Tag, t) => Some(t)
+              case _                        => None
+            }
+          }
+
+          object Err {
+            def unapply(t: Match_): Option[SAST] = t match {
+              case Match(_: Pattern.Err, t) => Some(t)
               case _                        => None
             }
           }
@@ -783,28 +860,13 @@ object AST {
   //// Group ////
   ///////////////
 
-  type Group = _Group
-  final case class _Group(
-    loff: Int         = 0,
-    body: Option[AST] = None,
-    roff: Int         = 0
-  ) extends AST {
-    val repr = R + loff + body + roff
+  final case class Group(body: Option[AST] = None) extends AST {
+    val repr = R + body
   }
   object Group {
-    def apply(loff: Int, body: Option[AST], roff: Int) =
-      _Group(loff, body, roff)
-    def apply(loff: Int, body: AST, roff: Int): Group =
-      Group(loff, Some(body), roff)
-    def apply(loff: Int, body: Option[AST]): Group = Group(loff, body, 0)
-    def apply(loff: Int, body: AST):         Group = Group(loff, Some(body), 0)
-    def apply(body: Option[AST], roff: Int): Group = Group(0, body, roff)
-    def apply(body: AST, roff: Int):         Group = Group(0, Some(body), roff)
-    def apply(body: Option[AST]):            Group = Group(0, body, 0)
-    def apply(body: AST):                    Group = Group(0, Some(body), 0)
-    def apply(loff: Int):                    Group = Group(loff, None, 0)
-    def apply():                             Group = Group(0, None, 0)
-    def unapply(t: Group) = Some(t.body)
+    def apply(body: AST):  Group = Group(Some(body))
+    def apply(body: SAST): Group = Group(body.el)
+    def apply():           Group = Group(None)
   }
 
   /////////////
