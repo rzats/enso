@@ -35,7 +35,7 @@ object Main extends App {
   val p2 = new Parser()
 
 //  val inp = "(a b)"
-  val inp = "(a b)"
+  val inp = "(a b) "
   val out = p1.run(inp)
 
   pprint.pprintln(out, width = 50, height = 10000)
@@ -45,13 +45,13 @@ object Main extends App {
       v.lines.head.elem match {
         case Some(ast) =>
           ast match {
-            case t: AST.Template.Valid =>
+            case t: AST.Template.Matched =>
               println("\n---\n")
               Template.hardcodedRegistry.get(t.path()) match {
                 case None => println(":(")
                 case Some(spec) =>
                   println("COMPUTING")
-                  val out = spec.finalizer(t.segments.toList)
+                  val out = spec.finalizer(t.segments.toList.map(_.el))
                   println(out)
               }
             case _ =>

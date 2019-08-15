@@ -4,6 +4,7 @@ import cats.implicits._
 import monocle.macros.GenLens
 import org.enso.data.Compare._
 import org.enso.data.List1
+import org.enso.data.List1._
 import org.enso.data.Shifted
 import org.enso.data.Tree
 import org.enso.syntax.text.ast.Repr.R
@@ -543,17 +544,12 @@ object AST {
   trait Template extends AST {}
   object Template {
 
-    final case class Valid(segments: Shifted.List1[Segment.Valid])
+    final case class Matched(segments: Shifted.List1[Segment.Matched])
         extends Template {
       val repr = R + segments.map(_.repr)
 
       def path(): List1[AST] =
         segments.toList1.map(_.el.head)
-    }
-
-    final case class Invalid(segments: Shifted.List1[Segment])
-        extends Template {
-      val repr = R + segments.map(_.repr)
     }
 
     case class Partial(
@@ -568,52 +564,25 @@ object AST {
       }
     }
 
-    def validate(
-      segments: Shifted.List1[Segment]
-    ): Option[Shifted.List1[Segment.Valid]] = {
-      val segList = segments.toList().map { t =>
-        t.el match {
-          case s: Segment.Valid => Some(Shifted(t.off, s))
-          case _                => None
-        }
-      }
-      segList.sequence.map(s => Shifted.List1.fromListDropHead(s))
-    }
-
-    sealed trait Segment extends Symbol {
-      def strip(): (Segment, AST.Stream)
-    }
     object Segment {
 
       //// Segment Types ////
 
-      final case class Valid(head: Ident, body: Pattern.Match_)
-          extends Segment {
+      final case class Matched(head: Ident, body: Pattern.Match_) {
         val repr = R + head + body
-        def strip(): (Segment.Valid, AST.Stream) = (this, List())
 
         def toStream: AST.Stream =
           Shifted(head) :: body.toStream
-      }
-      object Valid {
-        def apply(head: Ident): Valid = new Valid(head, Pattern.Match.Nothing())
-      }
 
-      case class Unmatched(pat: Pattern, head: AST, stream: AST.Stream)
-          extends Segment {
-        val repr = R + head + stream
-        def strip(): (Unmatched, AST.Stream) =
-          (Unmatched(pat, head, List()), stream)
-      }
+        def isValid: Boolean =
+          body.isValid
 
-      case class Unsaturated(
-        head: Ident,
-        body: Pattern.Match_,
-        stream: AST.Stream1
-      ) extends Segment {
-        val repr = R + head + body + stream
-        def strip(): (Segment.Valid, AST.Stream) =
-          (Segment.Valid(head, body), stream.toList)
+        def map(f: Pattern.Match_ => Pattern.Match_): Matched =
+          copy(body = f(body))
+      }
+      object Matched {
+        def apply(head: Ident): Matched =
+          new Matched(head, Pattern.Match.Nothing())
       }
 
       sealed trait Pattern {
@@ -634,7 +603,6 @@ object AST {
           def toStream: AST.Stream = this match {
             case Match.Nothing() => List()
             case Match.Tok(t)    => List(t)
-            case Match.Opt(t)    => t.map(_.toStream).getOrElse(List())
             case Match.Many(t)   => t.flatMap(_.toStream)
             case Match.Seq(l, r) => l.toStream ++ r.toStream
             case Match.Build(t)  => List(t)
@@ -643,12 +611,12 @@ object AST {
             case Match.Cls(t)    => List(t)
             case Match.Tag(t)    => t.toStream
             case Match.Err(t)    => List(t)
+            case Match.End()     => List()
           }
 
           def isValid: Boolean = this match {
             case Match.Nothing() => true
             case Match.Tok(_)    => true
-            case Match.Opt(t)    => t.forall(_.isValid)
             case Match.Many(t)   => t.forall(_.isValid)
             case Match.Seq(l, r) => l.isValid && r.isValid
             case Match.Build(_)  => true
@@ -657,6 +625,7 @@ object AST {
             case Match.Cls(_)    => true
             case Match.Tag(t)    => t.isValid
             case Match.Err(_)    => false
+            case Match.End()     => true
           }
         }
 
@@ -686,13 +655,6 @@ object AST {
           object Tok {
             def unapply(t: Match_): Option[SAST] = t match {
               case Match(_: Pattern.Tok, t) => Some(t)
-              case _                        => None
-            }
-          }
-
-          object Opt {
-            def unapply(t: Match_): Option[Option[Match_]] = t match {
-              case Match(_: Pattern.Opt, t) => Some(t)
               case _                        => None
             }
           }
@@ -739,18 +701,25 @@ object AST {
             }
           }
 
+          object End {
+            def unapply(t: Match_): Boolean = t match {
+              case Match(_: Pattern.End, _) => true
+              case _                        => false
+            }
+          }
+
         }
 
         //// Primitive ////
 
         case class Nothing()                     extends Of[Unit]
         case class Tok(tok: AST)                 extends Of[SAST]
-        case class Opt(pat: Pattern)             extends Of[Option[Match_]]
         case class Many(pat: Pattern)            extends Of[List[Match_]]
         case class Seq(p1: Pattern, p2: Pattern) extends Of[(Match_, Match_)]
         case class Build(pat: Pattern)           extends Of[SAST]
         case class Not(pat: Pattern)             extends Of[Unit]
         case class Or(p1: Pattern, p2: Pattern)  extends Of[Match_]
+        case class End()                         extends Of[Unit]
 
         case class Cls[T <: AST]()(implicit val tag: ClassTag[T])
             extends Of[Shifted[T]]
@@ -767,6 +736,14 @@ object AST {
         }
 
         //// Derived ////
+
+        object Opt {
+          def apply(pat: Pattern) = pat | Nothing()
+          def unapply(t: Pattern): Option[Pattern] = t match {
+            case Or(pat, Nothing()) => Some(pat)
+            case _                  => None
+          }
+        }
 
         object Any {
           def apply(): Pattern = Cls[AST]()
@@ -820,6 +797,10 @@ object AST {
           }
         }
 
+        object RestOfStream {
+          def apply(): Many = Many(Any())
+        }
+
         //// Conversions ////
 
         implicit def fromAST(ast: AST): Pattern = Tok(ast)
@@ -829,30 +810,63 @@ object AST {
 
     //// Definition ////
 
-    case class Definition(
-      segments: Definition.Input
+    type Definition = _Definition
+    case class _Definition(
+      segments: List1[Definition.Segment],
+      finalizer: Definition.Finalizer
     )
     object Definition {
-      type Input     = List1[Segment]
+      import Segment.Pattern
+      import Segment.Pattern._
+
+      def apply(segments: List1[Segment], finalizer: Finalizer): Definition = {
+        def checkMatch(p: Pattern): Pattern =
+          p | Err("unmatched pattern", RestOfStream())
+
+        def checkFullMatch(p: Pattern): Pattern =
+          p >> (End() | Err("unmatched tokens", RestOfStream()))
+
+        def dummyLastSeg(p: Pattern): Pattern =
+          p >> Nothing()
+
+        def addDefaultChecks(segs: List1[Segment]): List1[Segment] =
+          segs
+            .map(_.map(checkMatch))
+            .mapInit(_.map(checkFullMatch))
+            .mapLast(_.map(dummyLastSeg))
+
+        def skipDefaultChecks(
+          segs: List[Segment.Matched]
+        ): List[Segment.Matched] =
+          segs.map(_.map {
+            case Match.Seq(p, _) => p
+            case _               => throw new Error("Internal error")
+          })
+
+        val segments2 = addDefaultChecks(segments)
+        def finalizer2(segs: List[Segment.Matched]) = {
+          if (!segs.forall(_.isValid)) {
+            val stream = segs.flatMap(_.toStream)
+            AST.Unexpected("Invalid statement", stream)
+          } else finalizer(skipDefaultChecks(segs))
+        }
+
+        _Definition(segments2, finalizer2)
+      }
+      def apply(t1: Segment, ts: Segment*)(finalizer: Finalizer): Definition =
+        Definition(List1(t1, ts: _*), finalizer)
+
       type Segment   = (AST, Segment.Pattern)
-      type Finalizer = List[Shifted[Template.Segment.Valid]] => AST
+      type Finalizer = List[Segment.Matched] => AST
 
-      case class Spec[T](scope: Scope, finalizer: Finalizer, el: T) {
-        def map[S](fn: T => S): Spec[S] = Spec(scope, finalizer, fn(el))
-      }
-
-      def Restricted[T](t1: Segment, ts: Segment*)(fin: Finalizer) =
-        Spec(Scope.Restricted, fin, Definition(List1(t1, ts: _*)))
-
-      def Unrestricted[T](t1: Segment, ts: Segment*)(fin: Finalizer) =
-        Spec(Scope.Unrestricted, fin, Definition(List1(t1, ts: _*)))
-
-      trait Scope
-      object Scope {
-        case object Restricted   extends Scope
-        case object Unrestricted extends Scope
-      }
-
+//      case class Spec[T](finalizer: Finalizer, el: T) {
+//        def map[S](fn: T => S): Spec[S] = Spec(finalizer, fn(el))
+//      }
+//
+//      object Spec {
+//        def apply(t1: Segment, ts: Segment*)(fin: Finalizer): Spec[Definition] =
+//          Spec(fin, Definition(List1(t1, ts: _*)))
+//      }
     }
   }
 

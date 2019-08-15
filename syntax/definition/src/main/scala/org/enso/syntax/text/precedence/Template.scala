@@ -30,13 +30,16 @@ object Template {
   //////////////////
 
   final case class Registry() {
+    import Registry._
+
     var tree: Registry.Tree = data.Tree()
 
     override def toString: String =
       tree.toString
 
-    def insert(t: Definition.Spec[Definition]): Unit =
-      tree += t.el.segments.toList.map(_._1) -> t.map(_.segments.map(_._2))
+    def insert(t: Definition): Unit =
+      tree += t.segments.toList
+        .map(_._1) -> Value(t.segments.map(_._2), t.finalizer)
 
     def get(path: List1[AST]): Option[Registry.Value] =
       tree.getValue(path.toList)
@@ -44,11 +47,15 @@ object Template {
   }
 
   object Registry {
-    type Value = Definition.Spec[List1[Template.Segment.Pattern]]
-    type Tree  = data.Tree[AST, Value]
-    def apply(ts: Definition.Spec[Definition]*): Registry = {
+    case class Value(
+      path: List1[Template.Segment.Pattern],
+      finalizer: Definition.Finalizer
+    )
+//    type Value = Definition.Spec[List1[Template.Segment.Pattern]]
+    type Tree = data.Tree[AST, Value]
+    def apply(defs: Definition*): Registry = {
       val registry = new Registry()
-      ts.foreach(registry.insert)
+      defs.foreach(registry.insert)
       registry
     }
   }
@@ -104,18 +111,23 @@ object Template {
         case seg1 :: seg2_ => Some(Operator.rebuild(List1(seg1, seg2_)))
       }
 
-    def build(tp: Pattern): Shifted[Segment] = {
+    def build(tp: Pattern): (Shifted[Segment.Matched], AST.Stream) = {
       val stream = revBody.reverse
-      val segment2 = resolveStep(tp, stream) match {
-        case None => Segment.Unmatched(tp, ast, stream)
+      resolveStep(tp, stream) match {
+        case None =>
+          throw new Error(
+            "Internal error: template pattern segment was unmatched"
+          )
+        //Segment.Unmatched(tp, ast, stream)
         case Some(rr) =>
-          rr.stream match {
-            case Nil     => Segment.Valid(ast, rr.elem)
-            case s :: ss => Segment.Unsaturated(ast, rr.elem, List1(s, ss))
-          }
+          (Shifted(offset, Segment.Matched(ast, rr.elem)), rr.stream)
+//          rr.stream match {
+//            case Nil     => Segment.Valid(ast, rr.elem)
+//            case s :: ss => Segment.Unsaturated(ast, rr.elem, List1(s, ss))
+//          }
       }
 
-      Shifted(offset, segment2)
+//      Shifted(offset, segment2)
     }
 
     //////////////////////////////////////
@@ -144,16 +156,16 @@ object Template {
     def resolveStep(p: Pattern, stream: AST.Stream): Option[ResolveResult] = {
       import Pattern._
 
-      def ret2[S: Repr.Of](
-        pat: Pattern.Of[S],
-        res: S,
-        stream: AST.Stream
-      ) =
+      def ret[S: Repr.Of](pat: Pattern.Of[S], res: S, stream: AST.Stream) =
         Some(ResolveResult(Pattern.Match(pat, res), stream))
 
       p match {
+
+        case p @ Pattern.End() =>
+          if (stream.isEmpty) ret(p, (), stream) else None
+
         case p @ Pattern.Nothing() =>
-          ret2(p, (), stream)
+          ret(p, (), stream)
 
         case p @ Pattern.Tag(tag, pat2) =>
           resolveStep(pat2, stream).map(_.map(Pattern.Match(p, _)))
@@ -170,26 +182,20 @@ object Template {
               resolveStep(pat2, r1.stream) match {
                 case None => None
                 case Some(r2) =>
-                  ret2(p, (r1.elem, r2.elem), r2.stream)
+                  ret(p, (r1.elem, r2.elem), r2.stream)
               }
           }
 
         case p @ Pattern.Cls() =>
           stream match {
             case Shifted(off, p.tag(t)) :: ss =>
-              ret2(p, Shifted(off, t), ss)
+              ret(p, Shifted(off, t), ss)
             case _ => None
           }
 
         case p @ Pattern.Many(p2) =>
           val (lst, stream2) = resolveList(p2, stream)
-          ret2(p, lst, stream2)
-
-        case p @ Pattern.Opt(p2) =>
-          resolveStep(p2, stream) match {
-            case None    => ret2(p, None, stream)
-            case Some(r) => ret2(p, Some(r.elem), r.stream)
-          }
+          ret(p, lst, stream2)
 
         case p @ Or(p1, p2) =>
           resolveStep(p1, stream) match {
@@ -200,7 +206,7 @@ object Template {
         case p @ Pattern.Tok(tok) =>
           stream match {
             case Shifted(off, t) :: ss =>
-              if (tok == t) ret2(p, Shifted(off, t), ss) else None
+              if (tok == t) ret(p, Shifted(off, t), ss) else None
             case _ => None
           }
 
@@ -214,7 +220,7 @@ object Template {
         case p @ Not(p1) =>
           resolveStep(p1, stream) match {
             case Some(_) => None
-            case None    => ret2(p, (), stream)
+            case None    => ret(p, (), stream)
           }
       }
     }
@@ -236,12 +242,13 @@ object Template {
 
     import Template.Segment.Pattern
 
-    val groupDef = Definition.Restricted(
-      Opr("(") -> Pattern.Opt(Pattern.Cls[Ident]),
+    val groupDef = Definition(
+//      Opr("(") -> Pattern.Opt(Pattern.Expr()),
+      Opr("(") -> Pattern.Any(),
       Opr(")") -> Pattern.Nothing()
     ) {
-      case List(s1, s2) =>
-        s1.el.body.toStream match {
+      case List(st1, _) =>
+        st1.body.toStream match {
           case List()  => AST.Group()
           case List(t) => AST.Group(t)
           case _       => internalError
@@ -306,55 +313,55 @@ object Template {
 //      go(lst, Nil, Nil, Nil)
 //    }
 
-    val importDef = Definition.Unrestricted(
+    val importDef = Definition(
       Var("import") ->
       Pattern.SepList(Pattern.Cls[Cons], AST.Opr("."), "expected module name")
     ) {
       case List(s1) =>
         import Pattern.Match._
-        val body = s1.el.body
-        if (!body.isValid) {
-          val toks = Shifted(s1.el.head) :: body.toStream
-          AST.Unexpected("wrong import statement", toks)
-        } else {
-          s1.el.body match {
-            case Seq(headMatch, Many(tailMatch)) =>
-              def unwrapSeg(lseg: Pattern.Match_): Cons =
-                lseg.toStream match {
-                  case List(Shifted(_, t @ Cons(_))) => t
-                  case _                             => internalError
-                }
-              val head = unwrapSeg(headMatch)
-              val tail = tailMatch.map {
-                case Seq(Tok(Shifted(_, Opr("."))), seg) => unwrapSeg(seg)
-                case _                                   => internalError
+        s1.body match {
+          case Seq(headMatch, Many(tailMatch)) =>
+            def unwrapSeg(lseg: Pattern.Match_): Cons =
+              lseg.toStream match {
+                case List(Shifted(_, t @ Cons(_))) => t
+                case _                             => internalError
               }
-              AST.Import(head, tail)
-          }
+            val head = unwrapSeg(headMatch)
+            val tail = tailMatch.map {
+              case Seq(Tok(Shifted(_, Opr("."))), seg) => unwrapSeg(seg)
+              case _                                   => internalError
+            }
+            AST.Import(head, tail)
         }
       case _ => internalError
     }
 
-    val ifThenDef = Definition.Unrestricted(
+    val ifThenDef = Definition(
       Var("if")   -> Pattern.Expr(),
       Var("then") -> Pattern.Expr()
     ) {
       case List(s1, s2) =>
-        val body1   = s1.el.body
-        val body2   = s2.el.body
-        val isValid = body1.isValid && body2.isValid
-        if (!isValid) {
-          val stream = s1.el.toStream ++ s2.el.toStream
-          AST.Unexpected("Invalid conditional statement", stream)
-        } else {
-          (body1.toStream, body2.toStream) match {
-            case (List(t1), List(t2)) =>
-              AST.Mixfix(
-                List1(s1.el.head, List(s2.el.head)),
-                List1(t1.el, List(t2.el))
-              )
-            case _ => internalError
-          }
+        (s1.body.toStream, s2.body.toStream) match {
+          case (List(t1), List(t2)) =>
+            AST.Mixfix(List1(s1.head, s2.head), List1(t1.el, t2.el))
+          case _ => internalError
+        }
+      case _ => internalError
+    }
+
+    val ifThenElseDef = Definition(
+      Var("if")   -> Pattern.Expr(),
+      Var("then") -> Pattern.Expr(),
+      Var("else") -> Pattern.Expr()
+    ) {
+      case List(s1, s2, s3) =>
+        (s1.body.toStream, s2.body.toStream, s3.body.toStream) match {
+          case (List(t1), List(t2), List(t3)) =>
+            AST.Mixfix(
+              List1(s1.head, s2.head, s3.head),
+              List1(t1.el, t2.el, t3.el)
+            )
+          case _ => internalError
         }
       case _ => internalError
     }
@@ -362,6 +369,7 @@ object Template {
     Registry(
       groupDef,
       ifThenDef,
+      ifThenElseDef,
 //      Definition.Unrestricted(
 //        Var("if")   -> Pattern.Expr,
 //        Var("then") -> Pattern.Expr,
@@ -378,14 +386,10 @@ object Template {
 
     var builder: MixfixBuilder = new MixfixBuilder(Blank)
     builder.mixfix = Some(
-      Definition.Spec(
-        Definition.Scope.Unrestricted, {
-          case Shifted(_, Segment.Valid(_, Pattern.Match(Pattern.Expr(), e))) :: Nil =>
-            ??? //(e: AST)
-
-          case _ => throw new scala.Error("Impossible happened")
-        },
-        List1(Template.Segment.Pattern.Expr(), Nil)
+      Registry.Value(
+        List1(Template.Segment.Pattern.Expr(), Nil), { _ =>
+          throw new scala.Error("Impossible happened")
+        }
       )
     )
     var builderStack: List[MixfixBuilder] = Nil
@@ -414,20 +418,15 @@ object Template {
 
     val root = Context(hardcodedRegistry.tree)
 
-    def stripLastSegment(
-      scope: Definition.Scope,
-      revSegs: List1[Shifted[Template.Segment]]
-    ): (List1[Shifted[Template.Segment]], AST.Stream) = {
-      if (scope == Definition.Scope.Unrestricted)
-        (revSegs.reverse, List())
-      else {
-        val lastSeg                = revSegs.head
-        val (lastSegEl, revStream) = lastSeg.el.strip()
-        val lastSeg2               = Shifted(lastSeg.off, lastSegEl)
-        val revSegments            = List1(lastSeg2, revSegs.tail)
-        (revSegments.reverse, revStream.reverse)
-      }
-    }
+//    def stripLastSegment(
+//      revSegs: List1[Shifted[Template.Segment]]
+//    ): (List1[Shifted[Template.Segment]], AST.Stream) = {
+//      val lastSeg                = revSegs.head
+//      val (lastSegEl, revStream) = lastSeg.el.strip()
+//      val lastSeg2               = Shifted(lastSeg.off, lastSegEl)
+//      val revSegments            = List1(lastSeg2, revSegs.tail)
+//      (revSegments.reverse, revStream.reverse)
+//    }
 
     def close(): AST.Stream1 = {
 //      println(s"\n\n-----------------------------------\n\n")
@@ -451,19 +450,30 @@ object Template {
             List1(newTok)
 
           case Some(ts) =>
-            val revSegTps      = ts.el.reverse
-            val revSegs        = revSegBldrs.zipWith(revSegTps)(_.build(_))
-            val (segs, stream) = stripLastSegment(ts.scope, revSegs)
-            val shiftSegs      = Shifted.List1(segs.head.el, segs.tail)
-            val optValSegs     = Template.validate(shiftSegs)
+            val revSegTps     = ts.path.reverse
+            val revSegsOuts   = revSegBldrs.zipWith(revSegTps)(_.build(_))
+            val revSegs       = revSegsOuts.map(_._1)
+            val revSegStreams = revSegsOuts.map(_._2)
+            val stream        = revSegStreams.head.reverse
+            val segs          = revSegs.reverse
+//            val (segs, stream) = stripLastSegment(revSegs)
+            val shiftSegs = Shifted.List1(segs.head.el, segs.tail)
+//            val optValSegs = Template.validate(shiftSegs)
 
-            val template = optValSegs match {
-              case None => Template.Invalid(shiftSegs)
-              case Some(validSegs) =>
-                val validSegsList = validSegs.toList()
-//                val ast           = ts.finalizer(validSegsList)
-                Template.Valid(validSegs) //, ast)
+            if (!revSegStreams.tail.forall(_.isEmpty)) {
+              throw new Error(
+                "Internal error: not all template segments were fully matched"
+              )
             }
+
+            val template = Template.Matched(shiftSegs)
+//            val template = optValSegs match {
+//              case None => Template.Invalid(shiftSegs)
+//              case Some(validSegs) =>
+//                val validSegsList = validSegs.toList()
+////                val ast           = ts.finalizer(validSegsList)
+//                Template.Valid(validSegs) //, ast)
+//            }
 
             val newTok = Shifted(segs.head.off, template)
 
@@ -502,7 +512,7 @@ object Template {
           if (builderStack.isEmpty) {
 //            println("End of input (not in stack)")
             close().head.el match {
-              case Template.Valid(segs) =>
+              case Template.Matched(segs) =>
                 segs.head.body.toStream match {
                   case Nil    => throw new scala.Error("Impossible happened.")
                   case s :: _ => s.el

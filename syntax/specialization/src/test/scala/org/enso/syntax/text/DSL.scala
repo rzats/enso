@@ -7,18 +7,18 @@ import org.enso.data.Shifted
 object DSL {
 
   trait MixfixBldr[T] {
-    def add(m: Template.Valid, i: Int, t: T): Template.Valid
+    def add(m: Template.Matched, i: Int, t: T): Template.Matched
   }
   trait MixfixBldr1[T] {
-    def add1(m: Template.Valid, i: Int, t: T): Template.Valid
+    def add1(m: Template.Matched, i: Int, t: T): Template.Matched
   }
 
   implicit val string_mixfixBuilder: MixfixBldr[String] =
-    (m: Template.Valid, i: Int, t: String) =>
+    (m: Template.Matched, i: Int, t: String) =>
       implicitly[MixfixBldr[AST]].add(m, i, fromStringRaw(t))
 
   implicit val ast_mixfixBuilder: MixfixBldr[AST] =
-    (m: Template.Valid, i: Int, t: AST) => {
+    (m: Template.Matched, i: Int, t: AST) => {
 
       def dd() = {
         val seg = Template.Segment.Valid(t, Template.Segment.Body.Empty)
@@ -29,11 +29,11 @@ object DSL {
       if (tail.nonEmpty) {
         val sss = tail.last.el
         tail.last.el match {
-          case seg: Template.Segment.Valid =>
+          case seg: Template.Segment.Matched =>
             seg.body match {
               case Template.Segment.Body.Empty => {
                 val seg2 =
-                  Template.Segment.Valid(
+                  Template.Segment.Matched(
                     seg.head,
                     Template.Segment.Body.Expr(Shifted(i, t))
                   )
@@ -49,11 +49,11 @@ object DSL {
     }
 
   implicit val string_mixfixBuilder1: MixfixBldr1[String] =
-    (m: Template.Valid, i: Int, t: String) =>
+    (m: Template.Matched, i: Int, t: String) =>
       implicitly[MixfixBldr1[AST]].add1(m, i, fromStringRaw(t))
 
   implicit val ast_mixfixBuilder1: MixfixBldr1[AST] =
-    (m: Template.Valid, i: Int, t: AST) => {
+    (m: Template.Matched, i: Int, t: AST) => {
 
       def dd() = {
         val seg = Template.Segment.Valid(t, Template.Segment.Body.Empty)
@@ -63,11 +63,11 @@ object DSL {
       val tail = m.segments.tail
       if (tail.nonEmpty) {
         tail.last.el match {
-          case seg: Template.Segment.Valid =>
+          case seg: Template.Segment.Matched =>
             seg.body match {
               case Template.Segment.Body.Empty => {
                 val seg2 =
-                  Template.Segment.Valid(
+                  Template.Segment.Matched(
                     seg.head,
                     Template.Segment.Body.Expr(Shifted(i, t))
                   )
@@ -84,7 +84,7 @@ object DSL {
 
   implicit class MixfixBuilder_String(t: String) {
 
-    def empty(i: Int, s: String) = Template.Valid(
+    def empty(i: Int, s: String) = Template.Matched(
       Shifted.List1(
         Template.Segment.Valid(fromStringRaw(t), Template.Segment.Body.Empty),
         List(Shifted(i, Template.Segment.Valid(fromStringRaw(s))))
@@ -110,46 +110,46 @@ object DSL {
       unmatched(tree)
     }
 
-    def II(s: String):          Template.Valid = empty(0, s)
-    def I_I(s: String):         Template.Valid = empty(1, s)
-    def I__I(s: String):        Template.Valid = empty(2, s)
-    def I___I(s: String):       Template.Valid = empty(3, s)
-    def I____I(s: String):      Template.Valid = empty(4, s)
-    def I_____I(s: String):     Template.Valid = empty(5, s)
-    def I______I(s: String):    Template.Valid = empty(6, s)
-    def I_______I(s: String):   Template.Valid = empty(7, s)
-    def I________I(s: String):  Template.Valid = empty(8, s)
-    def I_________I(s: String): Template.Valid = empty(9, s)
+    def II(s: String):          Template.Matched = empty(0, s)
+    def I_I(s: String):         Template.Matched = empty(1, s)
+    def I__I(s: String):        Template.Matched = empty(2, s)
+    def I___I(s: String):       Template.Matched = empty(3, s)
+    def I____I(s: String):      Template.Matched = empty(4, s)
+    def I_____I(s: String):     Template.Matched = empty(5, s)
+    def I______I(s: String):    Template.Matched = empty(6, s)
+    def I_______I(s: String):   Template.Matched = empty(7, s)
+    def I________I(s: String):  Template.Matched = empty(8, s)
+    def I_________I(s: String): Template.Matched = empty(9, s)
 
     def Ix(t: Tree[AST, Unit]): Template.Partial = unmatched(t)
     def Ix(t: String*):         Template.Partial = unmatched(t)
     def Ixx(t: List[String]*):  Template.Partial = unmatched_lst(t)
 
-    def I(s: AST):          Template.Valid = fromStringRaw(t)._addSeg_(0)(s)
-    def I_(s: AST):         Template.Valid = fromStringRaw(t)._addSeg_(1)(s)
-    def I__(s: AST):        Template.Valid = fromStringRaw(t)._addSeg_(2)(s)
-    def I___(s: AST):       Template.Valid = fromStringRaw(t)._addSeg_(3)(s)
-    def I____(s: AST):      Template.Valid = fromStringRaw(t)._addSeg_(4)(s)
-    def I_____(s: AST):     Template.Valid = fromStringRaw(t)._addSeg_(5)(s)
-    def I______(s: AST):    Template.Valid = fromStringRaw(t)._addSeg_(6)(s)
-    def I_______(s: AST):   Template.Valid = fromStringRaw(t)._addSeg_(7)(s)
-    def I________(s: AST):  Template.Valid = fromStringRaw(t)._addSeg_(8)(s)
-    def I_________(s: AST): Template.Valid = fromStringRaw(t)._addSeg_(9)(s)
+    def I(s: AST):          Template.Matched = fromStringRaw(t)._addSeg_(0)(s)
+    def I_(s: AST):         Template.Matched = fromStringRaw(t)._addSeg_(1)(s)
+    def I__(s: AST):        Template.Matched = fromStringRaw(t)._addSeg_(2)(s)
+    def I___(s: AST):       Template.Matched = fromStringRaw(t)._addSeg_(3)(s)
+    def I____(s: AST):      Template.Matched = fromStringRaw(t)._addSeg_(4)(s)
+    def I_____(s: AST):     Template.Matched = fromStringRaw(t)._addSeg_(5)(s)
+    def I______(s: AST):    Template.Matched = fromStringRaw(t)._addSeg_(6)(s)
+    def I_______(s: AST):   Template.Matched = fromStringRaw(t)._addSeg_(7)(s)
+    def I________(s: AST):  Template.Matched = fromStringRaw(t)._addSeg_(8)(s)
+    def I_________(s: AST): Template.Matched = fromStringRaw(t)._addSeg_(9)(s)
 
-    def I1(s: AST):          Template.Valid = fromStringRaw(t)._addSeg1_(0)(s)
-    def I1_(s: AST):         Template.Valid = fromStringRaw(t)._addSeg1_(1)(s)
-    def I1__(s: AST):        Template.Valid = fromStringRaw(t)._addSeg1_(2)(s)
-    def I1___(s: AST):       Template.Valid = fromStringRaw(t)._addSeg1_(3)(s)
-    def I1____(s: AST):      Template.Valid = fromStringRaw(t)._addSeg1_(4)(s)
-    def I1_____(s: AST):     Template.Valid = fromStringRaw(t)._addSeg1_(5)(s)
-    def I1______(s: AST):    Template.Valid = fromStringRaw(t)._addSeg1_(6)(s)
-    def I1_______(s: AST):   Template.Valid = fromStringRaw(t)._addSeg1_(7)(s)
-    def I1________(s: AST):  Template.Valid = fromStringRaw(t)._addSeg1_(8)(s)
-    def I1_________(s: AST): Template.Valid = fromStringRaw(t)._addSeg1_(9)(s)
+    def I1(s: AST):          Template.Matched = fromStringRaw(t)._addSeg1_(0)(s)
+    def I1_(s: AST):         Template.Matched = fromStringRaw(t)._addSeg1_(1)(s)
+    def I1__(s: AST):        Template.Matched = fromStringRaw(t)._addSeg1_(2)(s)
+    def I1___(s: AST):       Template.Matched = fromStringRaw(t)._addSeg1_(3)(s)
+    def I1____(s: AST):      Template.Matched = fromStringRaw(t)._addSeg1_(4)(s)
+    def I1_____(s: AST):     Template.Matched = fromStringRaw(t)._addSeg1_(5)(s)
+    def I1______(s: AST):    Template.Matched = fromStringRaw(t)._addSeg1_(6)(s)
+    def I1_______(s: AST):   Template.Matched = fromStringRaw(t)._addSeg1_(7)(s)
+    def I1________(s: AST):  Template.Matched = fromStringRaw(t)._addSeg1_(8)(s)
+    def I1_________(s: AST): Template.Matched = fromStringRaw(t)._addSeg1_(9)(s)
   }
 
   implicit class MixfixBuilder_AST(t: AST) {
-    def _addSeg_(i: Int)(s: AST): Template.Valid = Template.Valid(
+    def _addSeg_(i: Int)(s: AST): Template.Matched = Template.Matched(
       Shifted.List1(
         Template.Segment.Valid(
           t,
@@ -158,7 +158,7 @@ object DSL {
         Nil
       )
     )
-    def _addSeg1_(i: Int)(s: AST): Template.Valid = Template.Valid(
+    def _addSeg1_(i: Int)(s: AST): Template.Matched = Template.Matched(
       Shifted.List1(
         Template.Segment.Valid(t, Template.Segment.Body.Expr(Shifted(i, s))),
         Nil
@@ -187,7 +187,7 @@ object DSL {
     val I1_________ = _addSeg1_(9)(_)
   }
 
-  implicit class MixfixBuilder_Mixfix(t: Template.Valid) {
+  implicit class MixfixBuilder_Mixfix(t: Template.Matched) {
     type M[T]  = MixfixBldr[T]
     type M1[T] = MixfixBldr1[T]
 
@@ -196,7 +196,7 @@ object DSL {
 
     def unmatched(tree: Tree[AST, Unit]): Template.Partial = {
       val segments2 = t.segments.map {
-        case seg: Template.Segment.Valid =>
+        case seg: Template.Segment.Matched =>
           seg.body match {
             case Template.Segment.Body.Expr(e) =>
               Template.Partial.Segment(seg.head, Some(e))
