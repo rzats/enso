@@ -8,7 +8,7 @@ import org.enso.syntax.text.AST._
 
 import scala.annotation.tailrec
 import cats.implicits._
-import org.enso.syntax.text.AST.Template.Segment.Pattern
+import org.enso.syntax.text.ast.template.Pattern
 import org.enso.syntax.text.ast.Repr
 
 object Template {
@@ -48,10 +48,10 @@ object Template {
 
   object Registry {
     case class Value(
-      path: List1[Template.Segment.Pattern],
+      path: List1[Pattern],
       finalizer: Definition.Finalizer
     )
-//    type Value = Definition.Spec[List1[Template.Segment.Pattern]]
+//    type Value = Definition.Spec[List1[Template.Pattern]]
     type Tree = data.Tree[AST, Value]
     def apply(defs: Definition*): Registry = {
       val registry = new Registry()
@@ -94,7 +94,6 @@ object Template {
   /////////////////
 
   class SegmentBuilder(val ast: Ident) {
-    import Template.Segment.Pattern
     import Template._
 
     var offset: Int         = 0
@@ -239,8 +238,6 @@ object Template {
   def mkBuiltInRegistry(): Registry = {
 
     def internalError = throw new Error("Internal error")
-
-    import Template.Segment.Pattern
 
     val groupDef = Definition(
 //      Opr("(") -> Pattern.Opt(Pattern.Expr()),
@@ -387,7 +384,7 @@ object Template {
     var builder: MixfixBuilder = new MixfixBuilder(Blank)
     builder.mixfix = Some(
       Registry.Value(
-        List1(Template.Segment.Pattern.Expr(), Nil), { _ =>
+        List1(Pattern.Expr(), Nil), { _ =>
           throw new scala.Error("Impossible happened")
         }
       )
