@@ -47,7 +47,7 @@ object Main extends App {
           ast match {
             case t: AST.Template.Matched =>
               println("\n---\n")
-              Template.hardcodedRegistry.get(t.path()) match {
+              Template.builtInRegistry.get(t.path()) match {
                 case None => println(":(")
                 case Some(spec) =>
                   println("COMPUTING")

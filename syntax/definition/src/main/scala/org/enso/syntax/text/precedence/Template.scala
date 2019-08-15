@@ -1,17 +1,18 @@
 package org.enso.syntax.text.precedence
 
+import org.enso.data
 import org.enso.data.List1
 import org.enso.data.Shifted
-import org.enso.data
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST._
-
-import scala.annotation.tailrec
-import cats.implicits._
-import org.enso.syntax.text.ast.template.Pattern
 import org.enso.syntax.text.ast.Repr
+import org.enso.syntax.text.ast.template.Pattern
+import scala.annotation.tailrec
+import org.enso.Logger
 
 object Template {
+
+  val logger = new Logger()
 
   val Template = AST.Template
   import Template._
@@ -51,7 +52,6 @@ object Template {
       path: List1[Pattern],
       finalizer: Definition.Finalizer
     )
-//    type Value = Definition.Spec[List1[Template.Pattern]]
     type Tree = data.Tree[AST, Value]
     def apply(defs: Definition*): Registry = {
       val registry = new Registry()
@@ -117,16 +117,9 @@ object Template {
           throw new Error(
             "Internal error: template pattern segment was unmatched"
           )
-        //Segment.Unmatched(tp, ast, stream)
         case Some(rr) =>
           (Shifted(offset, Matched.Segment(ast, rr.elem)), rr.stream)
-//          rr.stream match {
-//            case Nil     => Segment.Valid(ast, rr.elem)
-//            case s :: ss => Segment.Unsaturated(ast, rr.elem, List1(s, ss))
-//          }
       }
-
-//      Shifted(offset, segment2)
     }
 
     //////////////////////////////////////
@@ -240,8 +233,7 @@ object Template {
     def internalError = throw new Error("Internal error")
 
     val groupDef = Definition(
-//      Opr("(") -> Pattern.Opt(Pattern.Expr()),
-      Opr("(") -> Pattern.Any(),
+      Opr("(") -> Pattern.Opt(Pattern.Expr()),
       Opr(")") -> Pattern.Nothing()
     ) {
       case List(st1, _) =>
@@ -367,17 +359,12 @@ object Template {
       groupDef,
       ifThenDef,
       ifThenElseDef,
-//      Definition.Unrestricted(
-//        Var("if")   -> Pattern.Expr,
-//        Var("then") -> Pattern.Expr,
-//        Var("else") -> Pattern.Expr
-//      )(a => ???),
       importDef
 //      defDef
     )
   }
 
-  val hardcodedRegistry = mkBuiltInRegistry()
+  val builtInRegistry = mkBuiltInRegistry()
 
   def partition(t: AST): AST = {
 
@@ -391,21 +378,18 @@ object Template {
     )
     var builderStack: List[MixfixBuilder] = Nil
 
-    def pushBuilder(ast: Ident, off: Int): Unit = {
-//      println(s"pushBuilder($off)")
+    def pushBuilder(ast: Ident, off: Int): Unit = logger.trace {
       builderStack +:= builder
       builder                = new MixfixBuilder(ast)
       builder.current.offset = off
     }
 
-    def popBuilder(): Unit = {
-//      println("popBuilder")
+    def popBuilder(): Unit = logger.trace {
       builder      = builderStack.head
       builderStack = builderStack.tail
     }
 
-    def pushSegment(ast: Ident, off: Int): Unit = {
-//      println(s"pushSegment($off)")
+    def pushSegment(ast: Ident, off: Int): Unit = logger.trace {
       builder.revSegs ::= builder.current
       builder.current        = new SegmentBuilder(ast)
       builder.current.offset = off
@@ -413,24 +397,10 @@ object Template {
 
     import Template._
 
-    val root = Context(hardcodedRegistry.tree)
+    val root = Context(builtInRegistry.tree)
 
-//    def stripLastSegment(
-//      revSegs: List1[Shifted[Template.Segment]]
-//    ): (List1[Shifted[Template.Segment]], AST.Stream) = {
-//      val lastSeg                = revSegs.head
-//      val (lastSegEl, revStream) = lastSeg.el.strip()
-//      val lastSeg2               = Shifted(lastSeg.off, lastSegEl)
-//      val revSegments            = List1(lastSeg2, revSegs.tail)
-//      (revSegments.reverse, revStream.reverse)
-//    }
-
-    def close(): AST.Stream1 = {
-//      println(s"\n\n-----------------------------------\n\n")
+    def close(): AST.Stream1 = logger.trace {
       val revSegBldrs = List1(builder.current, builder.revSegs)
-//      println(s"revSegs =")
-//      pprint.pprintln(revSegs, width    = 50, height = 10000)
-//      pprint.pprintln(builder.mixfix, width = 50, height = 10000)
       val result = {
         builder.mixfix match {
           case None =>
@@ -453,9 +423,7 @@ object Template {
             val revSegStreams = revSegsOuts.map(_._2)
             val stream        = revSegStreams.head.reverse
             val segs          = revSegs.reverse
-//            val (segs, stream) = stripLastSegment(revSegs)
-            val shiftSegs = Shifted.List1(segs.head.el, segs.tail)
-//            val optValSegs = Template.validate(shiftSegs)
+            val shiftSegs     = Shifted.List1(segs.head.el, segs.tail)
 
             if (!revSegStreams.tail.forall(_.isEmpty)) {
               throw new Error(
@@ -464,15 +432,7 @@ object Template {
             }
 
             val template = Template.Matched(shiftSegs)
-//            val template = optValSegs match {
-//              case None => Template.Invalid(shiftSegs)
-//              case Some(validSegs) =>
-//                val validSegsList = validSegs.toList()
-////                val ast           = ts.finalizer(validSegsList)
-//                Template.Valid(validSegs) //, ast)
-//            }
-
-            val newTok = Shifted(segs.head.off, template)
+            val newTok   = Shifted(segs.head.off, template)
 
             stream match {
               case Nil     => List1(newTok)
@@ -480,34 +440,21 @@ object Template {
             }
         }
       }
-
-//      println("Close Result:")
-//      pprint.pprintln(result, width = 50, height = 10000)
       result
     }
 
-    def close2() = {
-//      println("close2")
+    def close2(): Unit = logger.trace {
       val subAst = close()
       popBuilder()
       builder.current.revBody = subAst.concat(builder.current.revBody).toList
     }
 
-//    def extractRoot[T](seg: Template.Segment[T]): Unit = {
-//      import Template.Segment._
-//      import Template.Segment
-//      seg match {
-//        case Segment(Pattern.Option(Pattern.Expr), _, body) => body.get
-//      }
-//    }
-
     @tailrec
     def go(input: AST.Stream): AST = {
-//      import Template.Segment.Body._
       input match {
         case Nil =>
           if (builderStack.isEmpty) {
-//            println("End of input (not in stack)")
+            logger.log("End of input (not in stack)")
             close().head.el match {
               case Template.Matched(segs) =>
                 segs.head.body.toStream match {
@@ -519,17 +466,16 @@ object Template {
             }
 
           } else {
-//            println("End of input (in stack)")
+            logger.log("End of input (in stack)")
             close2()
             go(input)
           }
         case (t1 @ Shifted(_, el1: Ident)) :: t2_ =>
-//          println(s"> $t1")
+          logger.log(s"Token $t1")
           builder.context.get(el1) match {
             case Some(tr) =>
-//              println(">> New segment")
+              logger.trace("New segment")
               pushSegment(el1, t1.off)
-//              builder.mixfix  = builder.mixfix.map(Some(_)).getOrElse(tr.value)
               builder.mixfix  = tr.value.map(Some(_)).getOrElse(builder.mixfix)
               builder.context = builder.context.copy(tree = tr)
               go(t2_)
@@ -537,14 +483,13 @@ object Template {
             case None =>
               root.get(el1) match {
                 case Some(tr) =>
-//                  println(">> Root")
+                  logger.trace("Root")
                   val context = builder.context
                   pushBuilder(el1, t1.off)
                   builder.mixfix  = tr.value
                   builder.context = Context(tr, Some(context))
                   go(t2_)
                 case None =>
-//                  println(s"PARENT CHECK (${builder.current.ast}, ${el1})")
                   val currentClosed = builder.context.isEmpty
                   val parentPrecWin = (builder.current.ast, el1) match {
                     case (_: Opr, _) => false
@@ -554,11 +499,11 @@ object Template {
                   val parentBreak = builder.context.parentCheck(el1)
                   (currentClosed || parentPrecWin) && parentBreak match {
                     case true =>
-//                      println("Parent close")
+                      logger.trace("Parent close")
                       close2()
                       go(input)
                     case false =>
-//                      println(">> Add token")
+                      logger.trace("Add token")
                       builder.current.revBody ::= t1
                       go(t2_)
                   }
@@ -570,33 +515,10 @@ object Template {
 
       }
     }
-
-//      go(Context(registry.tree, None), exprList(t).toList(), List())
-//    println("START")
     val elst = exprList(t).toList()
-//    pprint.pprintln(elst, width = 50, height = 10000)
     go(elst)
   }
 
-//    def partition(t: AST) = {
-//
-//      def go(context:Context, lst: SpacedList[AST], out: List[Spaced[AST]]): List[Spaced[AST]]= {
-//        context.get(lst.head) match {
-//          case None => lst.tail match {
-//            case Nil => out
-//            case t :: ts => go(context, SpacedList(t,ts), lst.head :: out)
-//          }
-//          case _ => ???
-//        }
-//      }
-//
-//      go(Context(registry.tree, None), exprList(t), List())
-//    }
-
-  // format: off
-
-
-  
-  def run(module:Module): Module =
+  def run(module: Module): Module =
     module.map(_.map(partition))
 }
