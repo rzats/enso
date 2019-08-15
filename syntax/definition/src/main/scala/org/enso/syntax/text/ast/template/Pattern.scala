@@ -17,18 +17,19 @@ sealed trait Pattern {
   def many:              Many = Many(this)
 }
 object Pattern {
-  sealed trait Of[T]                        extends Pattern
-  case class Nothing()                      extends Of[Unit]
-  case class Tok(tok: AST)                  extends Of[SAST]
-  case class Many(pat: Pattern)             extends Of[List[Match_]]
-  case class Seq(p1: Pattern, p2: Pattern)  extends Of[(Match_, Match_)]
-  case class Build(pat: Pattern)            extends Of[SAST]
-  case class Not(pat: Pattern)              extends Of[Unit]
-  case class Or(p1: Pattern, p2: Pattern)   extends Of[Match_]
-  case class End()                          extends Of[Unit]
-  case class Tag(tag: String, pat: Pattern) extends Of[Match_]
-  case class Err(msg: String, pat: Pattern) extends Of[SAST]
-  case class Cls[T <: AST]()(implicit val tag: ClassTag[T])
+  sealed trait Of[T] extends Pattern
+
+  final case class Nothing()                      extends Of[Unit]
+  final case class Tok(tok: AST)                  extends Of[SAST]
+  final case class Many(pat: Pattern)             extends Of[List[Match_]]
+  final case class Seq(p1: Pattern, p2: Pattern)  extends Of[(Match_, Match_)]
+  final case class Build(pat: Pattern)            extends Of[SAST]
+  final case class Not(pat: Pattern)              extends Of[Unit]
+  final case class Or(p1: Pattern, p2: Pattern)   extends Of[Match_]
+  final case class End()                          extends Of[Unit]
+  final case class Tag(tag: String, pat: Pattern) extends Of[Match_]
+  final case class Err(msg: String, pat: Pattern) extends Of[SAST]
+  final case class Cls[T <: AST]()(implicit val tag: ClassTag[T])
       extends Of[Shifted[T]]
 
   object Seq {
@@ -115,52 +116,67 @@ object Pattern {
   ///////////////
 
   type Match_ = Match[_]
-  case class Match[T: Repr.Of](pat: Of[T], el: T) extends Repr.Provider {
+  final case class Match[T: Repr.Of](pat: Pattern.Of[T], el: T)
+      extends Repr.Provider {
     val repr = Repr.of(el)
 
     def toStream: AST.Stream = this match {
-      case Match.Nothing() => List()
-      case Match.Tok(t)    => List(t)
-      case Match.Many(t)   => t.flatMap(_.toStream)
-      case Match.Seq(l, r) => l.toStream ++ r.toStream
       case Match.Build(t)  => List(t)
-      case Match.Not()     => List()
-      case Match.Or(t)     => t.toStream
       case Match.Cls(t)    => List(t)
-      case Match.Tag(t)    => t.toStream
-      case Match.Err(t)    => List(t)
       case Match.End()     => List()
+      case Match.Err(t)    => List(t)
+      case Match.Many(t)   => t.flatMap(_.toStream)
+      case Match.Not()     => List()
+      case Match.Nothing() => List()
+      case Match.Or(t)     => t.toStream
+      case Match.Seq(l, r) => l.toStream ++ r.toStream
+      case Match.Tag(t)    => t.toStream
+      case Match.Tok(t)    => List(t)
     }
 
     def isValid: Boolean = this match {
-      case Match.Nothing() => true
-      case Match.Tok(_)    => true
-      case Match.Many(t)   => t.forall(_.isValid)
-      case Match.Seq(l, r) => l.isValid && r.isValid
       case Match.Build(_)  => true
-      case Match.Not()     => true
-      case Match.Or(t)     => t.isValid
       case Match.Cls(_)    => true
-      case Match.Tag(t)    => t.isValid
-      case Match.Err(_)    => false
       case Match.End()     => true
+      case Match.Err(_)    => false
+      case Match.Many(t)   => t.forall(_.isValid)
+      case Match.Not()     => true
+      case Match.Nothing() => true
+      case Match.Or(t)     => t.isValid
+      case Match.Seq(l, r) => l.isValid && r.isValid
+      case Match.Tag(t)    => t.isValid
+      case Match.Tok(_)    => true
     }
   }
 
   object Match {
-    object Nothing {
-      def apply() = Match(Pattern.Nothing(), ())
-      def unapply(t: Match_): Boolean = t match {
-        case Match(_: Pattern.Nothing, t) => true
-        case _                            => false
+
+    //// Smart Deconstructors ////
+
+    object Build {
+      def unapply(t: Match_): Option[SAST] = t match {
+        case Match(_: Pattern.Build, t) => Some(t)
+        case _                          => None
       }
     }
 
-    //// Smart Constructors ////
+    object Cls {
+      def unapply(t: Match_): Option[SAST] = t match {
+        case Match(_: Pattern.Cls[_], t) => Some(t)
+        case _                           => None
+      }
+    }
 
-    object Seq {
-      def unapply(t: Match_): Option[(Match_, Match_)] = t match {
-        case Match(_: Pattern.Seq, t) => Some(t)
+    object End {
+      def unapply(t: Match_): Boolean = t match {
+        case Match(_: Pattern.End, _) => true
+        case _                        => false
+      }
+    }
+
+    object Err {
+      def unapply(t: Match_): Option[SAST] = t match {
+        case Match(_: Pattern.Err, t) => Some(t)
         case _                        => None
       }
     }
@@ -172,24 +188,18 @@ object Pattern {
       }
     }
 
-    object Tok {
-      def unapply(t: Match_): Option[SAST] = t match {
-        case Match(_: Pattern.Tok, t) => Some(t)
-        case _                        => None
-      }
-    }
-
-    object Build {
-      def unapply(t: Match_): Option[SAST] = t match {
-        case Match(_: Pattern.Build, t) => Some(t)
-        case _                          => None
-      }
-    }
-
     object Not {
       def unapply(t: Match_): Boolean = t match {
         case Match(_: Pattern.Not, t) => true
         case _                        => false
+      }
+    }
+
+    object Nothing {
+      def apply() = Match(Pattern.Nothing(), ())
+      def unapply(t: Match_): Boolean = t match {
+        case Match(_: Pattern.Nothing, t) => true
+        case _                            => false
       }
     }
 
@@ -200,10 +210,10 @@ object Pattern {
       }
     }
 
-    object Cls {
-      def unapply(t: Match_): Option[SAST] = t match {
-        case Match(_: Pattern.Cls[_], t) => Some(t)
-        case _                           => None
+    object Seq {
+      def unapply(t: Match_): Option[(Match_, Match_)] = t match {
+        case Match(_: Pattern.Seq, t) => Some(t)
+        case _                        => None
       }
     }
 
@@ -214,19 +224,11 @@ object Pattern {
       }
     }
 
-    object Err {
+    object Tok {
       def unapply(t: Match_): Option[SAST] = t match {
-        case Match(_: Pattern.Err, t) => Some(t)
+        case Match(_: Pattern.Tok, t) => Some(t)
         case _                        => None
       }
     }
-
-    object End {
-      def unapply(t: Match_): Boolean = t match {
-        case Match(_: Pattern.End, _) => true
-        case _                        => false
-      }
-    }
-
   }
 }
