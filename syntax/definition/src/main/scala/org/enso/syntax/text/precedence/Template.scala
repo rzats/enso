@@ -131,20 +131,20 @@ object Template {
 
     //////////////////////////////////////
 
-    case class ResolveResult(elem: Pattern.Match_, stream: AST.Stream) {
-      def map(fn: Pattern.Match_ => Pattern.Match_): ResolveResult =
+    case class ResolveResult(elem: Pattern.Match, stream: AST.Stream) {
+      def map(fn: Pattern.Match => Pattern.Match): ResolveResult =
         copy(elem = fn(elem))
     }
 
     def resolveList(
       p: Pattern,
       stream: AST.Stream
-    ): (List[Pattern.Match_], AST.Stream) = {
+    ): (List[Pattern.Match], AST.Stream) = {
       @tailrec
       def go(
         stream: AST.Stream,
-        revOut: List[Pattern.Match_]
-      ): (List[Pattern.Match_], AST.Stream) =
+        revOut: List[Pattern.Match]
+      ): (List[Pattern.Match], AST.Stream) =
         resolveStep(p, stream) match {
           case None    => (revOut.reverse, stream)
           case Some(t) => go(t.stream, t.elem :: revOut)
@@ -318,7 +318,7 @@ object Template {
         import Pattern.Match._
         s1.body match {
           case Seq(headMatch, Many(tailMatch)) =>
-            def unwrapSeg(lseg: Pattern.Match_): Cons =
+            def unwrapSeg(lseg: Pattern.Match): Cons =
               lseg.toStream match {
                 case List(Shifted(_, t @ Cons(_))) => t
                 case _                             => internalError

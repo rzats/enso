@@ -554,14 +554,14 @@ object AST {
       def path(): List1[AST] = segments.toList1.map(_.el.head)
     }
     object Matched {
-      import Pattern._
-      final case class Segment(head: Ident, body: Match_) {
+      import Pattern.Match
+      final case class Segment(head: Ident, body: Match) {
         val repr = R + head + body
 
         def toStream: AST.Stream = Shifted(head) :: body.toStream
         def isValid:  Boolean    = body.isValid
 
-        def map(f: Match_ => Match_): Segment = copy(body = f(body))
+        def map(f: Match => Match): Segment = copy(body = f(body))
       }
       object Segment {
         def apply(head: Ident): Segment = Segment(head, Match.Nothing())
@@ -582,10 +582,6 @@ object AST {
         val repr = R + head + body
       }
     }
-
-    /////////////////
-    //// Pattern ////
-    /////////////////
 
     //// Definition ////
 
@@ -636,15 +632,6 @@ object AST {
 
       type Segment   = (AST, Pattern)
       type Finalizer = List[Matched.Segment] => AST
-
-//      case class Spec[T](finalizer: Finalizer, el: T) {
-//        def map[S](fn: T => S): Spec[S] = Spec(finalizer, fn(el))
-//      }
-//
-//      object Spec {
-//        def apply(t1: Segment, ts: Segment*)(fin: Finalizer): Spec[Definition] =
-//          Spec(fin, Definition(List1(t1, ts: _*)))
-//      }
     }
   }
 
