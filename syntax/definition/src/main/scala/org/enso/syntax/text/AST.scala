@@ -9,7 +9,7 @@ import org.enso.data.Shifted
 import org.enso.data.Tree
 import org.enso.syntax.text.ast.Repr.R
 import org.enso.syntax.text.ast.Repr
-import org.enso.syntax.text.ast.opr
+import org.enso.syntax.text.ast.operator
 import org.enso.syntax.text.ast.text
 
 sealed trait AST extends AST.Symbol
@@ -20,10 +20,10 @@ object AST {
   //// Reexports ///////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Assoc = opr.Assoc
+  type Assoc = operator.Assoc
 
-  val Assoc = opr.Assoc
-  val Prec  = opr.Prec
+  val Assoc = operator.Assoc
+  val Prec  = operator.Prec
 
   //////////////////////////////////////////////////////////////////////////////
   //// Definition //////////////////////////////////////////////////////////////
@@ -590,49 +590,61 @@ object AST {
     final case class _Definition(
       segments: List1[Definition.Segment],
       finalizer: Definition.Finalizer
-    )
+    ) {
+      def path:     List1[AST]     = segments.map(_.head)
+      def patterns: List1[Pattern] = segments.map(_.pattern)
+    }
     object Definition {
       import Pattern._
 
-      def apply(segments: List1[Segment], finalizer: Finalizer): Definition = {
-        def checkMatch(p: Pattern): Pattern =
-          p | Err("unmatched pattern", RestOfStream())
+      type Finalizer = List[Matched.Segment] => AST
 
-        def checkFullMatch(p: Pattern): Pattern =
-          p >> (End() | Err("unmatched tokens", RestOfStream()))
+      type SegmentTup = (AST, Pattern)
+      final case class Segment(head: AST, pattern: Pattern) {
+        def map(f: Pattern => Pattern): Segment = copy(pattern = f(pattern))
+      }
 
-        def dummyLastSeg(p: Pattern): Pattern =
-          p >> Nothing()
+      def apply(t1: SegmentTup, ts: SegmentTup*)(
+        finalizer: Finalizer
+      ): Definition =
+        Definition(List1(t1, ts: _*), finalizer)
 
-        def addDefaultChecks(segs: List1[Segment]): List1[Segment] =
-          segs
-            .map(_.map(checkMatch))
+      def apply(
+        segTups: List1[SegmentTup],
+        finalizer: Finalizer
+      ): Definition = {
+        val checkMatch: Pattern => Pattern =
+          _ | Err("unmatched pattern", RestOfStream())
+
+        val checkFullMatch: Pattern => Pattern =
+          _ >> (End() | Err("unmatched tokens", RestOfStream()))
+
+        val lastSegShape: Pattern => Pattern =
+          _ >> Nothing()
+
+        val addDefaultChecks: List1[Segment] => List1[Segment] =
+          _.map(_.map(checkMatch))
             .mapInit(_.map(checkFullMatch))
-            .mapLast(_.map(dummyLastSeg))
+            .mapLast(_.map(lastSegShape))
 
-        def skipDefaultChecks(
-          segs: List[Matched.Segment]
-        ): List[Matched.Segment] =
-          segs.map(_.map {
+        val skipDefaultChecks: List[Matched.Segment] => List[Matched.Segment] =
+          _.map(_.map {
             case Match.Seq(p, _) => p
             case _               => throw new Error("Internal error")
           })
 
-        val segments2 = addDefaultChecks(segments)
-        def finalizer2(segs: List[Matched.Segment]) = {
+        val segs              = segTups.map(tup => Segment(tup._1, tup._2))
+        val segsWithDefChecks = addDefaultChecks(segs)
+        def finalizerWithDefChecks(segs: List[Matched.Segment]) = {
           if (!segs.forall(_.isValid)) {
             val stream = segs.flatMap(_.toStream)
             AST.Unexpected("Invalid statement", stream)
           } else finalizer(skipDefaultChecks(segs))
         }
 
-        _Definition(segments2, finalizer2)
+        _Definition(segsWithDefChecks, finalizerWithDefChecks)
       }
-      def apply(t1: Segment, ts: Segment*)(finalizer: Finalizer): Definition =
-        Definition(List1(t1, ts: _*), finalizer)
 
-      type Segment   = (AST, Pattern)
-      type Finalizer = List[Matched.Segment] => AST
     }
   }
 

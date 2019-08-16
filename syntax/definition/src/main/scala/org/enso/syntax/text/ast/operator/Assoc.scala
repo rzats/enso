@@ -1,4 +1,4 @@
-package org.enso.syntax.text.ast.opr
+package org.enso.syntax.text.ast.operator
 
 sealed trait Assoc
 object Assoc {

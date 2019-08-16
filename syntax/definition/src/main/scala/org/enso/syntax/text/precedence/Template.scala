@@ -1,23 +1,22 @@
 package org.enso.syntax.text.precedence
 
-import org.enso.data
+import org.enso.Logger
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST._
-import org.enso.syntax.text.ast.Repr
-import org.enso.syntax.text.ast.template.Pattern
+import org.enso.syntax.text.ast.template.Builder
+import org.enso.syntax.text.ast.template.Builtin
+
 import scala.annotation.tailrec
-import org.enso.Logger
 
 object Template {
 
   val logger = new Logger()
 
   val Template = AST.Template
-  import Template._
 
-  def exprList(ast: AST): Shifted.List1[AST] = {
+  def tokenize(ast: AST): Shifted.List1[AST] = {
     @tailrec
     def go(ast: AST, out: AST.Stream): Shifted.List1[AST] = ast match {
       case _App(fn, off, arg) => go(fn, Shifted(off, arg) :: out)
@@ -30,357 +29,14 @@ object Template {
   //// Registry ////
   //////////////////
 
-  final case class Registry() {
-    import Registry._
-
-    var tree: Registry.Tree = data.Tree()
-
-    override def toString: String =
-      tree.toString
-
-    def insert(t: Definition): Unit =
-      tree += t.segments.toList
-        .map(_._1) -> Value(t.segments.map(_._2), t.finalizer)
-
-    def get(path: List1[AST]): Option[Registry.Value] =
-      tree.getValue(path.toList)
-
-  }
-
-  object Registry {
-    case class Value(
-      path: List1[Pattern],
-      finalizer: Definition.Finalizer
-    )
-    type Tree = data.Tree[AST, Value]
-    def apply(defs: Definition*): Registry = {
-      val registry = new Registry()
-      defs.foreach(registry.insert)
-      registry
-    }
-  }
-
-  /////////////////
-  //// Context ////
-  /////////////////
-
-  case class Context(tree: Registry.Tree, parent: Option[Context]) {
-    def get(t: AST): Option[Registry.Tree] =
-      tree.get(t)
-
-    def isEmpty: Boolean =
-      tree.isEmpty
-
-    @tailrec
-    final def parentCheck(t: AST): Boolean = {
-      parent match {
-        case None => false
-        case Some(p) =>
-          p.get(t) match {
-            case None    => p.parentCheck(t)
-            case Some(_) => true
-          }
-      }
-    }
-  }
-
-  object Context {
-    def apply():                    Context = Context(data.Tree(), None)
-    def apply(tree: Registry.Tree): Context = Context(tree, None)
-  }
-
-  /////////////////
-  //// Builder ////
-  /////////////////
-
-  class SegmentBuilder(val ast: Ident) {
-    import Template._
-
-    var offset: Int         = 0
-    var revBody: AST.Stream = List()
-
-    def buildAST() = revBody match {
-      case Nil           => None
-      case seg1 :: seg2_ => Some(Operator.rebuild(List1(seg1, seg2_)))
-    }
-
-    def buildAST2(revLst: AST.Stream): Option[Shifted[AST]] =
-      revLst match {
-        case Nil           => None
-        case seg1 :: seg2_ => Some(Operator.rebuild(List1(seg1, seg2_)))
-      }
-
-    def build(tp: Pattern): (Shifted[Matched.Segment], AST.Stream) = {
-      val stream = revBody.reverse
-      resolveStep(tp, stream) match {
-        case None =>
-          throw new Error(
-            "Internal error: template pattern segment was unmatched"
-          )
-        case Some(rr) =>
-          (Shifted(offset, Matched.Segment(ast, rr.elem)), rr.stream)
-      }
-    }
-
-    //////////////////////////////////////
-
-    case class ResolveResult(elem: Pattern.Match, stream: AST.Stream) {
-      def map(fn: Pattern.Match => Pattern.Match): ResolveResult =
-        copy(elem = fn(elem))
-    }
-
-    def resolveList(
-      p: Pattern,
-      stream: AST.Stream
-    ): (List[Pattern.Match], AST.Stream) = {
-      @tailrec
-      def go(
-        stream: AST.Stream,
-        revOut: List[Pattern.Match]
-      ): (List[Pattern.Match], AST.Stream) =
-        resolveStep(p, stream) match {
-          case None    => (revOut.reverse, stream)
-          case Some(t) => go(t.stream, t.elem :: revOut)
-        }
-      go(stream, Nil)
-    }
-
-    def resolveStep(p: Pattern, stream: AST.Stream): Option[ResolveResult] = {
-      import Pattern._
-
-      def ret[S: Repr.Of](pat: Pattern.Of[S], res: S, stream: AST.Stream) =
-        Some(ResolveResult(Pattern.Match(pat, res), stream))
-
-      p match {
-
-        case p @ Pattern.End() =>
-          if (stream.isEmpty) ret(p, (), stream) else None
-
-        case p @ Pattern.Nothing() =>
-          ret(p, (), stream)
-
-        case p @ Pattern.Tag(tag, pat2) =>
-          resolveStep(pat2, stream).map(_.map(Pattern.Match(p, _)))
-
-        case p @ Pattern.Build(pat2) =>
-          resolveStep(pat2, stream).map(
-            _.map(x => Pattern.Match(p, buildAST2(x.toStream.reverse).get))
-          )
-
-        case p @ Pattern.Seq(pat1, pat2) =>
-          resolveStep(pat1, stream) match {
-            case None => None
-            case Some(r1) =>
-              resolveStep(pat2, r1.stream) match {
-                case None => None
-                case Some(r2) =>
-                  ret(p, (r1.elem, r2.elem), r2.stream)
-              }
-          }
-
-        case p @ Pattern.Cls() =>
-          stream match {
-            case Shifted(off, p.tag(t)) :: ss =>
-              ret(p, Shifted(off, t), ss)
-            case _ => None
-          }
-
-        case p @ Pattern.Many(p2) =>
-          val (lst, stream2) = resolveList(p2, stream)
-          ret(p, lst, stream2)
-
-        case p @ Or(p1, p2) =>
-          resolveStep(p1, stream) match {
-            case Some(t) => Some(t)
-            case None    => resolveStep(p2, stream)
-          }
-
-        case p @ Pattern.Tok(tok) =>
-          stream match {
-            case Shifted(off, t) :: ss =>
-              if (tok == t) ret(p, Shifted(off, t), ss) else None
-            case _ => None
-          }
-
-        case p @ Pattern.Err(msg, p1) =>
-          resolveStep(p1, stream).map(
-            _.map(
-              x => Pattern.Match(p, Shifted(AST.Unexpected(msg, x.toStream)))
-            )
-          )
-
-        case p @ Not(p1) =>
-          resolveStep(p1, stream) match {
-            case Some(_) => None
-            case None    => ret(p, (), stream)
-          }
-      }
-    }
-
-    override def toString: String =
-      s"SegmentBuilder($offset, $revBody)"
-  }
-
-  class MixfixBuilder(ast: Ident) {
-    var context: Context               = Context()
-    var mixfix: Option[Registry.Value] = None
-    var current: SegmentBuilder        = new SegmentBuilder(ast)
-    var revSegs: List[SegmentBuilder]  = List()
-  }
-
-  def mkBuiltInRegistry(): Registry = {
-
-    def internalError = throw new Error("Internal error")
-
-    val groupDef = Definition(
-      Opr("(") -> Pattern.Opt(Pattern.Expr()),
-      Opr(")") -> Pattern.Nothing()
-    ) {
-      case List(st1, _) =>
-        st1.body.toStream match {
-          case List()  => AST.Group()
-          case List(t) => AST.Group(t)
-          case _       => internalError
-        }
-      case _ => internalError
-    }
-//
-//    val defDef = Definition.Unrestricted(
-//      Var("def") -> Pattern.Seq(
-//        Pattern.Opt(Pattern.TokenCls[AST.Cons]),
-//        Pattern.Opt(Pattern.Many(Pattern.NotTokenCls[AST.Block])),
-//        Pattern.Opt(Pattern.TokenCls[AST.Block])
-//      )
-//    ) {
-//      case List(s1) =>
-//        s1.el.body match {
-//          case Many(lst) =>
-//            val nameParam = lst(0)
-//            val argsParam = lst(1)
-//            val bodyParam = lst(2)
-//            val name = nameParam match {
-//              case Expr(Shifted(off, t @ AST.Cons(_))) =>
-//                Shifted(off, t)
-//              case Empty => Shifted(AST.Missing)
-//              case _     => throw new Error("Internal Parser Error")
-//            }
-//            val args = argsParam.toStream()
-//            val body: Option[Shifted[AST]] = bodyParam match {
-//              case Expr(n @ Shifted(_, _: AST.Block)) => Some(n)
-//              case Empty                              => None
-//              case _ =>
-//                throw new Error("Internal Parser Error")
-//            }
-//            AST.Def(name, args, body)
-//        }
-//    }
-
-//    def seqSplit[L, R <: L](lst: List[Either[L, R]]): Either[List[L], List[R]] =
-//      lst.sequence match {
-//        case Right(t) => Right(t)
-//        case Left(_)  => Left(lst.map(_.merge))
-//      }
-//
-//    def splitOn[T, S <: T](lst: List[T])(
-//      test: T => Option[S]
-//    ): (List[List[T]], List[S]) = {
-//      @tailrec
-//      def go(
-//        lst: List[T],
-//        current: List[T],
-//        chunks: List[List[T]],
-//        divs: List[S]
-//      ): (List[List[T]], List[S]) =
-//        lst match {
-//          case Nil => (current :: chunks, divs)
-//          case l :: ls =>
-//            test(l) match {
-//              case Some(l) => go(ls, List(), current :: chunks, l :: divs)
-//              case None    => go(ls, l :: current, chunks, divs)
-//            }
-//        }
-//      go(lst, Nil, Nil, Nil)
-//    }
-
-    val importDef = Definition(
-      Var("import") ->
-      Pattern.SepList(Pattern.Cls[Cons], AST.Opr("."), "expected module name")
-    ) {
-      case List(s1) =>
-        import Pattern.Match._
-        s1.body match {
-          case Seq(headMatch, Many(tailMatch)) =>
-            def unwrapSeg(lseg: Pattern.Match): Cons =
-              lseg.toStream match {
-                case List(Shifted(_, t @ Cons(_))) => t
-                case _                             => internalError
-              }
-            val head = unwrapSeg(headMatch)
-            val tail = tailMatch.map {
-              case Seq(Tok(Shifted(_, Opr("."))), seg) => unwrapSeg(seg)
-              case _                                   => internalError
-            }
-            AST.Import(head, tail)
-        }
-      case _ => internalError
-    }
-
-    val ifThenDef = Definition(
-      Var("if")   -> Pattern.Expr(),
-      Var("then") -> Pattern.Expr()
-    ) {
-      case List(s1, s2) =>
-        (s1.body.toStream, s2.body.toStream) match {
-          case (List(t1), List(t2)) =>
-            AST.Mixfix(List1(s1.head, s2.head), List1(t1.el, t2.el))
-          case _ => internalError
-        }
-      case _ => internalError
-    }
-
-    val ifThenElseDef = Definition(
-      Var("if")   -> Pattern.Expr(),
-      Var("then") -> Pattern.Expr(),
-      Var("else") -> Pattern.Expr()
-    ) {
-      case List(s1, s2, s3) =>
-        (s1.body.toStream, s2.body.toStream, s3.body.toStream) match {
-          case (List(t1), List(t2), List(t3)) =>
-            AST.Mixfix(
-              List1(s1.head, s2.head, s3.head),
-              List1(t1.el, t2.el, t3.el)
-            )
-          case _ => internalError
-        }
-      case _ => internalError
-    }
-
-    Registry(
-      groupDef,
-      ifThenDef,
-      ifThenElseDef,
-      importDef
-//      defDef
-    )
-  }
-
-  val builtInRegistry = mkBuiltInRegistry()
-
   def partition(t: AST): AST = {
 
-    var builder: MixfixBuilder = new MixfixBuilder(Blank)
-    builder.mixfix = Some(
-      Registry.Value(
-        List1(Pattern.Expr(), Nil), { _ =>
-          throw new scala.Error("Impossible happened")
-        }
-      )
-    )
-    var builderStack: List[MixfixBuilder] = Nil
+    var builder: Builder            = Builder.moduleBuilder()
+    var builderStack: List[Builder] = Nil
 
     def pushBuilder(ast: Ident, off: Int): Unit = logger.trace {
       builderStack +:= builder
-      builder                = new MixfixBuilder(ast)
+      builder                = new Builder(ast)
       builder.current.offset = off
     }
 
@@ -389,15 +45,9 @@ object Template {
       builderStack = builderStack.tail
     }
 
-    def pushSegment(ast: Ident, off: Int): Unit = logger.trace {
-      builder.revSegs ::= builder.current
-      builder.current        = new SegmentBuilder(ast)
-      builder.current.offset = off
-    }
+//    import Template._
 
-    import Template._
-
-    val root = Context(builtInRegistry.tree)
+    val root = Builder.Context(Builtin.registry.tree)
 
     def close(): AST.Stream1 = logger.trace {
       val revSegBldrs = List1(builder.current, builder.revSegs)
@@ -406,18 +56,20 @@ object Template {
           case None =>
             val revSegs = revSegBldrs.map { segBldr =>
               val optAst = segBldr.buildAST()
-              Shifted(segBldr.offset, Unmatched.Segment(segBldr.ast, optAst))
+              val seg    = Template.Unmatched.Segment(segBldr.ast, optAst)
+              Shifted(segBldr.offset, seg)
             }
             val segments = revSegs.reverse
             val head     = segments.head
             val tail     = segments.tail
             val paths    = builder.context.tree.dropValues()
-            val template = Unmatched(Shifted.List1(head.el, tail), paths)
+            val stream   = Shifted.List1(head.el, tail)
+            val template = Template.Unmatched(stream, paths)
             val newTok   = Shifted(head.off, template)
             List1(newTok)
 
           case Some(ts) =>
-            val revSegTps     = ts.path.reverse
+            val revSegTps     = ts.patterns.reverse
             val revSegsOuts   = revSegBldrs.zipWith(revSegTps)(_.build(_))
             val revSegs       = revSegsOuts.map(_._1)
             val revSegStreams = revSegsOuts.map(_._2)
@@ -475,7 +127,7 @@ object Template {
           builder.context.get(el1) match {
             case Some(tr) =>
               logger.trace("New segment")
-              pushSegment(el1, t1.off)
+              builder.startSegment(el1, t1.off)
               builder.mixfix  = tr.value.map(Some(_)).getOrElse(builder.mixfix)
               builder.context = builder.context.copy(tree = tr)
               go(t2_)
@@ -487,7 +139,7 @@ object Template {
                   val context = builder.context
                   pushBuilder(el1, t1.off)
                   builder.mixfix  = tr.value
-                  builder.context = Context(tr, Some(context))
+                  builder.context = Builder.Context(tr, Some(context))
                   go(t2_)
                 case None =>
                   val currentClosed = builder.context.isEmpty
@@ -515,7 +167,7 @@ object Template {
 
       }
     }
-    val elst = exprList(t).toList()
+    val elst = tokenize(t).toList()
     go(elst)
   }
 

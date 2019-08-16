@@ -1,4 +1,4 @@
-package org.enso.syntax.text.ast.opr
+package org.enso.syntax.text.ast.operator
 
 object Prec {
   val hierarchy = List(

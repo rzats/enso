@@ -2,6 +2,7 @@ package org.enso.syntax.text
 
 import org.enso.flexer
 import org.enso.syntax.text
+import org.enso.syntax.text.ast.template.Builtin
 import org.enso.syntax.text.precedence.Template
 
 ////////////////
@@ -47,7 +48,7 @@ object Main extends App {
           ast match {
             case t: AST.Template.Matched =>
               println("\n---\n")
-              Template.builtInRegistry.get(t.path()) match {
+              Builtin.registry.get(t.path()) match {
                 case None => println(":(")
                 case Some(spec) =>
                   println("COMPUTING")
