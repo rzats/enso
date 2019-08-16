@@ -12,6 +12,8 @@ import org.enso.syntax.text.ast.Repr
 import org.enso.syntax.text.ast.operator
 import org.enso.syntax.text.ast.text
 
+import scala.annotation.tailrec
+
 sealed trait AST extends AST.Symbol
 
 object AST {
@@ -41,6 +43,15 @@ object AST {
   //////////////////////////////////////////////////////////////////////////////
   //// Conversions /////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
+
+  def tokenize(ast: AST): Shifted.List1[AST] = {
+    @tailrec
+    def go(ast: AST, out: AST.Stream): Shifted.List1[AST] = ast match {
+      case _App(fn, off, arg) => go(fn, Shifted(off, arg) :: out)
+      case anyAst             => Shifted.List1(anyAst, out)
+    }
+    go(ast, List())
+  }
 
   implicit def fromString(str: String): AST =
     fromStringRaw(str) match {

@@ -15,10 +15,10 @@ import scala.annotation.tailrec
 //// Builder ////
 /////////////////
 
-class Builder(ast: Ident) {
+class Builder(head: Ident, offset: Int = 0) {
   var context: Builder.Context            = Builder.Context()
   var mixfix: Option[Template.Definition] = None
-  var current: Builder.Segment            = new Builder.Segment(ast)
+  var current: Builder.Segment            = new Builder.Segment(head, offset)
   var revSegs: List[Builder.Segment]      = List()
 
   def startSegment(ast: Ident, off: Int): Unit = {
@@ -26,9 +26,54 @@ class Builder(ast: Ident) {
     current        = new Builder.Segment(ast)
     current.offset = off
   }
+
+  def build(): AST.Stream1 = {
+    val revSegBldrs = List1(current, revSegs)
+    val result = {
+      mixfix match {
+        case None =>
+          val revSegs = revSegBldrs.map { segBldr =>
+            val optAst = segBldr.buildAST()
+            val seg    = Template.Unmatched.Segment(segBldr.ast, optAst)
+            Shifted(segBldr.offset, seg)
+          }
+          val segments = revSegs.reverse
+          val head     = segments.head
+          val tail     = segments.tail
+          val paths    = context.tree.dropValues()
+          val stream   = Shifted.List1(head.el, tail)
+          val template = Template.Unmatched(stream, paths)
+          val newTok   = Shifted(head.off, template)
+          List1(newTok)
+
+        case Some(ts) =>
+          val revSegTps     = ts.patterns.reverse
+          val revSegsOuts   = revSegBldrs.zipWith(revSegTps)(_.build(_))
+          val revSegs       = revSegsOuts.map(_._1)
+          val revSegStreams = revSegsOuts.map(_._2)
+          val stream        = revSegStreams.head.reverse
+          val segs          = revSegs.reverse
+          val shiftSegs     = Shifted.List1(segs.head.el, segs.tail)
+
+          if (!revSegStreams.tail.forall(_.isEmpty)) {
+            throw new Error(
+              "Internal error: not all template segments were fully matched"
+            )
+          }
+
+          val template = Template.Matched(shiftSegs)
+          val newTok   = Shifted(segs.head.off, template)
+
+          stream match {
+            case Nil     => List1(newTok)
+            case s :: ss => List1(s, ss) :+ newTok
+          }
+      }
+    }
+    result
+  }
 }
 object Builder {
-
   def moduleBuilder(): Builder = {
     val builder: Builder = new Builder(AST.Blank)
     builder.mixfix = Some(
@@ -73,11 +118,10 @@ object Builder {
   //// Segment ////
   /////////////////
 
-  class Segment(val ast: Ident) {
+  class Segment(val ast: Ident, var offset: Int = 0) {
 
     import Template._
 
-    var offset: Int         = 0
     var revBody: AST.Stream = List()
 
     def buildAST() = revBody match {
