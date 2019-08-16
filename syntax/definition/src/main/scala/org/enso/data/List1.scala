@@ -8,7 +8,14 @@ package object data {
     def apply[T](el: T, tail: List[T]): List1[T] = new List1(el, tail)
     def apply[T](el: T, tail: T*):      List1[T] = new List1(el, tail.toList)
 
+    def apply[T](list: List[T]): Option[List1[T]] = fromListOption(list)
+
     def unapply[T](t: List1[T]): Option[(T, List[T])] = Some((t.head, t.tail))
+
+    def fromListOption[T](lst: List[T]): Option[List1[T]] = lst match {
+      case Nil     => None
+      case t :: ts => Some(List1(t, ts))
+    }
 
     implicit class List1_ops[+T](lst: List1[T]) {
       def mapInit[B >: T](f: T => B): List1[B] =

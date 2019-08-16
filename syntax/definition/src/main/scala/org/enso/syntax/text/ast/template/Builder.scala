@@ -138,21 +138,12 @@ object Builder {
   /////////////////
 
   class Segment(val ast: Ident, var offset: Int = 0) {
-
     import Template._
-
     var revBody: AST.Stream = List()
 
-    def buildAST() = revBody match {
-      case Nil           => None
-      case seg1 :: seg2_ => Some(Operator.rebuild(List1(seg1, seg2_)))
-    }
-
-    def buildAST2(revLst: AST.Stream): Option[Shifted[AST]] =
-      revLst match {
-        case Nil           => None
-        case seg1 :: seg2_ => Some(Operator.rebuild(List1(seg1, seg2_)))
-      }
+    def buildAST(): Option[Shifted[AST]] = buildASTFrom(revBody)
+    def buildASTFrom(stream: AST.Stream): Option[Shifted[AST]] =
+      Operator.rebuild(stream)
 
     def build(tp: Pattern): (Shifted[Matched.Segment], AST.Stream) = {
       val stream = revBody.reverse
@@ -209,7 +200,7 @@ object Builder {
 
         case p @ Pattern.Build(pat2) =>
           resolveStep(pat2, stream).map(
-            _.map(x => Pattern.Match(p, buildAST2(x.toStream.reverse).get))
+            _.map(x => Pattern.Match(p, buildASTFrom(x.toStream.reverse).get))
           )
 
         case p @ Pattern.Seq(pat1, pat2) =>

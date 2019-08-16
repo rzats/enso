@@ -19,11 +19,14 @@ object Operator {
   /** Build a single AST node from AST stream by applying operator precedence
     * rules, including per-operator precedence and distance-based precedence.
     */
-  def rebuild(astList: List1[Shifted[AST]]): Shifted[AST] = {
-    val segments = precedence.Distance.partition(astList)
+  def rebuild(stream: AST.Stream1): Shifted[AST] = {
+    val segments = precedence.Distance.partition(stream)
     val flatExpr = segments.map(_.map(rebuildSubExpr))
     flatExpr.map(rebuildExpr)
   }
+  
+  def rebuild(stream: AST.Stream): Option[Shifted[AST]] =
+    List1(stream).map(rebuild)
   
   final object Internal {
     def oprToToken(ast: AST): Opr = ast match {
