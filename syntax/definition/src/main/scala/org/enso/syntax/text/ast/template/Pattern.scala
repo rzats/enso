@@ -16,6 +16,7 @@ sealed trait Pattern {
   def |(that: Pattern):  Or   = Or(this, that)
   def many:              Many = Many(this)
 }
+
 object Pattern {
   sealed trait Of[T] extends Pattern
 

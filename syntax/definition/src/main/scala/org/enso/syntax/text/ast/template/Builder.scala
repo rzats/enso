@@ -15,7 +15,11 @@ import scala.annotation.tailrec
 //// Builder ////
 /////////////////
 
-class Builder(head: Ident, offset: Int = 0) {
+class Builder(
+  head: Ident,
+  offset: Int                  = 0,
+  val isModuleBuilder: Boolean = false
+) {
   var context: Builder.Context            = Builder.Context()
   var mixfix: Option[Template.Definition] = None
   var current: Builder.Segment            = new Builder.Segment(head, offset)
@@ -25,6 +29,13 @@ class Builder(head: Ident, offset: Int = 0) {
     revSegs ::= current
     current        = new Builder.Segment(ast)
     current.offset = off
+  }
+
+  def selfMerge(): Unit = merge(this)
+
+  def merge(that: Builder): Unit = {
+    val thatStream = that.build()
+    current.revBody = thatStream.concat(current.revBody).toList
   }
 
   def build(): AST.Stream1 = {
@@ -72,38 +83,46 @@ class Builder(head: Ident, offset: Int = 0) {
     }
     result
   }
-}
-object Builder {
-  def moduleBuilder(): Builder = {
-    val builder: Builder = new Builder(AST.Blank)
-    builder.mixfix = Some(
+
+  if (isModuleBuilder)
+    mixfix = Some(
       Template.Definition(
         List1(AST.Blank -> Pattern.Expr()), { _ =>
           throw new scala.Error("Impossible happened")
         }
       )
     )
-    builder
+
+  def buildAsModule(): AST = {
+    build().head.el match {
+      case Template.Matched(segs) =>
+        segs.head.body.toStream match {
+          case Nil    => throw new scala.Error("Impossible happened.")
+          case s :: _ => s.el
+        }
+      case _ => throw new scala.Error("Impossible happened.")
+    }
   }
+}
+
+object Builder {
+  def moduleBuilder(): Builder = new Builder(AST.Blank, isModuleBuilder = true)
 
   /////////////////
   //// Context ////
   /////////////////
 
   case class Context(tree: Registry.Tree, parent: Option[Context]) {
-    def get(t: AST): Option[Registry.Tree] =
-      tree.get(t)
-
-    def isEmpty: Boolean =
-      tree.isEmpty
+    def lookup(t: AST): Option[Registry.Tree] = tree.get(t)
+    def isEmpty:        Boolean               = tree.isEmpty
 
     @tailrec
-    final def parentCheck(t: AST): Boolean = {
+    final def parentLookup(t: AST): Boolean = {
       parent match {
         case None => false
         case Some(p) =>
-          p.get(t) match {
-            case None    => p.parentCheck(t)
+          p.lookup(t) match {
+            case None    => p.parentLookup(t)
             case Some(_) => true
           }
       }
