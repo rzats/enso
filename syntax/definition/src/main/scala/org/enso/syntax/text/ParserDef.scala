@@ -1,5 +1,6 @@
 package org.enso.syntax.text
 
+import org.enso.data.VectorMap
 import org.enso.flexer._
 import org.enso.flexer.automata.Pattern
 import org.enso.flexer.automata.Pattern._
@@ -9,17 +10,26 @@ import scala.reflect.runtime.universe.reify
 
 case class ParserDef() extends Parser[AST] {
 
-  final def withSome[T, S](opt: Option[T])(f: T => S): S = opt match {
+  final def unwrap[T](opt: Option[T]): T = opt match {
     case None    => throw new Error("Internal Error")
-    case Some(a) => f(a)
+    case Some(t) => t
   }
 
   /////////////
   //// API ////
   /////////////
 
-  override def run(input: String) = {
+  def run(
+    input: String,
+    markerSeq: scala.Seq[(Int, AST.Marker)]
+  ): Parser.Result[AST] = {
+    result.markers = VectorMap(markerSeq)
+    run(input)
+  }
+
+  override def run(input: String): Parser.Result[AST] = {
     block.onBegin(0)
+    state.begin(block.FIRSTCHAR)
     super.run(input)
   }
 
@@ -42,9 +52,11 @@ case class ParserDef() extends Parser[AST] {
 
   override def getResult() = result.current
 
-  object result {
-    var current: Option[AST]     = None
-    var stack: List[Option[AST]] = Nil
+  final object result {
+
+    var markers: VectorMap[Int, AST.Marker] = VectorMap()
+    var current: Option[AST]                = None
+    var stack: List[Option[AST]]            = Nil
 
     def push(): Unit = logger.trace {
       logger.log(s"Pushed: $current")
@@ -61,10 +73,14 @@ case class ParserDef() extends Parser[AST] {
     def app(fn: String => AST): Unit =
       app(fn(currentMatch))
 
-    def app(t: AST): Unit = logger.trace {
+    def app(ast: AST): Unit = logger.trace {
+      val marked = markers.get(offset - ast.span - 1) match {
+        case None         => ast
+        case Some(marker) => AST.Marked(marker, ast)
+      }
       current = Some(current match {
-        case None    => t
-        case Some(r) => AST.App(r, off.use(), t)
+        case None    => marked
+        case Some(r) => AST.App(r, off.use(), marked)
       })
     }
   }
@@ -73,7 +89,7 @@ case class ParserDef() extends Parser[AST] {
   //// Offset ////
   ////////////////
 
-  object off {
+  final object off {
     var current: Int     = 0
     var stack: List[Int] = Nil
 
@@ -106,7 +122,9 @@ case class ParserDef() extends Parser[AST] {
   //// IDENTIFIER ////
   ////////////////////
 
-  object ident {
+  final object ident {
+    import AST.Ident._
+
     var current: Option[AST.Ident] = None
 
     def on(cons: String => AST.Ident): Unit = logger.trace_ {
@@ -119,19 +137,15 @@ case class ParserDef() extends Parser[AST] {
     }
 
     def submit(): Unit = logger.trace {
-      withSome(current) { b =>
-        result.app(b)
-        current = None
-      }
+      result.app(unwrap(current))
+      current = None
     }
 
     def onErrSfx(): Unit = logger.trace {
-      withSome(current) { b =>
-        val ast = AST.Ident.InvalidSuffix(b, currentMatch)
-        result.app(ast)
-        current = None
-        state.end()
-      }
+      val ast = InvalidSuffix(unwrap(current), currentMatch)
+      result.app(ast)
+      current = None
+      state.end()
     }
 
     def onNoErrSfx(): Unit = logger.trace {
@@ -163,7 +177,7 @@ case class ParserDef() extends Parser[AST] {
   //// Operator ////
   //////////////////
 
-  object opr {
+  final object opr {
     def on(cons: String => AST.Ident): Unit = logger.trace {
       on(cons(currentMatch))
     }
@@ -183,9 +197,8 @@ case class ParserDef() extends Parser[AST] {
     }
 
     def onMod(): Unit = logger.trace {
-      withSome(ident.current) { body =>
-        ident.current = Some(AST.Opr.Mod(body.asInstanceOf[AST.Opr].name))
-      }
+      val opr = AST.Opr.Mod(unwrap(ident.current).asInstanceOf[AST.Opr].name)
+      ident.current = Some(opr)
     }
 
     val char: Pattern     = anyOf("!$%&*+-/<>?^~|:\\")
@@ -195,7 +208,7 @@ case class ParserDef() extends Parser[AST] {
     val opsEq: Pattern    = "=" | "==" | ">=" | "<=" | "/=" | "#="
     val opsDot: Pattern   = "." | ".." | "..." | ","
     val opsGrp: Pattern   = anyOf("()[]{}")
-    val opsNoMod: Pattern = opsEq | opsDot | opsGrp
+    val opsNoMod: Pattern = opsEq | opsDot | opsGrp | "##"
 
     val SFX_CHECK = state.define("Operator Suffix Check")
     val MOD_CHECK = state.define("Operator Modifier Check")
@@ -212,41 +225,41 @@ case class ParserDef() extends Parser[AST] {
   //// NUMBER ////
   ////////////////
 
-  object num {
+  final object num {
 
     var part1: String = ""
     var part2: String = ""
 
-    final def reset(): Unit = logger.trace {
+    def reset(): Unit = logger.trace {
       part1 = ""
       part2 = ""
     }
 
-    final def submit(): Unit = logger.trace {
+    def submit(): Unit = logger.trace {
       val base = if (part1 == "") None else Some(part1)
       result.app(AST.Number(base, part2))
       reset()
     }
 
-    final def onDanglingBase(): Unit = logger.trace {
+    def onDanglingBase(): Unit = logger.trace {
       state.end()
       result.app(AST.Number.DanglingBase(part2))
       reset()
     }
 
-    final def onDecimal(): Unit = logger.trace {
+    def onDecimal(): Unit = logger.trace {
       part2 = currentMatch
       state.begin(PHASE2)
     }
 
-    final def onExplicitBase(): Unit = logger.trace {
+    def onExplicitBase(): Unit = logger.trace {
       state.end()
       part1 = part2
       part2 = currentMatch.substring(1)
       submit()
     }
 
-    final def onNoExplicitBase(): Unit = logger.trace {
+    def onNoExplicitBase(): Unit = logger.trace {
       state.end()
       submit()
     }
@@ -267,23 +280,23 @@ case class ParserDef() extends Parser[AST] {
 
   import AST.Text.Quote
 
-  object text {
+  final object text {
     var stack: List[AST.Text.Interpolated] = Nil
 
-    final def current = stack.head
+    def current = stack.head
 
-    final def withCurrent(f: AST.Text.Interpolated => AST.Text.Interpolated) =
+    def withCurrent(f: AST.Text.Interpolated => AST.Text.Interpolated) =
       stack = f(stack.head) :: stack.tail
 
-    final def push(quoteSize: Quote): Unit = logger.trace {
+    def push(quoteSize: Quote): Unit = logger.trace {
       stack +:= AST.Text.Interpolated(quoteSize)
     }
 
-    final def pop(): Unit = logger.trace {
+    def pop(): Unit = logger.trace {
       stack = stack.tail
     }
 
-    final def submitEmpty(groupIx: State, quoteNum: Quote): Unit =
+    def submitEmpty(groupIx: State, quoteNum: Quote): Unit =
       logger.trace {
         if (groupIx == RAW)
           result.app(AST.Text.Raw(quoteNum))
@@ -291,7 +304,7 @@ case class ParserDef() extends Parser[AST] {
           result.app(AST.Text.Interpolated(quoteNum))
       }
 
-    final def finishCurrent(): AST.Text.Class[_] = logger.trace {
+    def finishCurrent(): AST.Text.Class[_] = logger.trace {
       withCurrent(t => t.copy(segments = t.segments.reverse))
       val txt = if (state.current == RAW) current.raw else current
       pop()
@@ -306,36 +319,36 @@ case class ParserDef() extends Parser[AST] {
       }
     }
 
-    final def submit(): Unit = logger.trace {
+    def submit(): Unit = logger.trace {
       result.app(finishCurrent())
     }
 
-    final def submit(segment: AST.Text.Interpolated.Segment): Unit =
+    def submit(segment: AST.Text.Interpolated.Segment): Unit =
       logger.trace {
         withCurrent(_.prepend(segment))
       }
 
-    final def submitUnclosed(): Unit = logger.trace {
+    def submitUnclosed(): Unit = logger.trace {
       result.app(AST.Text.Unclosed(finishCurrent()))
     }
 
-    final def onBegin(grp: State, quoteSize: Quote): Unit = logger.trace {
+    def onBegin(grp: State, quoteSize: Quote): Unit = logger.trace {
       push(quoteSize)
       state.begin(grp)
     }
 
-    final def submitPlainSegment(
+    def submitPlainSegment(
       segment: AST.Text.Interpolated.Segment
     ): Unit =
       logger.trace {
         withCurrent(_.prependMergeReversed(segment))
       }
 
-    final def onPlainSegment(): Unit = logger.trace {
+    def onPlainSegment(): Unit = logger.trace {
       submitPlainSegment(AST.Text.Segment.Plain(currentMatch))
     }
 
-    final def onQuote(quoteSize: Quote): Unit = logger.trace {
+    def onQuote(quoteSize: Quote): Unit = logger.trace {
       if (current.quote == Quote.Triple
           && quoteSize == Quote.Single) onPlainSegment()
       else if (current.quote == Quote.Single
@@ -347,49 +360,49 @@ case class ParserDef() extends Parser[AST] {
         submit()
     }
 
-    final def onEscape(code: AST.Text.Segment.Escape): Unit = logger.trace {
+    def onEscape(code: AST.Text.Segment.Escape): Unit = logger.trace {
       submit(code)
     }
 
-    final def onEscapeU16(): Unit = logger.trace {
+    def onEscapeU16(): Unit = logger.trace {
       val code = currentMatch.drop(2)
       submit(AST.Text.Segment.Escape.Unicode.U16(code))
     }
 
-    final def onEscapeU32(): Unit = logger.trace {
+    def onEscapeU32(): Unit = logger.trace {
       val code = currentMatch.drop(2)
       submit(AST.Text.Segment.Escape.Unicode.U32(code))
     }
 
-    final def onEscapeInt(): Unit = logger.trace {
+    def onEscapeInt(): Unit = logger.trace {
       val int = currentMatch.drop(1).toInt
       submit(AST.Text.Segment.Escape.Number(int))
     }
 
-    final def onInvalidEscape(): Unit = logger.trace {
+    def onInvalidEscape(): Unit = logger.trace {
       val str = currentMatch.drop(1)
       submit(AST.Text.Segment.Escape.Invalid(str))
     }
 
-    final def onEscapeSlash(): Unit = logger.trace {
+    def onEscapeSlash(): Unit = logger.trace {
       submit(AST.Text.Segment.Escape.Slash)
     }
 
-    final def onEscapeQuote(): Unit = logger.trace {
+    def onEscapeQuote(): Unit = logger.trace {
       submit(AST.Text.Segment.Escape.Quote)
     }
 
-    final def onEscapeRawQuote(): Unit = logger.trace {
+    def onEscapeRawQuote(): Unit = logger.trace {
       submit(AST.Text.Segment.Escape.RawQuote)
     }
 
-    final def onInterpolateBegin(): Unit = logger.trace {
+    def onInterpolateBegin(): Unit = logger.trace {
       result.push()
       off.push()
       state.begin(INTERPOLATE)
     }
 
-    final def onInterpolateEnd(): Unit = logger.trace {
+    def onInterpolateEnd(): Unit = logger.trace {
       if (state.isInside(INTERPOLATE)) {
         state.endTill(INTERPOLATE)
         submit(AST.Text.Segment.Interpolation(result.current))
@@ -401,12 +414,12 @@ case class ParserDef() extends Parser[AST] {
       }
     }
 
-    final def onEOF(): Unit = logger.trace {
+    def onEOF(): Unit = logger.trace {
       submitUnclosed()
       rewind()
     }
 
-    final def onEOL(): Unit = logger.trace {
+    def onEOL(): Unit = logger.trace {
       submitPlainSegment(AST.Text.Segment.EOL())
     }
 
@@ -417,7 +430,7 @@ case class ParserDef() extends Parser[AST] {
     val escape_u32 = "\\U" >> repeat(stringChar, 0, 8)
 
     val INTP: State        = state.define("Text")
-    val RAW: State         = state.define("RawText")
+    val RAW: State         = state.define("Raw Text")
     val INTERPOLATE: State = state.define("Interpolate")
     INTERPOLATE.parent = ROOT
   }
@@ -467,7 +480,7 @@ case class ParserDef() extends Parser[AST] {
   /// Blocks ///
   //////////////
 
-  object block {
+  final object block {
 
     class State(
       var isValid: Boolean,
@@ -481,30 +494,28 @@ case class ParserDef() extends Parser[AST] {
     var emptyLines: List[Int] = Nil
     var current: State        = new State(true, 0, Nil, None, Nil)
 
-    final def push(newIndent: Int): Unit = logger.trace {
+    def push(newIndent: Int): Unit = logger.trace {
       stack +:= current
       current    = new State(true, newIndent, emptyLines.reverse, None, Nil)
       emptyLines = Nil
     }
 
-    final def pop(): Unit = logger.trace {
+    def pop(): Unit = logger.trace {
       current = stack.head
       stack   = stack.tail
     }
 
-    final def build(): AST.Block = logger.trace {
+    def build(): AST.Block = logger.trace {
       submitLine()
-      withSome(current.firstLine) { firstLine =>
-        AST.Block(
-          current.indent,
-          current.emptyLines.reverse,
-          firstLine,
-          current.lines.reverse
-        )
-      }
+      AST.Block(
+        current.indent,
+        current.emptyLines.reverse,
+        unwrap(current.firstLine),
+        current.lines.reverse
+      )
     }
 
-    final def submit(): Unit = logger.trace {
+    def submit(): Unit = logger.trace {
       val block = build()
       val block2 =
         if (current.isValid) block
@@ -517,7 +528,7 @@ case class ParserDef() extends Parser[AST] {
       logger.endGroup()
     }
 
-    final def submitModule(): Unit = logger.trace {
+    def submitModule(): Unit = logger.trace {
       submitLine()
       val el  = current.emptyLines.reverse.map(AST.Block.Line(_))
       val el2 = emptyLines.reverse.map(AST.Block.Line(_))
@@ -531,7 +542,7 @@ case class ParserDef() extends Parser[AST] {
       logger.endGroup()
     }
 
-    final def submitLine(): Unit = logger.trace {
+    def submitLine(): Unit = logger.trace {
       result.current match {
         case None => pushEmptyLine()
         case Some(r) =>
@@ -554,43 +565,43 @@ case class ParserDef() extends Parser[AST] {
       emptyLines +:= off.use()
     }
 
-    final def onBegin(newIndent: Int): Unit = logger.trace {
+    def onBegin(newIndent: Int): Unit = logger.trace {
       result.push()
       push(newIndent)
       logger.beginGroup()
     }
 
-    final def onEmptyLine(): Unit = logger.trace {
+    def onEmptyLine(): Unit = logger.trace {
       pushEmptyLine()
       off.on(-1)
     }
 
-    final def onEOFLine(): Unit = logger.trace {
+    def onEOFLine(): Unit = logger.trace {
       submitLine()
       state.end()
       off.on(-1)
       onEOF()
     }
 
-    final def onNewLine(): Unit = logger.trace {
+    def onNewLine(): Unit = logger.trace {
       state.begin(NEWLINE)
     }
 
-    final def onBlockNewline(): Unit = logger.trace {
+    def onBlockNewline(): Unit = logger.trace {
       state.end()
       off.push()
       off.on()
       if (off.current == current.indent) {
         off.pop()
         submitLine()
-      } else if (off.current > current.indent) {
+      } else if (off.current > current.indent)
         onBegin(off.use())
-      } else {
+      else
         onEnd(off.use())
-      }
+      state.begin(FIRSTCHAR)
     }
 
-    final def onEnd(newIndent: Int): Unit = logger.trace {
+    def onEnd(newIndent: Int): Unit = logger.trace {
       while (newIndent < current.indent) {
         submit()
       }
@@ -601,13 +612,77 @@ case class ParserDef() extends Parser[AST] {
       }
     }
 
-    val NEWLINE = state.define("Newline")
+    val NEWLINE   = state.define("Newline")
+    val FIRSTCHAR = state.define("First Char")
   }
 
-  ROOT          || newline              || reify { block.onNewLine() }
-  block.NEWLINE || space.opt >> newline || reify { block.onEmptyLine() }
-  block.NEWLINE || space.opt >> eof     || reify { block.onEOFLine() }
-  block.NEWLINE || space.opt            || reify { block.onBlockNewline() }
+  ROOT            || newline              || reify { block.onNewLine() }
+  block.NEWLINE   || space.opt >> newline || reify { block.onEmptyLine() }
+  block.NEWLINE   || space.opt >> eof     || reify { block.onEOFLine() }
+  block.NEWLINE   || space.opt            || reify { block.onBlockNewline() }
+  block.FIRSTCHAR || always               || reify { state.end() }
+
+  ////////////////
+  /// Comments ///
+  ////////////////
+
+  final object cmm {
+
+    import AST.Comment
+
+    var lines: List[String] = Nil
+    var current: String     = ""
+
+    def onEndOneLine(): Unit = logger.trace {
+      result.app(Comment(current))
+      current = ""
+      state.end()
+      rewind()
+    }
+
+    def onBegin(): Unit = logger.trace {
+      state.end()
+      state.begin(MANYLINE)
+    }
+
+    def onEnd(): Unit = logger.trace {
+      result.app(Comment.Block(block.current.indent, lines.reverse))
+      lines = Nil
+      state.end()
+      rewind()
+    }
+
+    def onLine(): Unit = logger.trace {
+      if (lines.isEmpty)
+        current = currentMatch
+      else if (currentMatch.takeWhile(_ == ' ').length > block.current.indent)
+        current = currentMatch.drop(block.current.indent + 1)
+      else {
+        onEnd()
+        state.begin(block.NEWLINE)
+        offset -= 1 // FIXME
+      }
+    }
+
+    def pushLine(): Unit = logger.trace {
+      lines +:= current
+      current = ""
+    }
+
+    val ONELINE  = state.define("One Line Comment")
+    val MANYLINE = state.define("Block Comment")
+
+  }
+
+  ROOT            || "#"                || reify { state.begin(cmm.ONELINE) }
+  block.FIRSTCHAR || "#="               || reify { rewind(3); state.end() }
+  block.FIRSTCHAR || "##"               || reify { rewind(3); state.end() }
+  block.FIRSTCHAR || "#"                || reify { cmm.onBegin() }
+  cmm.ONELINE     || noneOf("\n").many1 || reify { cmm.current = currentMatch }
+  cmm.ONELINE     || (newline | eof)    || reify { cmm.onEndOneLine() }
+  cmm.MANYLINE    || noneOf("\n").many1 || reify { cmm.onLine() }
+  cmm.MANYLINE    || newline            || reify { cmm.pushLine() }
+  cmm.MANYLINE    || eof                || reify { cmm.pushLine(); cmm.onEnd() }
 
   ////////////////
   /// Defaults ///

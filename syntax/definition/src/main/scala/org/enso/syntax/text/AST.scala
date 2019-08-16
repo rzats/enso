@@ -83,6 +83,16 @@ object AST {
   }
 
   //////////////////////////////////////////////////////////////////////////////
+  //// Marker //////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  final case class Marker(id: Int)
+
+  final case class Marked(marker: Marker, ast: AST) extends AST {
+    val repr = ast.repr
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
   //// Literal /////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
@@ -529,7 +539,7 @@ object AST {
   import Block.Line
 
   final case class Module(lines: List1[Line]) extends AST {
-    val repr = R + lines.map(R + _).intercalate(R + '\n')
+    val repr = R + lines.head + lines.tail.map(R + '\n' + _)
 
     def map(f: Line => Line): Module =
       Module(lines.map(f))
@@ -541,7 +551,7 @@ object AST {
     def apply(l: Line, ls: List[Line]): Module = Module(List1(l, ls))
 
     object Zipper {
-      final case class Lines() extends AST.Zipper.Path[Module, List1[Line]] {
+      case class Lines() extends AST.Zipper.Path[Module, List1[Line]] {
         val path = GenLens[Module](_.lines).asOptional
       }
       val lines          = zipper(Lines())
@@ -747,6 +757,22 @@ object AST {
         case LT => offs ++ List.fill(argCount - offs.length)(1)
         case GT => offs.take(argCount)
       }
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  /// Comment //////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  final case class Comment(comment: String) extends AST {
+    val repr = R + "#" + comment
+  }
+
+  object Comment {
+
+    final case class Block(offset: Int, lines: List[String]) extends AST {
+      val repr = R + offset + "#" + lines.mkString("\n " + " " * offset)
+    }
+
   }
 
   //////////////////////////////////////////////////////////////////////////////
