@@ -113,8 +113,8 @@ object Main extends App {
                 case None => println(":(")
                 case Some(spec) =>
                   println("COMPUTING")
-                  val out = spec.finalizer(t.segs.toList.map(_.el))
-                  println(out)
+                  val out = spec.finalizer(t.segs.toList().map(_.el))
+                  println(pretty(out.toString))
               }
             case t =>
               println("not macro")

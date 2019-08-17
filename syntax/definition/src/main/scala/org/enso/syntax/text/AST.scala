@@ -577,7 +577,7 @@ object AST {
 
     final case class Match(segs: Shifted.List1[Match.Segment]) extends Macro {
       val repr = R + segs.map(_.repr)
-      def path(): List1[AST] = segs.toList1.map(_.el.head)
+      def path(): List1[AST] = segs.toList1().map(_.el.head)
     }
     object Match {
       final case class Segment(head: Ident, body: Pattern.Match) {

@@ -141,7 +141,7 @@ object Builder {
     import Macro._
     var revBody: AST.Stream = List()
 
-    def buildAST(): Option[Shifted[AST]] = buildASTFrom(revBody)
+    def buildAST(): Option[Shifted[AST]] = buildASTFrom(revBody.reverse)
     def buildASTFrom(stream: AST.Stream): Option[Shifted[AST]] =
       Operator.rebuild(stream)
 
@@ -203,7 +203,7 @@ object Builder {
 
         case p @ Pattern.Build(pat2) =>
           resolveStep(pat2, stream).map(
-            _.map(x => Pattern.Match(p, buildASTFrom(x.toStream.reverse).get))
+            _.map(x => Pattern.Match(p, buildASTFrom(x.toStream).get))
           )
 
         case p @ Pattern.Seq(pat1, pat2) =>

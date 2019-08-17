@@ -1,10 +1,12 @@
 package org.enso.syntax.text.prec
 
 import org.enso.Logger
+import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.ast.meta.Builder
 import org.enso.syntax.text.ast.meta.Builtin
+
 import scala.annotation.tailrec
 
 object Macro {
@@ -105,7 +107,11 @@ object Macro {
 
       }
     }
-    val tokens = AST.tokenize(t).toList()
-    go(tokens)
+    val stream = AST.tokenize(t).toList()
+    go(stream)
+//    val stream = AST.tokenize(t)
+//    val ss     = List1(Shifted(stream.head), stream.tail)
+//    val ss2    = Operator.rebuildNonSpaced(ss)
+//    go(stream)
   }
 }

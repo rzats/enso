@@ -155,31 +155,31 @@ object Pattern {
       override def toString = el.toString
 
       def toStream: AST.Stream = this match {
-        case Match.Build(t)  => List(t)
-        case Match.Cls(t)    => List(t)
-        case Match.End()     => List()
-        case Match.Err(t)    => List(t)
-        case Match.Many(t)   => t.flatMap(_.toStream)
-        case Match.Except(t) => t.toStream
-        case Match.Nothing() => List()
-        case Match.Or(t)     => t.toStream
-        case Match.Seq(l, r) => l.toStream ++ r.toStream
-        case Match.Tag(t)    => t.toStream
-        case Match.Tok(t)    => List(t)
+        case Match.Build(t)   => List(t)
+        case Match.Cls(t)     => List(t)
+        case Match.TillEnd(t) => t.toStream
+        case Match.Err(t)     => List(t)
+        case Match.Many(t)    => t.flatMap(_.toStream)
+        case Match.Except(t)  => t.toStream
+        case Match.Nothing()  => List()
+        case Match.Or(t)      => t.toStream
+        case Match.Seq(l, r)  => l.toStream ++ r.toStream
+        case Match.Tag(t)     => t.toStream
+        case Match.Tok(t)     => List(t)
       }
 
       def isValid: Boolean = this match {
-        case Match.Build(_)  => true
-        case Match.Cls(_)    => true
-        case Match.End()     => true
-        case Match.Err(_)    => false
-        case Match.Many(t)   => t.forall(_.isValid)
-        case Match.Except(t) => t.isValid
-        case Match.Nothing() => true
-        case Match.Or(t)     => t.isValid
-        case Match.Seq(l, r) => l.isValid && r.isValid
-        case Match.Tag(t)    => t.isValid
-        case Match.Tok(_)    => true
+        case Match.Build(_)   => true
+        case Match.Cls(_)     => true
+        case Match.TillEnd(t) => t.isValid
+        case Match.Err(_)     => false
+        case Match.Many(t)    => t.forall(_.isValid)
+        case Match.Except(t)  => t.isValid
+        case Match.Nothing()  => true
+        case Match.Or(t)      => t.isValid
+        case Match.Seq(l, r)  => l.isValid && r.isValid
+        case Match.Tag(t)     => t.isValid
+        case Match.Tok(_)     => true
       }
     }
 
@@ -199,10 +199,10 @@ object Pattern {
       }
     }
 
-    object End {
-      def unapply(t: Match): Boolean = t match {
-        case Of(_: Pattern.TillEnd, _) => true
-        case _                         => false
+    object TillEnd {
+      def unapply(t: Match): Option[Match] = t match {
+        case Of(_: Pattern.TillEnd, t) => Some(t)
+        case _                         => None
       }
     }
 
