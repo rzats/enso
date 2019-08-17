@@ -1,11 +1,11 @@
-package org.enso.syntax.text.precedence
+package org.enso.syntax.text.prec
 
 import org.enso.data.Compare._
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.syntax.text.AST._
 import org.enso.syntax.text.AST
-import org.enso.syntax.text.precedence
+import org.enso.syntax.text.prec
 
 import scala.annotation.tailrec
 
@@ -20,7 +20,7 @@ object Operator {
     * rules, including per-operator precedence and distance-based precedence.
     */
   def rebuild(stream: AST.Stream1): Shifted[AST] = {
-    val segments = precedence.Distance.partition(stream)
+    val segments = prec.Distance.partition(stream)
     val flatExpr = segments.map(_.map(rebuildSubExpr))
     flatExpr.map(rebuildExpr)
   }

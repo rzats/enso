@@ -1,4 +1,4 @@
-package org.enso.syntax.text.precedence
+package org.enso.syntax.text.prec
 
 import org.enso.syntax.text.AST
 import org.enso.data.List1

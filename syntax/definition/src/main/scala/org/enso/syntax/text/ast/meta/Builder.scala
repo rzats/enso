@@ -1,13 +1,13 @@
-package org.enso.syntax.text.ast.template
+package org.enso.syntax.text.ast.meta
 
 import org.enso.data
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Ident
-import org.enso.syntax.text.AST.Template
+import org.enso.syntax.text.AST.Macro
 import org.enso.syntax.text.ast.Repr
-import org.enso.syntax.text.precedence.Operator
+import org.enso.syntax.text.prec.Operator
 
 import scala.annotation.tailrec
 
@@ -20,10 +20,10 @@ class Builder(
   offset: Int                  = 0,
   val isModuleBuilder: Boolean = false
 ) {
-  var context: Builder.Context            = Builder.Context()
-  var mixfix: Option[Template.Definition] = None
-  var current: Builder.Segment            = new Builder.Segment(head, offset)
-  var revSegs: List[Builder.Segment]      = List()
+  var context: Builder.Context         = Builder.Context()
+  var mixfix: Option[Macro.Definition] = None
+  var current: Builder.Segment         = new Builder.Segment(head, offset)
+  var revSegs: List[Builder.Segment]   = List()
 
   def startSegment(ast: Ident, off: Int): Unit = {
     revSegs ::= current
@@ -45,7 +45,7 @@ class Builder(
         case None =>
           val revSegs = revSegBldrs.map { segBldr =>
             val optAst = segBldr.buildAST()
-            val seg    = Template.Unmatched.Segment(segBldr.ast, optAst)
+            val seg    = Macro.Ambiguous.Segment(segBldr.ast, optAst)
             Shifted(segBldr.offset, seg)
           }
           val segments = revSegs.reverse
@@ -53,7 +53,7 @@ class Builder(
           val tail     = segments.tail
           val paths    = context.tree.dropValues()
           val stream   = Shifted.List1(head.el, tail)
-          val template = Template.Unmatched(stream, paths)
+          val template = Macro.Ambiguous(stream, paths)
           val newTok   = Shifted(head.off, template)
           List1(newTok)
 
@@ -72,7 +72,7 @@ class Builder(
             )
           }
 
-          val template = Template.Matched(shiftSegs)
+          val template = Macro.Match(shiftSegs)
           val newTok   = Shifted(segs.head.off, template)
 
           stream match {
@@ -86,7 +86,7 @@ class Builder(
 
   if (isModuleBuilder)
     mixfix = Some(
-      Template.Definition(
+      Macro.Definition(
         List1(AST.Blank -> Pattern.Expr()), { _ =>
           throw new scala.Error("Impossible happened")
         }
@@ -95,7 +95,7 @@ class Builder(
 
   def buildAsModule(): AST = {
     build().head.el match {
-      case Template.Matched(segs) =>
+      case Macro.Match(segs) =>
         segs.head.body.toStream match {
           case Nil    => throw new scala.Error("Impossible happened.")
           case s :: _ => s.el
@@ -138,14 +138,14 @@ object Builder {
   /////////////////
 
   class Segment(val ast: Ident, var offset: Int = 0) {
-    import Template._
+    import Macro._
     var revBody: AST.Stream = List()
 
     def buildAST(): Option[Shifted[AST]] = buildASTFrom(revBody)
     def buildASTFrom(stream: AST.Stream): Option[Shifted[AST]] =
       Operator.rebuild(stream)
 
-    def build(tp: Pattern): (Shifted[Matched.Segment], AST.Stream) = {
+    def build(tp: Pattern): (Shifted[Match.Segment], AST.Stream) = {
       val stream = revBody.reverse
       resolveStep(tp, stream) match {
         case None =>
@@ -153,7 +153,7 @@ object Builder {
             "Internal error: template pattern segment was unmatched"
           )
         case Some(rr) =>
-          (Shifted(offset, Matched.Segment(ast, rr.elem)), rr.stream)
+          (Shifted(offset, Match.Segment(ast, rr.elem)), rr.stream)
       }
     }
 
@@ -189,8 +189,11 @@ object Builder {
 
       p match {
 
-        case p @ Pattern.End() =>
-          if (stream.isEmpty) ret(p, (), stream) else None
+        case Pattern.TillEnd(p1) =>
+          resolveStep(p1, stream) match {
+            case None    => None
+            case Some(r) => if (r.stream.isEmpty) Some(r) else None
+          }
 
         case p @ Pattern.Nothing() =>
           ret(p, (), stream)
@@ -245,10 +248,10 @@ object Builder {
             )
           )
 
-        case p @ Not(p1) =>
+        case p @ Except(p1, p2) =>
           resolveStep(p1, stream) match {
             case Some(_) => None
-            case None    => ret(p, (), stream)
+            case None    => resolveStep(p2, stream)
           }
       }
     }

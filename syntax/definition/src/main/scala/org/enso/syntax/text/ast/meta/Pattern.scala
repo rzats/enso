@@ -1,4 +1,4 @@
-package org.enso.syntax.text.ast.template
+package org.enso.syntax.text.ast.meta
 
 import org.enso.data.Shifted
 import org.enso.syntax.text.AST
@@ -12,24 +12,25 @@ import scala.reflect.ClassTag
 
 sealed trait Pattern {
   import Pattern._
-  def >>(that: Pattern): Seq  = Seq(this, that)
-  def |(that: Pattern):  Or   = Or(this, that)
-  def many:              Many = Many(this)
+  def ::(that: Pattern): Seq    = Seq(that, this)
+  def |(that: Pattern):  Or     = Or(this, that)
+  def !(that: Pattern):  Except = Except(that, this)
+  def many:              Many   = Many(this)
 }
 
 object Pattern {
   sealed trait Of[T] extends Pattern
 
-  final case class Nothing()                      extends Of[Unit]
-  final case class Tok(tok: AST)                  extends Of[SAST]
-  final case class Many(pat: Pattern)             extends Of[List[Match]]
-  final case class Seq(p1: Pattern, p2: Pattern)  extends Of[(Match, Match)]
-  final case class Build(pat: Pattern)            extends Of[SAST]
-  final case class Not(pat: Pattern)              extends Of[Unit]
-  final case class Or(p1: Pattern, p2: Pattern)   extends Of[Match]
-  final case class End()                          extends Of[Unit]
-  final case class Tag(tag: String, pat: Pattern) extends Of[Match]
-  final case class Err(msg: String, pat: Pattern) extends Of[SAST]
+  final case class Nothing()                         extends Of[Unit]
+  final case class Tok(tok: AST)                     extends Of[SAST]
+  final case class Many(pat: Pattern)                extends Of[List[Match]]
+  final case class Seq(p1: Pattern, p2: Pattern)     extends Of[(Match, Match)]
+  final case class Build(pat: Pattern)               extends Of[SAST]
+  final case class Except(not: Pattern, ok: Pattern) extends Of[Match]
+  final case class Or(p1: Pattern, p2: Pattern)      extends Of[Match]
+  final case class TillEnd(pat: Pattern)             extends Of[Match]
+  final case class Tag(tag: String, pat: Pattern)    extends Of[Match]
+  final case class Err(msg: String, pat: Pattern)    extends Of[SAST]
   final case class Cls[T <: AST]()(implicit val tag: ClassTag[T])
       extends Of[Shifted[T]]
 
@@ -39,6 +40,14 @@ object Pattern {
         case None     => Seq(p1, p2)
         case Some(p3) => Seq(Seq(p1, p2), p3, ps.tail: _*)
       }
+  }
+
+  object Err {
+    def apply(msg: String): Err = Err(msg, Nothing())
+  }
+
+  object TillEnd {
+    def apply(): TillEnd = TillEnd(Nothing())
   }
 
   //// Conversions ////
@@ -64,19 +73,28 @@ object Pattern {
       }
   }
 
-  object NotThen {
-    def apply(not: Pattern, pat: Pattern): Pattern = Not(not) >> pat
-    def unapply(t: Pattern): Option[(Pattern, Pattern)] = t match {
-      case Seq(Not(p1), p2) => Some((p1, p2))
-      case _                => None
+  object End {
+    def apply(): TillEnd = TillEnd(Nothing())
+    def unapply(t: Pattern): Boolean =
+      t match {
+        case TillEnd(Nothing()) => true
+        case _                  => false
+      }
+  }
+
+  object Not {
+    def apply(pat: Pattern): Pattern = Except(pat, Nothing())
+    def unapply(t: Pattern): Option[Pattern] = t match {
+      case Except(pat, Nothing()) => Some(pat)
+      case _                      => None
     }
   }
 
   object AnyBut {
-    def apply(pat: Pattern): Pattern = NotThen(pat, Any())
+    def apply(pat: Pattern): Pattern = Any() ! pat
     def unapply(t: Pattern): Option[Pattern] = t match {
-      case NotThen(pat, Any()) => Some(pat)
-      case _                   => None
+      case Except(pat, Any()) => Some(pat)
+      case _                  => None
     }
   }
 
@@ -92,6 +110,11 @@ object Pattern {
     def apply(pat: Pattern): Many = Many(AnyBut(pat))
   }
 
+  object TillEndMarkUnmatched {
+    def apply(pat: Pattern, msg: String) =
+      TillEnd(pat) | (pat :: ErrTillEnd(msg))
+  }
+
   object Expr {
     def apply() = Build(Many1(Any()))
     def unapply(t: Pattern): Boolean = t match {
@@ -101,15 +124,19 @@ object Pattern {
   }
 
   object SepList {
-    def apply(pat: Pattern, div: Pattern): Seq = pat >> (div >> pat).many
+    def apply(pat: Pattern, div: Pattern): Seq = pat :: (div :: pat).many
     def apply(pat: Pattern, div: Pattern, err: String): Seq = {
       val seg = pat | Err(err, AnyTill(div))
       SepList(seg, div)
     }
   }
 
-  object RestOfStream {
+  object AnyTillEnd {
     def apply(): Many = Many(Any())
+  }
+
+  object ErrTillEnd {
+    def apply(msg: String): Err = Err(msg, AnyTillEnd())
   }
 
   ///////////////
@@ -125,13 +152,15 @@ object Pattern {
         extends Repr.Provider {
       val repr = Repr.of(el)
 
+      override def toString = el.toString
+
       def toStream: AST.Stream = this match {
         case Match.Build(t)  => List(t)
         case Match.Cls(t)    => List(t)
         case Match.End()     => List()
         case Match.Err(t)    => List(t)
         case Match.Many(t)   => t.flatMap(_.toStream)
-        case Match.Not()     => List()
+        case Match.Except(t) => t.toStream
         case Match.Nothing() => List()
         case Match.Or(t)     => t.toStream
         case Match.Seq(l, r) => l.toStream ++ r.toStream
@@ -145,7 +174,7 @@ object Pattern {
         case Match.End()     => true
         case Match.Err(_)    => false
         case Match.Many(t)   => t.forall(_.isValid)
-        case Match.Not()     => true
+        case Match.Except(t) => t.isValid
         case Match.Nothing() => true
         case Match.Or(t)     => t.isValid
         case Match.Seq(l, r) => l.isValid && r.isValid
@@ -172,8 +201,8 @@ object Pattern {
 
     object End {
       def unapply(t: Match): Boolean = t match {
-        case Of(_: Pattern.End, _) => true
-        case _                     => false
+        case Of(_: Pattern.TillEnd, _) => true
+        case _                         => false
       }
     }
 
@@ -191,10 +220,10 @@ object Pattern {
       }
     }
 
-    object Not {
-      def unapply(t: Match): Boolean = t match {
-        case Of(_: Pattern.Not, _) => true
-        case _                     => false
+    object Except {
+      def unapply(t: Match): Option[Match] = t match {
+        case Of(_: Pattern.Except, s) => Some(s)
+        case _                        => None
       }
     }
 

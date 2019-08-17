@@ -1,9 +1,9 @@
-package org.enso.syntax.text.ast.template
+package org.enso.syntax.text.ast.meta
 
 import org.enso.data
 import org.enso.data.List1
 import org.enso.syntax.text.AST
-import org.enso.syntax.text.AST.Template.Definition
+import org.enso.syntax.text.AST.Macro.Definition
 
 final case class Registry() {
   var tree: Registry.Tree = data.Tree()

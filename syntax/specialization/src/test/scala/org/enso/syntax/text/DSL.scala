@@ -3,15 +3,15 @@ package org.enso.syntax.text
 import org.enso.data.Tree
 import org.enso.syntax.text.AST._
 import org.enso.data.Shifted
-import org.enso.syntax.text.ast.template.Pattern
+import org.enso.syntax.text.ast.meta.Pattern
 
 object DSL {
 
   trait MixfixBldr[T] {
-    def add(m: Template.Matched, i: Int, t: T): Template.Matched
+    def add(m: Macro.Match, i: Int, t: T): Macro.Match
   }
   trait MixfixBldr1[T] {
-    def add1(m: Template.Matched, i: Int, t: T): Template.Matched
+    def add1(m: Macro.Match, i: Int, t: T): Macro.Match
   }
 
 //  implicit val string_mixfixBuilder: MixfixBldr[String] =

@@ -9,7 +9,7 @@ import org.enso.data.Shifted
 import org.enso.data.Tree
 import org.enso.syntax.text.ast.Repr.R
 import org.enso.syntax.text.ast.Repr
-import org.enso.syntax.text.ast.operator
+import org.enso.syntax.text.ast.opr
 import org.enso.syntax.text.ast.text
 
 import scala.annotation.tailrec
@@ -22,10 +22,10 @@ object AST {
   //// Reexports ///////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Assoc = operator.Assoc
+  type Assoc = opr.Assoc
 
-  val Assoc = operator.Assoc
-  val Prec  = operator.Prec
+  val Assoc = opr.Assoc
+  val Prec  = opr.Prec
 
   //////////////////////////////////////////////////////////////////////////////
   //// Definition //////////////////////////////////////////////////////////////
@@ -442,7 +442,7 @@ object AST {
   final case class _Block(
     indent: Int,
     emptyLines: List[Int],
-    firstLine: Block.Line.Required,
+    firstLine: Block.Line.NonEmpty,
     lines: List[Block.Line]
   ) extends AST {
     val repr = {
@@ -452,23 +452,26 @@ object AST {
       val linesRepr      = lines.map(R + '\n' + indent + _)
       headRepr + emptyLinesRepr + firstLineRepr + linesRepr
     }
+
+    def mapLines(f: AST => AST): Block =
+      copy(firstLine = firstLine.map(f), lines = lines.map(_.map(f)))
   }
 
   object Block {
     def apply(
       indent: Int,
       emptyLines: List[Int],
-      firstLine: Line.Required,
+      firstLine: Line.NonEmpty,
       lines: List[Line]
     ): Block = _Block(indent, emptyLines, firstLine, lines)
 
-    def apply(indent: Int, firstLine: Line.Required, lines: List[Line]): Block =
+    def apply(indent: Int, firstLine: Line.NonEmpty, lines: List[Line]): Block =
       Block(indent, List(), firstLine, lines)
 
     def apply(indent: Int, firstLine: AST, lines: AST*): Block =
       Block(indent, Line.Required(firstLine), lines.toList.map(Line(_)))
 
-    def unapply(t: Block): Option[(Int, Line.Required, List[Line])] =
+    def unapply(t: Block): Option[(Int, Line.NonEmpty, List[Line])] =
       Some((t.indent, t.firstLine, t.lines))
 
     final case class InvalidIndentation(block: Block) extends AST.Invalid {
@@ -485,6 +488,8 @@ object AST {
       val repr = R + elem + off
       def map(f: AST => AST): Line =
         _Line(elem.map(f), off)
+      def toNonEmpty(): Option[Line.NonEmpty] =
+        elem.map(Line.Required(_, off))
     }
     object Line {
       def apply(elem: Option[AST], off: Int): Line = _Line(elem, off)
@@ -493,16 +498,16 @@ object AST {
       def apply(off: Int):                    Line = Line(None, off)
       def apply():                            Line = Line(None, 0)
 
-      type Required = _Required
-      final case class _Required(elem: AST, off: Int) extends Symbol {
+      type NonEmpty = _NonEmpty
+      final case class _NonEmpty(elem: AST, off: Int) extends Symbol {
         val repr = R + elem + off
-        def toOptional: Line =
-          Line(Some(elem), off)
+        def toOptional:         Line      = Line(Some(elem), off)
+        def map(f: AST => AST): _NonEmpty = copy(elem = f(elem))
       }
       object Required {
-        def apply(elem: AST, off: Int): Required    = _Required(elem, off)
-        def apply(elem: AST):           Required    = Required(elem, 0)
-        def unapply(t: Required):       Option[AST] = Some(t.elem)
+        def apply(elem: AST, off: Int): NonEmpty    = _NonEmpty(elem, off)
+        def apply(elem: AST):           NonEmpty    = Required(elem, 0)
+        def unapply(t: NonEmpty):       Option[AST] = Some(t.elem)
       }
 
       //// Zipper ////
@@ -560,46 +565,42 @@ object AST {
   }
 
   //////////////////////////////////////////////////////////////////////////////
-  //// Template ////////////////////////////////////////////////////////////////
+  //// Macro ///////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  sealed trait Template extends AST
-  object Template {
+  sealed trait Macro extends AST
+  object Macro {
 
-    import org.enso.syntax.text.ast.template.Pattern
+    import org.enso.syntax.text.ast.meta.Pattern
 
     //// Matched ////
 
-    final case class Matched(segments: Shifted.List1[Matched.Segment])
-        extends Template {
-      val repr = R + segments.map(_.repr)
-      def path(): List1[AST] = segments.toList1.map(_.el.head)
+    final case class Match(segs: Shifted.List1[Match.Segment]) extends Macro {
+      val repr = R + segs.map(_.repr)
+      def path(): List1[AST] = segs.toList1.map(_.el.head)
     }
-    object Matched {
-      import Pattern.Match
-      final case class Segment(head: Ident, body: Match) {
+    object Match {
+      final case class Segment(head: Ident, body: Pattern.Match) {
         val repr = R + head + body
-
         def toStream: AST.Stream = Shifted(head) :: body.toStream
         def isValid:  Boolean    = body.isValid
-
-        def map(f: Match => Match): Segment = copy(body = f(body))
+        def map(f: Pattern.Match => Pattern.Match): Segment =
+          copy(body = f(body))
       }
       object Segment {
-        def apply(head: Ident): Segment = Segment(head, Match.Nothing())
+        def apply(head: Ident): Segment = Segment(head, Pattern.Match.Nothing())
       }
     }
 
-    //// Unmatched ////
+    //// Ambiguous ////
 
-    final case class Unmatched(
-      segs: Shifted.List1[Unmatched.Segment],
+    final case class Ambiguous(
+      segs: Shifted.List1[Ambiguous.Segment],
       paths: Tree[AST, Unit]
-    ) extends Template {
+    ) extends Macro {
       val repr = R + segs.map(_.repr)
-
     }
-    object Unmatched {
+    object Ambiguous {
       final case class Segment(head: AST, body: Option[SAST]) extends Symbol {
         val repr = R + head + body
       }
@@ -607,8 +608,8 @@ object AST {
 
     //// Definition ////
 
-    type Definition = _Definition
-    final case class _Definition(
+    type Definition = __Definition__
+    final case class __Definition__(
       segments: List1[Definition.Segment],
       finalizer: Definition.Finalizer
     ) {
@@ -617,55 +618,53 @@ object AST {
     }
     object Definition {
       import Pattern._
+      type Finalizer = List[Macro.Match.Segment] => AST
 
-      type Finalizer = List[Matched.Segment] => AST
-
-      type SegmentTup = (AST, Pattern)
       final case class Segment(head: AST, pattern: Pattern) {
         def map(f: Pattern => Pattern): Segment = copy(pattern = f(pattern))
       }
-
-      def apply(t1: SegmentTup, ts: SegmentTup*)(
-        finalizer: Finalizer
-      ): Definition =
-        Definition(List1(t1, ts: _*), finalizer)
-
-      def apply(
-        segTups: List1[SegmentTup],
-        finalizer: Finalizer
-      ): Definition = {
-        val checkMatch: Pattern => Pattern =
-          _ | Err("unmatched pattern", RestOfStream())
-
-        val checkFullMatch: Pattern => Pattern =
-          _ >> (End() | Err("unmatched tokens", RestOfStream()))
-
-        val lastSegShape: Pattern => Pattern =
-          _ >> Nothing()
-
-        val addDefaultChecks: List1[Segment] => List1[Segment] =
-          _.map(_.map(checkMatch))
-            .mapInit(_.map(checkFullMatch))
-            .mapLast(_.map(lastSegShape))
-
-        val skipDefaultChecks: List[Matched.Segment] => List[Matched.Segment] =
-          _.map(_.map {
-            case Match.Seq(p, _) => p
-            case _               => throw new Error("Internal error")
-          })
-
-        val segs              = segTups.map(tup => Segment(tup._1, tup._2))
-        val segsWithDefChecks = addDefaultChecks(segs)
-        def finalizerWithDefChecks(segs: List[Matched.Segment]) = {
-          if (!segs.forall(_.isValid)) {
-            val stream = segs.flatMap(_.toStream)
-            AST.Unexpected("Invalid statement", stream)
-          } else finalizer(skipDefaultChecks(segs))
-        }
-
-        _Definition(segsWithDefChecks, finalizerWithDefChecks)
+      object Segment {
+        type Tup = (AST, Pattern)
+        def apply(t: Tup): Segment = Segment(t._1, t._2)
       }
 
+      def apply(t1: Segment.Tup, ts: Segment.Tup*)(fin: Finalizer): Definition =
+        Definition(List1(t1, ts: _*), fin)
+
+      def apply(segTups: List1[Segment.Tup], fin: Finalizer): Definition = {
+        type PP = Pattern => Pattern
+        val checkValid: PP = _ | ErrTillEnd("unmatched pattern")
+        val checkFull: PP  = TillEndMarkUnmatched(_, "unmatched tokens")
+
+        val addDefaultChecks: List1[Segment] => List1[Segment] =
+          _.map(_.map(checkValid)).mapInit(_.map(checkFull))
+
+        val segs           = segTups.map(Segment(_))
+        val segsWithChecks = addDefaultChecks(segs)
+        def finalizerWithChecks(segs: List[Macro.Match.Segment]) = {
+          if (!segs.forall(_.isValid)) {
+            val stream = segs.flatMap(_.toStream)
+            AST.Unexpected("invalid statement", stream)
+          } else fin(segs)
+        }
+        __Definition__(segsWithChecks, finalizerWithChecks)
+      }
+
+    }
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  /// Comment //////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  final case class Comment(comment: String) extends AST {
+    val repr = R + Comment.symbol + comment
+  }
+
+  object Comment {
+    val symbol = "#"
+    final case class Block(offset: Int, lines: List[String]) extends AST {
+      val repr = R + offset + symbol + lines.mkString("\n " + " " * offset)
     }
   }
 
@@ -716,63 +715,13 @@ object AST {
   //// Def /////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Def = _Def
-  final case class _Def(
-    nameOff: Int = 1,
-    name: AST,
-    argsOff: List[Int] = List(),
-    args: List[AST],
-    bodyOff: Int = 1,
-    body: Option[AST]
-  ) extends AST {
-    val repr = "type" + nameOff + name + argsOff.zip(args) + bodyOff + body
+  final case class Def(name: AST, args: List[AST], body: Option[AST])
+      extends AST {
+    import Def._
+    val repr = R + symbol ++ name + args.map(R ++ _) + body
   }
-
   object Def {
-    def apply(
-      nameOff: Int,
-      name: AST,
-      argsOff: List[Int],
-      args: List[AST],
-      bodyOff: Int,
-      body: Option[AST]
-    ): Def = _Def(nameOff, name, argsOff, args, bodyOff, body)
-    def apply(name: AST, args: List[AST], body: Option[AST]): Def = {
-      val nameOff = 1
-      val argsOff = prepOffList(List(), args.length)
-      val bodyOff = 0
-      Def(nameOff, name, argsOff, args, bodyOff, body)
-    }
-    def apply(name: SAST, args: AST.Stream, body: Option[SAST]): Def = {
-      val bodyOff = body.map(_.off).getOrElse(0)
-      val bodyEl  = body.map(_.el)
-      Def(name.off, name.el, args.map(_.off), args.map(_.el), bodyOff, bodyEl)
-    }
-    def unapply(t: Def): Option[(AST, List[AST], Option[AST])] =
-      Some((t.name, t.args, t.body))
-
-    def prepOffList(offs: List[Int], argCount: Int): List[Int] =
-      compare(offs.length, argCount) match {
-        case EQ => offs
-        case LT => offs ++ List.fill(argCount - offs.length)(1)
-        case GT => offs.take(argCount)
-      }
-  }
-
-  //////////////////////////////////////////////////////////////////////////////
-  /// Comment //////////////////////////////////////////////////////////////////
-  //////////////////////////////////////////////////////////////////////////////
-
-  final case class Comment(comment: String) extends AST {
-    val repr = R + "#" + comment
-  }
-
-  object Comment {
-
-    final case class Block(offset: Int, lines: List[String]) extends AST {
-      val repr = R + offset + "#" + lines.mkString("\n " + " " * offset)
-    }
-
+    val symbol = "type"
   }
 
   //////////////////////////////////////////////////////////////////////////////

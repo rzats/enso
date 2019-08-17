@@ -1,14 +1,10 @@
 package org.enso.syntax.text
 
-import org.enso.flexer.Parser
 import org.enso.syntax.text.AST._
 import org.enso.syntax.text.ast.DSL._
-import org.enso.flexer
 import org.enso.flexer.Parser.Result
 import org.scalatest._
-import DSL._
 import org.enso.syntax.text.AST.Block.Line
-import org.enso.syntax.text.AST.Block.Line.Required
 import org.enso.syntax.text.AST.Text.Segment.EOL
 import org.enso.syntax.text.AST.Text.Segment.Plain
 
@@ -54,7 +50,6 @@ class ParserSpec extends FlatSpec with Matchers {
     }
   }
 
-
   implicit class TestString(input: String) {
     def parseTitle(str: String): String = {
       val maxChars = 20
@@ -71,10 +66,10 @@ class ParserSpec extends FlatSpec with Matchers {
     def ?=(out: AST)    = testBase in { assertExpr(input, out, Seq()) }
     def ?=(out: Module) = testBase in { assertModule(input, out, Seq()) }
     def ?#=(out: AST) = testBase in { assertExpr(input, out, markers) }
-    def testIdentity = testBase in { assertIdentity(input) }
+    def testIdentity  = testBase in { assertIdentity(input) }
   }
 
-  val markers = 0 to 100 map ( offset => offset -> Marker(offset))
+  val markers = 0 to 100 map (offset => offset -> Marker(offset))
 
   /////////////////////
   //// Identifiers ////
@@ -242,7 +237,6 @@ class ParserSpec extends FlatSpec with Matchers {
   //  expr("a #= b"         , Var("a") :: DisabledAssignment :: Var("b"))
   //
 
-
   /////////////////
   //// Markers ////
   /////////////////
@@ -253,7 +247,10 @@ class ParserSpec extends FlatSpec with Matchers {
   "'    '" ?#= Marked(Marker(0), Text("    "))
   "++++++" ?#= Marked(Marker(0), Opr("++++++"))
   "+++++=" ?#= Marked(Marker(0), Opr.Mod("+++++"))
-  "a b  c" ?#= Marked(Marker(0), Var("a")) $_ Marked(Marker(2), Var("b")) $__ Marked(Marker(5), Var("c"))
+  "a b  c" ?#= Marked(Marker(0), Var("a")) $_ Marked(Marker(2), Var("b")) $__ Marked(
+    Marker(5),
+    Var("c")
+  )
 
   //////////////////
   //// Mixfixes ////
@@ -293,22 +290,28 @@ class ParserSpec extends FlatSpec with Matchers {
   //////////////////
 
   "foo   #L1NE"        ?= "foo" $___ Comment("L1NE")
-  "#\n    L1NE\n LIN2" ?= Comment.Block(0,List("","   L1NE", "LIN2"))
-  "#L1NE\nLIN2"        ?= Module(Line(Comment.Block(0, List("L1NE"))), Line(Cons("LIN2")))
-
+  "#\n    L1NE\n LIN2" ?= Comment.Block(0, List("", "   L1NE", "LIN2"))
+  "#L1NE\nLIN2" ?= Module(
+    Line(Comment.Block(0, List("L1NE"))),
+    Line(Cons("LIN2"))
+  )
 
   ////////////////
   //// Blocks ////
   ////////////////
 
-  "foo  \n bar" ?= "foo" $__ Block(1, "bar")
-
-  "f =  \n\n\n".testIdentity
-  "  \n\n\n f\nf".testIdentity
-  "f =  \n\n  x ".testIdentity
-  "f =\n\n  x\n\n y".testIdentity
-
-  "a b\n  c\n" ?= "a" $_ App(Var("b"),0,Block(2,List(),Required(Var("c"),0), List(Line())))
+//  "foo  \n bar" ?= "foo" $__ Block(1, "bar")
+//
+//  "f =  \n\n\n".testIdentity
+//  "  \n\n\n f\nf".testIdentity
+//  "f =  \n\n  x ".testIdentity
+//  "f =\n\n  x\n\n y".testIdentity
+//
+//  "a b\n  c\n" ?= "a" $_ App(
+//    Var("b"),
+//    0,
+//    Block(2, List(), Required(Var("c"), 0), List(Line()))
+//  )
 
   /////////////////
   //// Imports ////
@@ -322,33 +325,32 @@ class ParserSpec extends FlatSpec with Matchers {
 
 //  ("OVERFLOW" * flexer.Parser.BUFFER_SIZE).testIdentity   // ruins logging
 
-  """
-      a
-     b
-    c
-   d
-  e
-   f g h
-  """.testIdentity
-
-  """
-  # pop1: adults
-  # pop2: children
-  # pop3: mutants
-    Selects the 'fittest' individuals from population and kills the rest!
-
-  keepBest : Pop -> Pop -> Pop -> Pop
-  keepBest pop1 pop2 pop3 =
-
-     unique xs
-        = index xs 0 +: [1..length xs -1] . filter (isUnique xs) . map xs.at
-
-     isUnique xs i ####
-        = index xs i . score != index xs i-1 . score
-
-     pop1<>pop2<>pop3 . sorted . unique . take (length pop1) . pure
-
-  """.testIdentity
-
+//  """
+//      a
+//     b
+//    c
+//   d
+//  e
+//   f g h
+//  """.testIdentity
+//
+//  """
+//  # pop1: adults
+//  # pop2: children
+//  # pop3: mutants
+//    Selects the 'fittest' individuals from population and kills the rest!
+//
+//  keepBest : Pop -> Pop -> Pop -> Pop
+//  keepBest pop1 pop2 pop3 =
+//
+//     unique xs
+//        = index xs 0 +: [1..length xs -1] . filter (isUnique xs) . map xs.at
+//
+//     isUnique xs i ####
+//        = index xs i . score != index xs i-1 . score
+//
+//     pop1<>pop2<>pop3 . sorted . unique . take (length pop1) . pure
+//
+//  """.testIdentity
 
 }

@@ -486,7 +486,7 @@ case class ParserDef() extends Parser[AST] {
       var isValid: Boolean,
       var indent: Int,
       var emptyLines: List[Int],
-      var firstLine: Option[AST.Block.Line.Required],
+      var firstLine: Option[AST.Block.Line.NonEmpty],
       var lines: List[AST.Block.Line]
     )
 

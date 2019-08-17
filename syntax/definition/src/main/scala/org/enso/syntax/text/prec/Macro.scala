@@ -1,13 +1,13 @@
-package org.enso.syntax.text.precedence
+package org.enso.syntax.text.prec
 
 import org.enso.Logger
 import org.enso.data.Shifted
 import org.enso.syntax.text.AST
-import org.enso.syntax.text.ast.template.Builder
-import org.enso.syntax.text.ast.template.Builtin
+import org.enso.syntax.text.ast.meta.Builder
+import org.enso.syntax.text.ast.meta.Builtin
 import scala.annotation.tailrec
 
-object Template {
+object Macro {
   val logger = new Logger()
 
   //////////////////
@@ -94,6 +94,11 @@ object Template {
                   }
               }
           }
+        case (t1 @ Shifted(off, el1: AST.Block)) :: t2_ =>
+          val nt1 = Shifted(off, el1.mapLines(transform))
+          builder.current.revBody ::= nt1
+          go(t2_)
+
         case t1 :: t2_ =>
           builder.current.revBody ::= t1
           go(t2_)

@@ -18,6 +18,9 @@ sealed trait Repr extends Repr.Provider {
   def +[T: Repr.Of](that: T): Repr =
     Seq(this, implicitly[Repr.Of[T]].of(that))
 
+  def ++[T: Repr.Of](that: T): Repr =
+    this + " " + that
+
   def show(): String = {
     val bldr = new StringBuilder()
     repr.build(bldr)
