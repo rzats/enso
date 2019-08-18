@@ -1,5 +1,6 @@
 package org.enso.syntax.text
 
+import org.enso.data.Shifted
 import org.enso.syntax.text.AST._
 import org.enso.syntax.text.ast.DSL._
 import org.enso.flexer.Parser.Result
@@ -27,15 +28,16 @@ class ParserSpec extends FlatSpec with Matchers {
     output match {
       case Result(offset, Result.Success(value)) =>
         val module = value.asInstanceOf[Module]
-        module.lines.tail match {
-          case Nil =>
-            module.lines.head.elem match {
-              case None => fail("Empty expression")
-              case Some(e) =>
-                assert(e == result)
-                assert(value.show() == input)
-            }
-          case _ => fail("Multi-line block")
+        val tail   = module.lines.tail
+        if (!tail.forall(_.elem.isEmpty))
+          fail("Multi-line block")
+        else {
+          module.lines.head.elem match {
+            case None => fail("Empty expression")
+            case Some(e) =>
+              assert(e == result)
+              assert(value.show() == input)
+          }
         }
       case _ => fail(s"Parsing failed, consumed ${output.offset} chars")
     }
@@ -313,6 +315,30 @@ class ParserSpec extends FlatSpec with Matchers {
 //    Block(2, List(), Required(Var("c"), 0), List(Line()))
 //  )
 
+//  """def Maybe a
+//    |    def Just val:a
+//    |    def Nothing
+//  """.stripMargin ?= "foo"
+
+  import org.enso.syntax.text.ast.meta.Pattern.Match._
+  "import Std".stripMargin ?= "foo"
+
+  //Match(
+  //  List1(
+  //    Segment(
+  //      Var(import),
+  //      Seq(
+  //        (
+  //          Cls(
+  //            Shifted(1,Cons(Std))
+  //          )
+  //          ,Many(List())
+  //        )
+  //      )
+  //    )
+  //    ,List()
+  //   )
+  //)
   /////////////////
   //// Imports ////
   /////////////////

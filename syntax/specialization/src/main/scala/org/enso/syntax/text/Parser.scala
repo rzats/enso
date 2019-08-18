@@ -90,7 +90,7 @@ object Main extends App {
 
   val in_def_maybe =
     """def Maybe a
-      |    def Just val:a bar:b
+      |    def Just val:a 
       |    def Nothing
     """.stripMargin
 
@@ -99,6 +99,22 @@ object Main extends App {
   val inp = in_def_maybe
   val out = p1.run(inp, Seq())
   pprint.pprintln(out, width = 50, height = 10000)
+
+  def resolveMacros(ast: AST): AST = {
+    println(s"\nRESOLVE: $ast")
+    ast match {
+      case ast: AST.Macro.Match =>
+        println(">> 1")
+        Builtin.registry.get(ast.path()) match {
+          case None => throw new Error("Macro definition not found")
+          case Some(spec) =>
+            resolveMacros(spec.finalizer(ast.segs.toList().map(_.el)))
+        }
+      case asr =>
+        println(">> 2")
+        asr.mapAST(resolveMacros)
+    }
+  }
 
   out match {
     case flexer.Parser.Result(_, flexer.Parser.Result.Success(v)) =>
@@ -113,7 +129,8 @@ object Main extends App {
                 case None => println(":(")
                 case Some(spec) =>
                   println("COMPUTING")
-                  val out = spec.finalizer(t.segs.toList().map(_.el))
+//                  val out = spec.finalizer(t.segs.toList().map(_.el))
+                  val out = resolveMacros(ast)
                   println(pretty(out.toString))
               }
             case t =>

@@ -183,7 +183,8 @@ object Pattern {
         extends Repr.Provider {
       val repr = Repr.of(el)
 
-      override def toString = el.toString
+      override def toString =
+        s"${pat.getClass.getSimpleName}(${el.toString})"
 
       def toStream: AST.Stream = this match {
         case Match.Build(t)    => List(t)
@@ -224,6 +225,7 @@ object Pattern {
     }
 
     object Cls {
+      def apply(t: SAST): Match = Match(Pattern.Cls[AST](), t)
       def unapply(t: Match): Option[SAST] = t match {
         case Of(_: Pattern.Cls[_], t) => Some(t)
         case _                        => None
@@ -274,6 +276,8 @@ object Pattern {
     }
 
     object Seq {
+      def apply(p1: Match, p2: Match): Match =
+        Match(Pattern.Seq(p1.pat, p2.pat), (p1, p2))
       def unapply(t: Match): Option[(Match, Match)] = t match {
         case Of(_: Pattern.Seq, t) => Some(t)
         case _                     => None
