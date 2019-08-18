@@ -1,8 +1,6 @@
 package org.enso.syntax.text
 
-import cats.implicits._
 import monocle.macros.GenLens
-import org.enso.data.Compare._
 import org.enso.data.List1
 import org.enso.data.List1._
 import org.enso.data.Shifted
@@ -15,7 +13,7 @@ import org.enso.syntax.text.ast.text
 import scala.annotation.tailrec
 
 sealed trait AST extends AST.Symbol {
-  def mapAST: (AST => AST) => AST
+  def map(f: AST => AST): AST
 }
 
 object AST {
@@ -77,13 +75,14 @@ object AST {
   trait Invalid extends AST
 
   final case class Unrecognized(str: String) extends Invalid {
-    val repr   = str
-    val mapAST = _ => this
+    val repr               = str
+    def map(f: AST => AST) = this
   }
 
   final case class Unexpected(msg: String, stream: Stream) extends Invalid {
-    val repr   = R + stream
-    val mapAST = f => copy(stream = stream.map(t => t.copy(el = f(t.el))))
+    val repr = R + stream
+    def map(f: AST => AST) =
+      copy(stream = stream.map(t => t.copy(el = f(t.el))))
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -93,8 +92,8 @@ object AST {
   final case class Marker(id: Int)
 
   final case class Marked(marker: Marker, ast: AST) extends AST {
-    val repr   = ast.repr
-    val mapAST = f => copy(ast = f(ast))
+    val repr               = ast.repr
+    def map(f: AST => AST) = copy(ast = f(ast))
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -109,8 +108,8 @@ object AST {
   object Ident {
     final case class InvalidSuffix(elem: Ident, suffix: String)
         extends AST.Invalid {
-      val repr   = R + elem + suffix
-      val mapAST = _ => this
+      val repr               = R + elem + suffix
+      def map(f: AST => AST) = this
     }
 
     // FIXME: This is unsafe and should be defined in AST EDSL module.
@@ -128,19 +127,19 @@ object AST {
   //////////////////////////////////////////////////////////////////////////////
 
   final case object Blank extends Ident {
-    val name   = "_"
-    val repr   = name
-    val mapAST = _ => this
+    val name               = "_"
+    val repr               = name
+    def map(f: AST => AST) = this
   }
 
   final case class Var(name: String) extends Ident {
-    val repr   = name
-    val mapAST = _ => this
+    val repr               = name
+    def map(f: AST => AST) = this
   }
 
   final case class Cons(name: String) extends Ident {
-    val repr   = name
-    val mapAST = _ => this
+    val repr               = name
+    def map(f: AST => AST) = this
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -148,17 +147,18 @@ object AST {
   //////////////////////////////////////////////////////////////////////////////
 
   final case class Opr(name: String) extends Opr.Class {
-    val (prec, assoc) = Opr.Info.of(name)
-    val repr          = name
-    val mapAST        = _ => this
+    val (prec, assoc)      = Opr.Info.of(name)
+    val repr               = name
+    def map(f: AST => AST) = this
+
   }
 
   object Opr {
     sealed trait Class extends Ident
 
     final case class Mod(name: String) extends Opr.Class {
-      override val repr = name + '='
-      val mapAST        = _ => this
+      override val repr      = name + '='
+      def map(f: AST => AST) = this
     }
 
     val app: Opr = Opr(" ")
@@ -180,8 +180,8 @@ object AST {
 
   type App = _App
   final case class _App(func: AST, off: Int = 1, arg: AST) extends AST {
-    val repr   = R + func + off + arg
-    val mapAST = f => copy(func = f(func), arg = f(arg))
+    val repr               = R + func + off + arg
+    def map(f: AST => AST) = copy(func = f(func), arg = f(arg))
   }
   object App {
     def apply(func: AST, off: Int = 1, arg: AST): App = _App(func, off, arg)
@@ -205,8 +205,8 @@ object AST {
 
     type Left = _Left
     final case class _Left(arg: AST, off: Int = 0, op: Opr) extends AST {
-      val repr   = R + arg + off + op
-      val mapAST = f => copy(arg = f(arg))
+      val repr               = R + arg + off + op
+      def map(f: AST => AST) = copy(arg = f(arg))
     }
     object Left {
       def apply(arg: AST, off: Int, op: Opr): Left = _Left(arg, off, op)
@@ -216,8 +216,8 @@ object AST {
 
     type Right = _Right
     final case class _Right(opr: Opr, off: Int = 0, arg: AST) extends AST {
-      val repr   = R + opr + off + arg
-      val mapAST = f => copy(arg = f(arg))
+      val repr               = R + opr + off + arg
+      def map(f: AST => AST) = copy(arg = f(arg))
     }
     object Right {
       def apply(opr: Opr, off: Int, arg: AST): Right = _Right(opr, off, arg)
@@ -226,8 +226,8 @@ object AST {
     }
 
     final case class Sides(opr: Opr) extends AST {
-      val repr   = R + opr
-      val mapAST = _ => this
+      val repr               = R + opr
+      def map(f: AST => AST) = this
     }
 
     type Infix = _Infix
@@ -238,8 +238,8 @@ object AST {
       roff: Int = 1,
       rarg: AST
     ) extends AST {
-      val repr   = R + larg + loff + opr + roff + rarg
-      val mapAST = f => copy(larg = f(larg), rarg = f(rarg))
+      val repr               = R + larg + loff + opr + roff + rarg
+      def map(f: AST => AST) = copy(larg = f(larg), rarg = f(rarg))
     }
     object Infix {
       def apply(larg: AST, loff: Int, opr: Opr, roff: Int, rarg: AST): Infix =
@@ -259,8 +259,8 @@ object AST {
   //////////////////////////////////////////////////////////////////////////////
 
   final case class Number(base: Option[String], int: String) extends AST {
-    val repr   = base.map(_ + "_").getOrElse("") + int
-    val mapAST = _ => this
+    val repr               = base.map(_ + "_").getOrElse("") + int
+    def map(f: AST => AST) = this
   }
 
   object Number {
@@ -272,8 +272,8 @@ object AST {
     def apply(b: Int, i: Int):       Number = Number(b.toString, i.toString)
 
     final case class DanglingBase(base: String) extends AST.Invalid {
-      val repr   = base + '_'
-      val mapAST = _ => this
+      val repr               = base + '_'
+      def map(f: AST => AST) = this
     }
   }
 
@@ -296,7 +296,8 @@ object AST {
       lazy val quoteRepr = R + (quoteChar.toString * quote.asInt)
       lazy val bodyRepr  = R + segments
       lazy val repr      = R + quoteRepr + segments + quoteRepr
-      val mapAST         = _ => this
+
+      def map(f: AST => AST) = this
 
       def _dup(quote: Quote, segments: List[Segment]): This
       def dup(quote: Quote = quote, segments: List[Segment] = segments) =
@@ -449,8 +450,8 @@ object AST {
     //// Unclosed ////
 
     final case class Unclosed(text: Class[_]) extends AST.Invalid {
-      val repr   = R + text.quoteRepr + text.bodyRepr
-      val mapAST = _ => this
+      val repr               = R + text.quoteRepr + text.bodyRepr
+      def map(f: AST => AST) = this
     }
   }
 
@@ -473,10 +474,7 @@ object AST {
       headRepr + emptyLinesRepr + firstLineRepr + linesRepr
     }
 
-    val mapAST = f =>
-      copy(firstLine = firstLine.map(f), lines = lines.map(_.map(f)))
-
-    def mapLines(f: AST => AST): Block =
+    def map(f: AST => AST) =
       copy(firstLine = firstLine.map(f), lines = lines.map(_.map(f)))
   }
 
@@ -498,8 +496,8 @@ object AST {
       Some((t.indent, t.firstLine, t.lines))
 
     final case class InvalidIndentation(block: Block) extends AST.Invalid {
-      val repr   = R + block
-      val mapAST = f => copy(block = block.mapAST(f))
+      val repr               = R + block
+      def map(f: AST => AST) = copy(block = block.map(f))
     }
 
     //// Line ////
@@ -568,11 +566,10 @@ object AST {
   import Block.Line
 
   final case class Module(lines: List1[Line]) extends AST {
-    val repr   = R + lines.head + lines.tail.map(R + '\n' + _)
-    val mapAST = f => copy(lines = lines.map(_.map(f)))
+    val repr = R + lines.head + lines.tail.map(R + '\n' + _)
 
-    def map(f: Line => Line): Module =
-      Module(lines.map(f))
+    def map(f: AST => AST)        = copy(lines = lines.map(_.map(f)))
+    def mapLines(f: Line => Line) = Module(lines.map(f))
   }
 
   object Module {
@@ -601,8 +598,8 @@ object AST {
     //// Matched ////
 
     final case class Match(segs: Shifted.List1[Match.Segment]) extends Macro {
-      val repr   = R + segs.map(_.repr)
-      val mapAST = _ => this
+      val repr               = R + segs.map(_.repr)
+      def map(f: AST => AST) = this
       def path(): List1[AST] = segs.toList1().map(_.el.head)
     }
     object Match {
@@ -624,8 +621,8 @@ object AST {
       segs: Shifted.List1[Ambiguous.Segment],
       paths: Tree[AST, Unit]
     ) extends Macro {
-      val repr   = R + segs.map(_.repr)
-      val mapAST = _ => this
+      val repr               = R + segs.map(_.repr)
+      def map(f: AST => AST) = this
     }
     object Ambiguous {
       final case class Segment(head: AST, body: Option[SAST]) extends Symbol {
@@ -685,15 +682,16 @@ object AST {
   //////////////////////////////////////////////////////////////////////////////
 
   final case class Comment(comment: String) extends AST {
-    val repr   = R + Comment.symbol + comment
-    val mapAST = _ => this
+    val repr               = R + Comment.symbol + comment
+    def map(f: AST => AST) = this
   }
 
   object Comment {
     val symbol = "#"
     final case class Block(offset: Int, lines: List[String]) extends AST {
-      val repr   = R + offset + symbol + lines.mkString("\n " + " " * offset)
-      val mapAST = _ => this
+      val repr = R + offset + symbol + lines.mkString("\n " + " " * offset)
+
+      def map(f: AST => AST) = this
     }
   }
 
@@ -708,8 +706,8 @@ object AST {
   //////////////////////////////////////////////////////////////////////////////
 
   final case class Import(path: List1[Cons]) extends AST {
-    val repr   = R
-    val mapAST = _ => this
+    val repr               = R
+    def map(f: AST => AST) = this
   }
   object Import {
     def apply(head: Cons, tail: List[Cons]): Import = Import(List1(head, tail))
@@ -726,7 +724,7 @@ object AST {
       val nameRepr = name.toList.map(Repr.of(_))
       R + (nameRepr, argsRepr).zipped.map(_ + _)
     }
-    val mapAST = f => copy(args = args.map(f))
+    def map(f: AST => AST) = copy(args = args.map(f))
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -734,8 +732,8 @@ object AST {
   //////////////////////////////////////////////////////////////////////////////
 
   final case class Group(body: Option[AST] = None) extends AST {
-    val repr   = R + body
-    val mapAST = f => copy(body = body.map(f))
+    val repr               = R + body
+    def map(f: AST => AST) = copy(body = body.map(f))
   }
   object Group {
     def apply(body: AST):  Group = Group(Some(body))
@@ -750,8 +748,8 @@ object AST {
   final case class Def(name: AST, args: List[AST], body: Option[AST])
       extends AST {
     import Def._
-    val repr   = R + symbol ++ name + args.map(R ++ _) + body
-    val mapAST = f => copy(args = args.map(f), body = body.map(f))
+    val repr               = R + symbol ++ name + args.map(R ++ _) + body
+    def map(f: AST => AST) = copy(args = args.map(f), body = body.map(f))
   }
   object Def {
     val symbol = "type"

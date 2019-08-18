@@ -17,10 +17,26 @@ class Parser {
   private val engine = newEngine()
 
   def run(input: String, mrkr: Seq[(Int, Marker)] = Seq()): Result[AST.Module] =
-    engine.run(input, mrkr).map { module: AST =>
+    engine.run(input, mrkr).map { module =>
       val module2 = module.asInstanceOf[AST.Module] // FIXME
       Macro.run(module2)
     }
+
+  /** Although this function does not use any Parser-specific API now, it will
+    * use such in the future when the interpreter will provide information about
+    * defined macros other than [[Builtin.registry]].
+    */
+  def resolveMacros(ast: AST): AST = {
+    ast match {
+      case ast: AST.Macro.Match =>
+        Builtin.registry.get(ast.path) match {
+          case None => throw new Error("Macro definition not found")
+          case Some(spec) =>
+            resolveMacros(spec.finalizer(ast.segs.toList().map(_.el)))
+        }
+      case ast => ast.map(resolveMacros)
+    }
+  }
 
 }
 
@@ -85,8 +101,7 @@ object Main extends App {
     go(0, str.toList, List()).reverse.mkString("")
   }
 
-  val p1 = new Parser()
-  val p2 = new Parser()
+  val parser = new Parser()
 
   val in_def_maybe =
     """def Maybe a
@@ -97,52 +112,21 @@ object Main extends App {
   val in_arr1 = "a b -> c d"
 
   val inp = in_def_maybe
-  val out = p1.run(inp, Seq())
+  val out = parser.run(inp, Seq())
   pprint.pprintln(out, width = 50, height = 10000)
 
-  def resolveMacros(ast: AST): AST = {
-    println(s"\nRESOLVE: $ast")
-    ast match {
-      case ast: AST.Macro.Match =>
-        println(">> 1")
-        Builtin.registry.get(ast.path()) match {
-          case None => throw new Error("Macro definition not found")
-          case Some(spec) =>
-            resolveMacros(spec.finalizer(ast.segs.toList().map(_.el)))
-        }
-      case asr =>
-        println(">> 2")
-        asr.mapAST(resolveMacros)
-    }
-  }
-
   out match {
-    case flexer.Parser.Result(_, flexer.Parser.Result.Success(v)) =>
-      println(pretty(v.toString))
-
-      v.lines.head.elem match {
-        case Some(ast) =>
-          ast match {
-            case t: AST.Macro.Match =>
-              println("\n---\n")
-              Builtin.registry.get(t.path()) match {
-                case None => println(":(")
-                case Some(spec) =>
-                  println("COMPUTING")
-//                  val out = spec.finalizer(t.segs.toList().map(_.el))
-                  val out = resolveMacros(ast)
-                  println(pretty(out.toString))
-              }
-            case t =>
-              println("not macro")
-              println(t)
-          }
-        case _ =>
+    case flexer.Parser.Result(_, flexer.Parser.Result.Success(mod)) =>
+      println(pretty(mod.toString))
+      val rmod = parser.resolveMacros(mod)
+      if (mod != rmod) {
+        println("\n---\n")
+        println(pretty(rmod.toString))
       }
-
-      println(v.show() == inp)
       println("------")
-      println(v.show())
+      println(mod.show() == inp)
+      println("------")
+      println(mod.show())
       println("------")
 
   }

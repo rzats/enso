@@ -17,7 +17,7 @@ object Macro {
   //////////////////
 
   def run(module: AST.Module): AST.Module =
-    module.map(_.map(transform))
+    module.map(transform(_))
 
   def transform(t: AST): AST = {
     val root                        = Builder.Context(Builtin.registry.tree)
@@ -97,7 +97,7 @@ object Macro {
               }
           }
         case (t1 @ Shifted(off, el1: AST.Block)) :: t2_ =>
-          val nt1 = Shifted(off, el1.mapLines(transform))
+          val nt1 = Shifted(off, el1.map(transform))
           builder.current.revBody ::= nt1
           go(t2_)
 

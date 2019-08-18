@@ -12,8 +12,8 @@ object Escape {
   case object RawQuote        extends Escape { val repr = "\\\"" }
   case class Number(int: Int) extends Escape { val repr = '\\' + int.toString }
   case class Invalid(str: String) extends Escape with AST.Invalid {
-    val repr   = '\\' + str
-    val mapAST = _ => this
+    val repr               = '\\' + str
+    def map(f: AST => AST) = this
   }
 
   // Reference: https://en.wikipedia.org/wiki/String_literal
@@ -30,17 +30,17 @@ object Escape {
     final case class InvalidU16 private (digits: String)
         extends U("u", "")
         with AST.Invalid {
-      val mapAST = _ => this
+      def map(f: AST => AST) = this
     }
     final case class InvalidU32 private (digits: String)
         extends U("U", "")
         with AST.Invalid {
-      val mapAST = _ => this
+      def map(f: AST => AST) = this
     }
     final case class InvalidU21 private (digits: String)
         extends U("u{", "}")
         with AST.Invalid {
-      val mapAST = _ => this
+      def map(f: AST => AST) = this
     }
 
     object Validator {
