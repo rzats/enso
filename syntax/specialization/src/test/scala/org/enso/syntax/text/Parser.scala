@@ -9,6 +9,7 @@ import org.scalatest._
 import org.enso.syntax.text.AST.Block.Line
 import org.enso.syntax.text.AST.Text.Segment.EOL
 import org.enso.syntax.text.AST.Text.Segment.Plain
+import org.enso.data.Tree
 
 class ParserSpec extends FlatSpec with Matchers {
 
@@ -258,39 +259,6 @@ class ParserSpec extends FlatSpec with Matchers {
   )
 
   //////////////////
-  //// Mixfixes ////
-  //////////////////
-
-  //// Valid ////
-
-//  "()"                 ?= "(" II ")"
-//  "( )"                ?= "(" I_I ")"
-//  "( (  )   )"         ?= "(" I_ ("(" I__I ")") I___ ")"
-//  "(a)"                ?= "(" I "a" I ")"
-//  "((a))"              ?= "(" I ("(" I "a" I ")") I ")"
-//  "(((a)))"            ?= "(" I ("(" I ("(" I "a" I ")") I ")") I ")"
-//  "( (  a   )    )"    ?= "(" I_ ("(" I__ "a" I___ ")") I____ ")"
-//  "if a  then   b"     ?= "if" I1_ "a" I1__ "then" I1___ "b"
-//  "if a then b else c" ?= "if" I1_ "a" I1_ "then" I1_ "b" I1_ "else" I1_ "c"
-//  "(if a then  b) c"   ?= "(" I ("if" I1_ "a" I1_ "then" I1__ "b") I ")" $_ "c"
-//  "a (b c) d"          ?= "a" $_ ("(" I ("b" $_ "c") I ")") $_ "d"
-//
-//  "(if a then b) else c" ?=
-//  "(" I ("if" I1_ "a" I1_ "then" I1_ "b") I ")" $_ "else" $_ "c"
-//
-//  //// Invalid ////
-//
-//  val _then_else = List(List("then"), List("then", "else"))
-//
-//  "("           ?= "(" Ix ")"
-//  "(("          ?= "(" I ("(" Ix ")") Ix ")"
-//  "if"          ?= "if" Ixx (_then_else: _*)
-//  "(if a) then" ?= "(" I ("if" I_ "a" Ixx (_then_else: _*)) I ")" $_ "then"
-//  "if (a then)" ?= "if" I_ ("(" I ("a" $_ "then") I ")") Ixx (_then_else: _*)
-
-  //  "import Std.Math" ?= "foo"
-
-  //////////////////
   //// Comments ////
   //////////////////
 
@@ -350,6 +318,43 @@ class ParserSpec extends FlatSpec with Matchers {
   /////////////////
 
 //  "import Std.Math" ?= "foo" $__ Block(1, "bar")
+
+  //////////////////
+  //// Mixfixes ////
+  //////////////////
+
+  //// Valid ////
+
+  "()"              ?= Group()
+  "( )"             ?= Group()
+  "( (  )   )"      ?= Group(Group())
+  "(a)"             ?= Group("a")
+  "((a))"           ?= Group(Group("a"))
+  "(((a)))"         ?= Group(Group(Group("a")))
+  "( (  a   )    )" ?= Group(Group("a"))
+  "(" ?= Macro.Ambiguous(
+    Macro.Ambiguous.Segment(AST.Opr("(")),
+    Tree[AST, Unit](List(AST.Opr(")")) -> (()))
+  )
+  //  "if a  then   b"     ?= "if" I1_ "a" I1__ "then" I1___ "b"
+  //  "if a then b else c" ?= "if" I1_ "a" I1_ "then" I1_ "b" I1_ "else" I1_ "c"
+  //  "(if a then  b) c"   ?= "(" I ("if" I1_ "a" I1_ "then" I1__ "b") I ")" $_ "c"
+  //  "a (b c) d"          ?= "a" $_ ("(" I ("b" $_ "c") I ")") $_ "d"
+  //
+  //  "(if a then b) else c" ?=
+  //  "(" I ("if" I1_ "a" I1_ "then" I1_ "b") I ")" $_ "else" $_ "c"
+  //
+  //  //// Invalid ////
+  //
+  //  val _then_else = List(List("then"), List("then", "else"))
+  //
+  //  "("           ?= "(" Ix ")"
+  //  "(("          ?= "(" I ("(" Ix ")") Ix ")"
+  //  "if"          ?= "if" Ixx (_then_else: _*)
+  //  "(if a) then" ?= "(" I ("if" I_ "a" Ixx (_then_else: _*)) I ")" $_ "then"
+  //  "if (a then)" ?= "if" I_ ("(" I ("a" $_ "then") I ")") Ixx (_then_else: _*)
+
+  //  "import Std.Math" ?= "foo"
 
   /////////////////////
   //// Large Input ////

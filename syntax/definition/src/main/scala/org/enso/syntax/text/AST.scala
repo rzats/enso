@@ -645,6 +645,9 @@ object AST {
       final case class Segment(head: AST, body: Option[SAST]) extends Symbol {
         val repr = R + head + body
       }
+      object Segment {
+        def apply(head: AST): Segment = Segment(head, None)
+      }
     }
 
     //// Definition ////

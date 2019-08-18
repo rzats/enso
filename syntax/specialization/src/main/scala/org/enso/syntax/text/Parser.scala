@@ -114,7 +114,7 @@ object Main extends App {
 
   val in_arr1 = "a b -> c d"
 
-  val inp = in_def_maybe
+  val inp = "(())"
   val out = parser.run(inp, Seq())
   pprint.pprintln(out, width = 50, height = 10000)
 

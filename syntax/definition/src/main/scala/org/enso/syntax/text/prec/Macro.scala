@@ -60,7 +60,7 @@ object Macro {
           logger.log(s"Token $t1")
           builder.context.lookup(el1) match {
             case Some(tr) =>
-              logger.trace("New segment")
+              logger.log("New segment")
               builder.startSegment(el1, off)
               builder.mixfix  = tr.value.map(Some(_)).getOrElse(builder.mixfix)
               builder.context = builder.context.copy(tree = tr)
@@ -69,7 +69,7 @@ object Macro {
             case None =>
               root.lookup(el1) match {
                 case Some(tr) =>
-                  logger.trace("New macro")
+                  logger.log("New macro")
                   val context = builder.context
                   pushBuilder(el1, t1.off)
                   builder.mixfix  = tr.value
@@ -86,11 +86,14 @@ object Macro {
                   val parentBreak = builder.context.parentLookup(el1)
                   (currentClosed || parentPrecWin) && parentBreak match {
                     case true =>
-                      logger.trace("Parent close")
-                      builder.selfMerge()
+                      logger.log("Parent close")
+
+                      val subBuilder = builder
+                      popBuilder()
+                      builder.merge(subBuilder)
                       go(input)
                     case false =>
-                      logger.trace("Add token")
+                      logger.log("Add token")
                       builder.current.revBody ::= t1
                       go(t2_)
                   }

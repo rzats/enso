@@ -44,4 +44,6 @@ object Shifted {
     def fromListDropHead[T](lst: List[Shifted[T]]) =
       List1(lst.head.el, lst.tail)
   }
+
+  implicit def singleton[T](t: T): List1[T] = List1(t, List())
 }

@@ -31,8 +31,6 @@ class Builder(
     current.offset = off
   }
 
-  def selfMerge(): Unit = merge(this)
-
   def merge(that: Builder): Unit = {
     val thatStream = that.build()
     current.revBody = thatStream.concat(current.revBody).toList
