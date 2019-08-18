@@ -19,15 +19,7 @@ sealed trait AST extends AST.Symbol {
 object AST {
 
   object implicits extends Ident.implicits {
-
-    implicit def stringToAST(str: String): AST =
-      fromStringRaw(str) match {
-//        case opr: Opr => App.Sides(opr)
-        case any => any
-      }
-
-    // FIXME: This is unsafe and should be defined in AST EDSL module.
-    def fromStringRaw(str: String): AST = {
+    implicit def stringToAST(str: String): AST = {
       if (str == "") throw new Error("Empty literal")
       if (str == "_") Blank
       else if (str.head.isLower) Var(str)
@@ -127,7 +119,7 @@ object AST {
   }
 
   //////////////////////////////////////////////////////////////////////////////
-  //// Var / Cons / Blank //////////////////////////////////////////////////////
+  //// Ident///////////// //////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
   final case object Blank extends Ident {
@@ -164,7 +156,6 @@ object AST {
     val (prec, assoc)      = Opr.Info.of(name)
     val repr               = name
     def map(f: AST => AST) = this
-
   }
 
   object Opr {
