@@ -1,16 +1,18 @@
-package org.enso.syntax.text
+package org.enso.syntax.text.spec
 
 import org.enso.data.VectorMap
-import org.enso.flexer._
 import org.enso.flexer.automata.Pattern
 import org.enso.flexer.automata.Pattern._
+import org.enso.flexer.State
+import org.enso.flexer._
+import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Text.Segment.EOL
 
 import scala.reflect.runtime.universe.reify
 
 case class ParserDef() extends Parser[AST.Module] {
-  import ParserDef2._
   import Parser.Result
+  import ParserDef2._
 
   final def unwrap[T](opt: Option[T]): T = opt match {
     case None    => throw new Error("Internal Error")

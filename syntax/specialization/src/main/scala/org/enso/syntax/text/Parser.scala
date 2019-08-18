@@ -5,6 +5,8 @@ import org.enso.syntax.text
 import org.enso.syntax.text.ast.meta.Builtin
 import org.enso.syntax.text.AST.Marker
 import org.enso.syntax.text.prec.Macro
+import org.enso.syntax.text.spec.ParserDef
+import org.enso.syntax.text.spec.ParserDef2
 
 import scala.annotation.tailrec
 
@@ -41,9 +43,9 @@ class Parser {
 }
 
 object Parser {
-  type Markers   = text.ParserDef2.Markers
+  type Markers   = ParserDef2.Markers
   type Result[T] = flexer.Parser.Result[T]
-  private val newEngine = flexer.Parser.compile(text.ParserDef)
+  private val newEngine = flexer.Parser.compile(ParserDef())
 
   def apply(): Parser = new Parser()
 }
