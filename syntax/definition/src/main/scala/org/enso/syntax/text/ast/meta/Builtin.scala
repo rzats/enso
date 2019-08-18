@@ -30,9 +30,9 @@ object Builtin {
     val def_def = Definition(
       Var("def") -> {
         import Pattern._
-        val head = Cls[Cons] | Err("missing name")
-        val args = AnyBut(Cls[AST.Block]).many
-        val body = Opt(Cls[AST.Block])
+        val head = Cls[Cons].or("missing name").tag("name")
+        val args = NonSpacedExpr().tag("parameter").many.tag("parameters")
+        val body = Cls[AST.Block].tag("body").opt
         head :: args :: body
       }
     ) {
@@ -41,8 +41,8 @@ object Builtin {
         st1.body match {
           case Seq(Cls(name), Seq(Many(argsMatches), bodyMatch)) =>
             val args = argsMatches.map {
-              case Cls(t) => t.el
-              case _      => internalError
+              case Build(t) => t.el
+              case _        => internalError
             }
             val body = bodyMatch match {
               case Cls(Shifted(off, block: AST.Block)) => Some(block)
@@ -50,7 +50,7 @@ object Builtin {
               case _                                   => internalError
             }
             AST.Def(name.el, args, body)
-          case _ => internalError
+          case t => internalError
         }
     }
 

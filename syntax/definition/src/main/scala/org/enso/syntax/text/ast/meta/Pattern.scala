@@ -13,16 +13,22 @@ import scala.reflect.ClassTag
 sealed trait Pattern {
   import Pattern._
   def ::(that: Pattern): Seq    = Seq(that, this)
-  def |(that: Pattern):  Or     = Or(this, that)
   def !(that: Pattern):  Except = Except(that, this)
+  def |(that: Pattern):  Or     = Or(this, that)
+  def |?(tag: String):   Tag    = Tag(tag, this)
+  def or(that: Pattern): Or     = Or(this, that)
+  def or(msg: String):   Or     = this.or(Err(msg))
   def many:              Many   = Many(this)
+  def tag(tag: String):  Tag    = Tag(tag, this)
+  def opt:               Or     = this | Nothing()
 }
 
 object Pattern {
   sealed trait Of[T] extends Pattern
+  type Spaced = Option[Boolean]
 
   final case class Nothing()                         extends Of[Unit]
-  final case class Tok(tok: AST)                     extends Of[SAST]
+  final case class Tok(tok: AST, spaced: Spaced)     extends Of[SAST]
   final case class Many(pat: Pattern)                extends Of[List[Match]]
   final case class Seq(p1: Pattern, p2: Pattern)     extends Of[(Match, Match)]
   final case class Build(pat: Pattern)               extends Of[SAST]
@@ -31,8 +37,16 @@ object Pattern {
   final case class TillEnd(pat: Pattern)             extends Of[Match]
   final case class Tag(tag: String, pat: Pattern)    extends Of[Match]
   final case class Err(msg: String, pat: Pattern)    extends Of[SAST]
-  final case class Cls[T <: AST]()(implicit val tag: ClassTag[T])
+  final case class Cls[T <: AST](spaced: Spaced)(implicit val tag: ClassTag[T])
       extends Of[Shifted[T]]
+
+  object Tok {
+    def apply(tok: AST): Tok = Tok(tok, None)
+  }
+
+  object Cls {
+    def apply[T <: AST: ClassTag](): Cls[T] = new Cls[T](None)
+  }
 
   object Seq {
     def apply(p1: Pattern, p2: Pattern, ps: Pattern*): Pattern =
@@ -68,8 +82,17 @@ object Pattern {
     def apply(): Pattern = Cls[AST]()
     def unapply(t: Pattern)(implicit astCls: ClassTag[AST]): Boolean =
       t match {
-        case t @ Cls() => t.tag == astCls
-        case _         => false
+        case t @ Cls(None) => t.tag == astCls
+        case _             => false
+      }
+  }
+
+  object NonSpacedAny {
+    def apply(): Pattern = Cls[AST](Some(false))
+    def unapply(t: Pattern)(implicit astCls: ClassTag[AST]): Boolean =
+      t match {
+        case t @ Cls(Some(false)) => t.tag == astCls
+        case _                    => false
       }
   }
 
@@ -123,6 +146,14 @@ object Pattern {
     }
   }
 
+  object NonSpacedExpr {
+    def apply() = Build(AnyBut(Cls[AST.Block]) :: Many(NonSpacedAny()))
+    def unapply(t: Pattern): Boolean = t match {
+      case Build(Many1(NonSpacedAny())) => true
+      case _                            => false
+    }
+  }
+
   object SepList {
     def apply(pat: Pattern, div: Pattern): Seq = pat :: (div :: pat).many
     def apply(pat: Pattern, div: Pattern, err: String): Seq = {
@@ -155,17 +186,17 @@ object Pattern {
       override def toString = el.toString
 
       def toStream: AST.Stream = this match {
-        case Match.Build(t)   => List(t)
-        case Match.Cls(t)     => List(t)
-        case Match.TillEnd(t) => t.toStream
-        case Match.Err(t)     => List(t)
-        case Match.Many(t)    => t.flatMap(_.toStream)
-        case Match.Except(t)  => t.toStream
-        case Match.Nothing()  => List()
-        case Match.Or(t)      => t.toStream
-        case Match.Seq(l, r)  => l.toStream ++ r.toStream
-        case Match.Tag(t)     => t.toStream
-        case Match.Tok(t)     => List(t)
+        case Match.Build(t)    => List(t)
+        case Match.Cls(t)      => List(t)
+        case Match.TillEnd(t)  => t.toStream
+        case Match.Err(t)      => List(t)
+        case Match.Many(t)     => t.flatMap(_.toStream)
+        case Match.Except(t)   => t.toStream
+        case Match.Nothing()   => List()
+        case Match.Or(t)       => t.toStream
+        case Match.Seq(l, r)   => l.toStream ++ r.toStream
+        case Match.Tag(tag, t) => t.toStream
+        case Match.Tok(t)      => List(t)
       }
 
       def isValid: Boolean = this match {
@@ -178,7 +209,7 @@ object Pattern {
         case Match.Nothing()  => true
         case Match.Or(t)      => t.isValid
         case Match.Seq(l, r)  => l.isValid && r.isValid
-        case Match.Tag(t)     => t.isValid
+        case Match.Tag(_, t)  => t.isValid
         case Match.Tok(_)     => true
       }
     }
@@ -250,9 +281,9 @@ object Pattern {
     }
 
     object Tag {
-      def unapply(t: Match): Option[Match] = t match {
-        case Of(_: Pattern.Tag, t) => Some(t)
-        case _                     => None
+      def unapply(t: Match): Option[(String, Match)] = t match {
+        case Of(tag: Pattern.Tag, t) => Some((tag.tag, t))
+        case _                       => None
       }
     }
 

@@ -199,7 +199,8 @@ object Builder {
           ret(p, (), stream)
 
         case p @ Pattern.Tag(tag, pat2) =>
-          resolveStep(pat2, stream).map(_.map(Pattern.Match(p, _)))
+          resolveStep(pat2, stream)
+//          resolveStep(pat2, stream).map(_.map(Pattern.Match(p, _)))
 
         case p @ Pattern.Build(pat2) =>
           resolveStep(pat2, stream).map(
@@ -217,10 +218,14 @@ object Builder {
               }
           }
 
-        case p @ Pattern.Cls() =>
+        case p @ Pattern.Cls(spaced) =>
           stream match {
             case Shifted(off, p.tag(t)) :: ss =>
-              ret(p, Shifted(off, t), ss)
+              val ok = spaced match {
+                case None    => true
+                case Some(s) => (s == (off > 0)) && (!t.isInstanceOf[AST.Block])
+              }
+              if (ok) ret(p, Shifted(off, t), ss) else None
             case _ => None
           }
 
@@ -234,10 +239,11 @@ object Builder {
             case None    => resolveStep(p2, stream)
           }
 
-        case p @ Pattern.Tok(tok) =>
+        case p @ Pattern.Tok(tok, spaced) =>
           stream match {
             case Shifted(off, t) :: ss =>
-              if (tok == t) ret(p, Shifted(off, t), ss) else None
+              val ok = spaced.forall(_ == (off > 0))
+              if (tok == t && ok) ret(p, Shifted(off, t), ss) else None
             case _ => None
           }
 

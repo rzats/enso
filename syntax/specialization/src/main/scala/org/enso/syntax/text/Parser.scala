@@ -90,7 +90,7 @@ object Main extends App {
 
   val in_def_maybe =
     """def Maybe a
-      |    def Just val:a
+      |    def Just val:a bar:b
       |    def Nothing
     """.stripMargin
 
