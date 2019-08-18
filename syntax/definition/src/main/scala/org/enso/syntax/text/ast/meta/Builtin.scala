@@ -107,6 +107,11 @@ object Builtin {
       case _ => internalError
     }
 
+    // TODO:
+    // ->
+    // = = =
+    // foreign
+
     Registry(
       def_group,
       def_if_then,
