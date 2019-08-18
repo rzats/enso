@@ -8,7 +8,9 @@ import org.enso.syntax.text.AST.Text.Segment.EOL
 
 import scala.reflect.runtime.universe.reify
 
-case class ParserDef() extends Parser[AST] {
+case class ParserDef() extends Parser[AST.Module] {
+  import ParserDef2._
+  import Parser.Result
 
   final def unwrap[T](opt: Option[T]): T = opt match {
     case None    => throw new Error("Internal Error")
@@ -19,15 +21,12 @@ case class ParserDef() extends Parser[AST] {
   //// API ////
   /////////////
 
-  def run(
-    input: String,
-    markerSeq: scala.Seq[(Int, AST.Marker)]
-  ): Parser.Result[AST] = {
-    result.markers = VectorMap(markerSeq)
+  def run(input: String, markers: Markers): Result[AST.Module] = {
+    result.markers = VectorMap(markers)
     run(input)
   }
 
-  override def run(input: String): Parser.Result[AST] = {
+  override def run(input: String): Result[AST.Module] = {
     block.onBegin(0)
     state.begin(block.FIRSTCHAR)
     super.run(input)
@@ -50,7 +49,10 @@ case class ParserDef() extends Parser[AST] {
   //// Result ////
   ////////////////
 
-  override def getResult() = result.current
+  override def getResult() = result.current.flatMap {
+    case mod: AST.Module => Some(mod)
+    case _               => None
+  }
 
   final object result {
 
@@ -701,4 +703,8 @@ case class ParserDef() extends Parser[AST] {
   ROOT || space || reify { off.on() }
   ROOT || eof   || reify { onEOF() }
   ROOT || any   || reify { onUnrecognized() }
+}
+
+object ParserDef2 {
+  type Markers = scala.Seq[(Int, AST.Marker)]
 }

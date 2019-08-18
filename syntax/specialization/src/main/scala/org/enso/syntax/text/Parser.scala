@@ -16,11 +16,11 @@ class Parser {
   import Parser._
   private val engine = newEngine()
 
-  def run(input: String, mrkr: Seq[(Int, Marker)] = Seq()): Result[AST.Module] =
-    engine.run(input, mrkr).map { module =>
-      val module2 = module.asInstanceOf[AST.Module] // FIXME
-      Macro.run(module2)
-    }
+  def run(
+    input: String,
+    markers: Markers = Seq()
+  ): Result[AST.Module] =
+    engine.run(input, markers).map(Macro.run)
 
   /** Although this function does not use any Parser-specific API now, it will
     * use such in the future when the interpreter will provide information about
@@ -41,6 +41,7 @@ class Parser {
 }
 
 object Parser {
+  type Markers   = text.ParserDef2.Markers
   type Result[T] = flexer.Parser.Result[T]
   private val newEngine = flexer.Parser.compile(text.ParserDef)
 
