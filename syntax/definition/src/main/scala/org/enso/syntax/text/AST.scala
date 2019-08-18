@@ -22,8 +22,8 @@ object AST {
 
     implicit def stringToAST(str: String): AST =
       fromStringRaw(str) match {
-        case opr: Opr => App.Sides(opr)
-        case any      => any
+//        case opr: Opr => App.Sides(opr)
+        case any => any
       }
 
     // FIXME: This is unsafe and should be defined in AST EDSL module.

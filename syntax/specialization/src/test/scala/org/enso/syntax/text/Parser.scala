@@ -1,15 +1,17 @@
 package org.enso.syntax.text
 
+import org.enso.data.List1
 import org.enso.data.Shifted
+import org.enso.data.Tree
 import org.enso.syntax.text.AST._
 import org.enso.syntax.text.AST.implicits._
 import org.enso.syntax.text.ast.DSL._
 import org.enso.flexer.Parser.Result
+import org.enso.flexer
 import org.scalatest._
 import org.enso.syntax.text.AST.Block.Line
 import org.enso.syntax.text.AST.Text.Segment.EOL
 import org.enso.syntax.text.AST.Text.Segment.Plain
-import org.enso.data.Tree
 
 class ParserSpec extends FlatSpec with Matchers {
 
@@ -96,19 +98,19 @@ class ParserSpec extends FlatSpec with Matchers {
   //// Operators ////
   ///////////////////
 
-  "++"   ?= "++"
-  "="    ?= "="
-  "=="   ?= "=="
-  ":"    ?= ":"
-  ","    ?= ","
-  "."    ?= "."
-  ".."   ?= ".."
-  "..."  ?= "..."
-  ">="   ?= ">="
-  "<="   ?= "<="
-  "/="   ?= "/="
-  "#="   ?= "#="
-  "##"   ?= "##"
+  "++"   ?= App.Sides("++")
+  "="    ?= App.Sides("=")
+  "=="   ?= App.Sides("==")
+  ":"    ?= App.Sides(":")
+  ","    ?= App.Sides(",")
+  "."    ?= App.Sides(".")
+  ".."   ?= App.Sides("..")
+  "..."  ?= App.Sides("...")
+  ">="   ?= App.Sides(">=")
+  "<="   ?= App.Sides("<=")
+  "/="   ?= App.Sides("/=")
+  "#="   ?= App.Sides("#=")
+  "##"   ?= App.Sides("##")
   "+="   ?= Opr.Mod("+")
   "-="   ?= Opr.Mod("-")
   "==="  ?= Ident.InvalidSuffix("==", "=")
@@ -131,13 +133,13 @@ class ParserSpec extends FlatSpec with Matchers {
   "a+ +b"         ?= ("a" $ "+") $$_ ("+" $ "b")
   "*a+"           ?= ("*" $ "a") $ "+"
   "+a*"           ?= "+" $ ("a" $ "*")
-  "+ <$> a <*> b" ?= ("+" $_ "<$>" $_ "a") $_ "<*>" $_ "b"
-  "+ * ^"         ?= App.Right("+", 1, App.Right("*", 1, "^"))
-  "+ ^ *"         ?= App.Right("+", 1, App.Left("^", 1, "*"))
-  "^ * +"         ?= App.Left(App.Left("^", 1, "*"), 1, "+")
-  "* ^ +"         ?= App.Left(App.Right("*", 1, "^"), 1, "+")
-  "^ + *"         ?= App.Infix("^", 1, "+", 1, "*")
-  "* + ^"         ?= App.Infix("*", 1, "+", 1, "^")
+  "+ <$> a <*> b" ?= (App.Sides("+") $_ "<$>" $_ "a") $_ "<*>" $_ "b"
+  "+ * ^"         ?= App.Right("+", 1, App.Right("*", 1, App.Sides("^")))
+  "+ ^ *"         ?= App.Right("+", 1, App.Left(App.Sides("^"), 1, "*"))
+  "^ * +"         ?= App.Left(App.Left(App.Sides("^"), 1, "*"), 1, "+")
+  "* ^ +"         ?= App.Left(App.Right("*", 1, App.Sides("^")), 1, "+")
+  "^ + *"         ?= App.Infix(App.Sides("^"), 1, "+", 1, App.Sides("*"))
+  "* + ^"         ?= App.Infix(App.Sides("*"), 1, "+", 1, App.Sides("^"))
 
   ////////////////
   //// Layout ////
@@ -227,8 +229,8 @@ class ParserSpec extends FlatSpec with Matchers {
   }
   //  "'`a(`'" ?= Text(Text.Segment.Interpolated(Some("a" $ Group.Unclosed())))
   //  // Comments
-  //  expr("#"              , Comment)
-  //  expr("#c"             , Comment :: CommentBody("c"))
+//    expr("#"              , Comment)
+//    expr("#c"             , Comment :: CommentBody("c"))
   //  expr("#c\na"          , Comment :: CommentBody("c") :: EOL :: Var("a"))
   //  expr("#c\n a"         , Comment :: CommentBody("c") :: EOL :: CommentBody(" a"))
   //  expr(" #c\n a"        , Comment :: CommentBody("c") :: EOL :: Var("a"))
@@ -286,6 +288,44 @@ class ParserSpec extends FlatSpec with Matchers {
 //    Block(2, List(), Required(Var("c"), 0), List(Line()))
 //  )
 
+  //////////////////
+  //// Mixfixes ////
+  //////////////////
+
+  def amb(head: AST, lst: List[List[AST]]): Macro.Ambiguous =
+    Macro.Ambiguous(Macro.Ambiguous.Segment(head), Tree(lst.map(_ -> (())): _*))
+
+  def amb(head: AST, lst: List[List[AST]], body: SAST): Macro.Ambiguous =
+    Macro.Ambiguous(
+      Macro.Ambiguous.Segment(head, Some(body)),
+      Tree(lst.map(_ -> (())): _*)
+    )
+
+  def _amb_group_(i: Int)(t: AST): Macro.Ambiguous =
+    amb("(", List(List(")")), Shifted(i, t))
+
+  val amb_group   = _amb_group_(0)(_)
+  val amb_group_  = _amb_group_(1)(_)
+  val amb_group__ = _amb_group_(2)(_)
+  def group_(): Macro.Ambiguous = amb("(", List(List(")")))
+
+  def _amb_if(i: Int)(t: AST) =
+    amb("if", List(List("then"), List("then", "else")), Shifted(i, t))
+
+  val amb_if   = _amb_if(0)(_)
+  val amb_if_  = _amb_if(1)(_)
+  val amb_if__ = _amb_if(2)(_)
+
+  "()"          ?= Group()
+  "( )"         ?= Group()
+  "( (  )   )"  ?= Group(Group())
+  "(a)"         ?= Group("a")
+  "((a))"       ?= Group(Group("a"))
+  "(((a)))"     ?= Group(Group(Group("a")))
+  "( (  a   ))" ?= Group(Group("a"))
+  "("           ?= amb("(", List(List(")")))
+  "(("          ?= amb_group(group_())
+
   "import Std .  Math  .Vector".stripMargin ?= Import("Std", "Math", "Vector")
 
   """def Maybe a
@@ -297,70 +337,26 @@ class ParserSpec extends FlatSpec with Matchers {
     Def("Maybe", List("a"), Some(Block(4, defJust, defNothing)))
   }
 
-  //Match(
-  //  List1(
-  //    Segment(
-  //      Var(import),
-  //      Seq(
-  //        (
-  //          Cls(
-  //            Shifted(1,Cons(Std))
-  //          )
-  //          ,Many(List())
-  //        )
-  //      )
-  //    )
-  //    ,List()
-  //   )
-  //)
-  /////////////////
-  //// Imports ////
-  /////////////////
-
-//  "import Std.Math" ?= "foo" $__ Block(1, "bar")
-
-  //////////////////
-  //// Mixfixes ////
-  //////////////////
-
-  //// Valid ////
-
-  "()"              ?= Group()
-  "( )"             ?= Group()
-  "( (  )   )"      ?= Group(Group())
-  "(a)"             ?= Group("a")
-  "((a))"           ?= Group(Group("a"))
-  "(((a)))"         ?= Group(Group(Group("a")))
-  "( (  a   )    )" ?= Group(Group("a"))
-  "(" ?= Macro.Ambiguous(
-    Macro.Ambiguous.Segment(AST.Opr("(")),
-    Tree[AST, Unit](List(AST.Opr(")")) -> (()))
+  "if a then b" ?= Mixfix(List1[AST.Ident]("if", "then"), List1[AST]("a", "b"))
+  "if a then b else c" ?= Mixfix(
+    List1[AST.Ident]("if", "then", "else"),
+    List1[AST]("a", "b", "c")
   )
-  //  "if a  then   b"     ?= "if" I1_ "a" I1__ "then" I1___ "b"
-  //  "if a then b else c" ?= "if" I1_ "a" I1_ "then" I1_ "b" I1_ "else" I1_ "c"
-  //  "(if a then  b) c"   ?= "(" I ("if" I1_ "a" I1_ "then" I1__ "b") I ")" $_ "c"
-  //  "a (b c) d"          ?= "a" $_ ("(" I ("b" $_ "c") I ")") $_ "d"
-  //
-  //  "(if a then b) else c" ?=
-  //  "(" I ("if" I1_ "a" I1_ "then" I1_ "b") I ")" $_ "else" $_ "c"
-  //
-  //  //// Invalid ////
-  //
-  //  val _then_else = List(List("then"), List("then", "else"))
-  //
-  //  "("           ?= "(" Ix ")"
-  //  "(("          ?= "(" I ("(" Ix ")") Ix ")"
-  //  "if"          ?= "if" Ixx (_then_else: _*)
-  //  "(if a) then" ?= "(" I ("if" I_ "a" Ixx (_then_else: _*)) I ")" $_ "then"
-  //  "if (a then)" ?= "if" I_ ("(" I ("a" $_ "then") I ")") Ixx (_then_else: _*)
 
-  //  "import Std.Math" ?= "foo"
+  "if a"         ?= amb_if_("a": AST)
+  "(if a) b"     ?= Group(amb_if_("a": AST)) $_ "b"
+  "if (a then b" ?= amb_if_(amb_group("a" $_ "then" $_ "b"))
 
   /////////////////////
   //// Large Input ////
   /////////////////////
 
-//  ("OVERFLOW" * flexer.Parser.BUFFER_SIZE).testIdentity   // ruins logging
+  ("(" * 100000).testIdentity
+  ("OVERFLOW" * flexer.Parser.BUFFER_SIZE).testIdentity
+
+  //////////////////////////////////
+  //// OTHER (TO BE PARTITIONED)////
+  //////////////////////////////////
 
 //  """
 //      a
@@ -391,3 +387,12 @@ class ParserSpec extends FlatSpec with Matchers {
 //  """.testIdentity
 
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO //
+////////////////////////////////////////////////////////////////////////////////
+
+// Comments parsing
+// Block parsing fixes
+// Some benchmarks failing?
+// Benchmarks are slower now - readjust (maybe profile later)
