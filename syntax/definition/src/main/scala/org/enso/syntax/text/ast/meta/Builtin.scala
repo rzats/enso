@@ -49,7 +49,11 @@ object Builtin {
               case Nothing()                           => None
               case _                                   => internalError
             }
-            AST.Def(name.el, args, body)
+            name.el match {
+              case n: AST.Cons => AST.Def(n, args, body)
+              case _           => internalError
+            }
+
           case t => internalError
         }
     }

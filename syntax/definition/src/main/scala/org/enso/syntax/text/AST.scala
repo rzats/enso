@@ -18,6 +18,24 @@ sealed trait AST extends AST.Symbol {
 
 object AST {
 
+  object implicits extends Ident.implicits {
+
+    implicit def stringToAST(str: String): AST =
+      fromStringRaw(str) match {
+        case opr: Opr => App.Sides(opr)
+        case any      => any
+      }
+
+    // FIXME: This is unsafe and should be defined in AST EDSL module.
+    def fromStringRaw(str: String): AST = {
+      if (str == "") throw new Error("Empty literal")
+      if (str == "_") Blank
+      else if (str.head.isLower) Var(str)
+      else if (str.head.isUpper) Cons(str)
+      else Opr(str)
+    }
+  }
+
   //////////////////////////////////////////////////////////////////////////////
   //// Reexports ///////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
@@ -51,21 +69,6 @@ object AST {
       case anyAst             => Shifted.List1(anyAst, out)
     }
     go(ast, List())
-  }
-
-  implicit def fromString(str: String): AST =
-    fromStringRaw(str) match {
-      case opr: Opr => App.Sides(opr)
-      case any      => any
-    }
-
-  // FIXME: This is unsafe and should be defined in AST EDSL module.
-  def fromStringRaw(str: String): AST = {
-    if (str == "") throw new Error("Empty literal")
-    if (str == "_") Blank
-    else if (str.head.isLower) Var(str)
-    else if (str.head.isUpper) Cons(str)
-    else Opr(str)
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -112,13 +115,14 @@ object AST {
       def map(f: AST => AST) = this
     }
 
-    // FIXME: This is unsafe and should be defined in AST EDSL module.
-    implicit def fromString(str: String): Ident = {
-      if (str == "") throw new Error("Empty literal")
-      if (str == "_") Blank
-      else if (str.head.isLower) Var(str)
-      else if (str.head.isUpper) Cons(str)
-      else Opr(str)
+    trait implicits extends Var.implicits with Cons.implicits {
+      implicit def stringToIdent(str: String): Ident = {
+        if (str == "") throw new Error("Empty literal")
+        if (str == "_") Blank
+        else if (str.head.isLower) Var(str)
+        else if (str.head.isUpper) Cons(str)
+        else Opr(str)
+      }
     }
   }
 
@@ -136,10 +140,20 @@ object AST {
     val repr               = name
     def map(f: AST => AST) = this
   }
+  object Var {
+    trait implicits {
+      implicit def stringToVar(str: String): Var = Var(str)
+    }
+  }
 
   final case class Cons(name: String) extends Ident {
     val repr               = name
     def map(f: AST => AST) = this
+  }
+  object Cons {
+    trait implicits {
+      implicit def stringToCons(str: String): Cons = Cons(str)
+    }
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -314,6 +328,7 @@ object AST {
             this.dup(segments = Text.Segment.Plain(t + n) :: ss)
           case _ => this.dup(segments = segment :: segments)
         }
+
     }
 
     //// Smart Constructors ////
@@ -351,6 +366,8 @@ object AST {
         copy(quote, segments)
     }
 
+    // FIXME: Rethink if we should divide text to single line and multiline.
+    //        One of segments is EOL, which makes no sense with this division
     final case class MultiLine(
       indent: Int,
       quoteChar: Char,
@@ -710,7 +727,9 @@ object AST {
     def map(f: AST => AST) = this
   }
   object Import {
+    def apply(head: Cons):                   Import = Import(head, List())
     def apply(head: Cons, tail: List[Cons]): Import = Import(List1(head, tail))
+    def apply(head: Cons, tail: Cons*):      Import = Import(head, tail.toList)
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -745,13 +764,15 @@ object AST {
   //// Def /////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  final case class Def(name: AST, args: List[AST], body: Option[AST])
+  final case class Def(name: Cons, args: List[AST], body: Option[AST])
       extends AST {
     import Def._
     val repr               = R + symbol ++ name + args.map(R ++ _) + body
     def map(f: AST => AST) = copy(args = args.map(f), body = body.map(f))
   }
   object Def {
+    def apply(name: Cons, args: List[AST]): Def = Def(name, args, None)
+    def apply(name: Cons):                  Def = Def(name, List())
     val symbol = "type"
   }
 

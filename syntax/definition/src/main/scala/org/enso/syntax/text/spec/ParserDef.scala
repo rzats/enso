@@ -1,17 +1,16 @@
 package org.enso.syntax.text.spec
 
 import org.enso.data.VectorMap
+import org.enso.flexer
+import org.enso.flexer.State
 import org.enso.flexer.automata.Pattern
 import org.enso.flexer.automata.Pattern._
-import org.enso.flexer.State
-import org.enso.flexer._
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Text.Segment.EOL
 
 import scala.reflect.runtime.universe.reify
 
-case class ParserDef() extends Parser[AST.Module] {
-  import Parser.Result
+case class ParserDef() extends flexer.Parser[AST.Module] {
   import ParserDef2._
 
   final def unwrap[T](opt: Option[T]): T = opt match {
@@ -171,8 +170,8 @@ case class ParserDef() extends Parser[AST.Module] {
     val SFX_CHECK = state.define("Identifier Suffix Check")
   }
 
-  ROOT            || ident._var   || reify { ident.on(AST.Var) }
-  ROOT            || ident.cons   || reify { ident.on(AST.Cons) }
+  ROOT            || ident._var   || reify { ident.on(AST.Var(_)) }
+  ROOT            || ident.cons   || reify { ident.on(AST.Cons(_)) }
   ROOT            || "_"          || reify { ident.on(AST.Blank) }
   ident.SFX_CHECK || ident.errSfx || reify { ident.onErrSfx() }
   ident.SFX_CHECK || always       || reify { ident.onNoErrSfx() }
@@ -708,5 +707,6 @@ case class ParserDef() extends Parser[AST.Module] {
 }
 
 object ParserDef2 {
-  type Markers = scala.Seq[(Int, AST.Marker)]
+  type Result[T] = flexer.Parser.Result[T]
+  type Markers   = scala.Seq[(Int, AST.Marker)]
 }

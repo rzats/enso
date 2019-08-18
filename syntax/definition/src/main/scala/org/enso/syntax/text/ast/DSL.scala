@@ -5,6 +5,7 @@ import org.enso.syntax.text.AST.App.Infix
 
 object DSL {
   import AST._
+  import AST.implicits._
 
   implicit final class ASTHelper(self: AST) {
     private def smartApp(off: Int, r: AST): AST = self match {

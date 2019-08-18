@@ -2,6 +2,7 @@ package org.enso.syntax.text
 
 import org.enso.data.Shifted
 import org.enso.syntax.text.AST._
+import org.enso.syntax.text.AST.implicits._
 import org.enso.syntax.text.ast.DSL._
 import org.enso.flexer.Parser.Result
 import org.scalatest._
@@ -14,29 +15,31 @@ class ParserSpec extends FlatSpec with Matchers {
   type Markers = Seq[(Int, Marker)]
 
   def assertModule(input: String, result: AST, markers: Markers): Assertion = {
-    val output = Parser().run(input, markers)
+    val parser = Parser()
+    val output = parser.run(input, markers)
     output match {
-      case Result(offset, Result.Success(value)) =>
-        assert(value == result)
-        assert(value.show() == input)
+      case Result(offset, Result.Success(module)) =>
+        val rmodule = parser.resolveMacros(module).asInstanceOf[AST.Module]
+        assert(rmodule == result)
+        assert(module.show() == input)
       case _ => fail(s"Parsing failed, consumed ${output.offset} chars")
     }
   }
 
   def assertExpr(input: String, result: AST, markers: Markers): Assertion = {
-    val output = Parser().run(input, markers)
+    val parser = Parser()
+    val output = parser.run(input, markers)
     output match {
-      case Result(offset, Result.Success(value)) =>
-        val module = value.asInstanceOf[Module]
-        val tail   = module.lines.tail
-        if (!tail.forall(_.elem.isEmpty))
-          fail("Multi-line block")
+      case Result(offset, Result.Success(module)) =>
+        val rmodule = parser.resolveMacros(module).asInstanceOf[AST.Module]
+        val tail    = module.lines.tail
+        if (!tail.forall(_.elem.isEmpty)) fail("Multi-line block")
         else {
-          module.lines.head.elem match {
+          rmodule.lines.head.elem match {
             case None => fail("Empty expression")
             case Some(e) =>
               assert(e == result)
-              assert(value.show() == input)
+              assert(module.show() == input)
           }
         }
       case _ => fail(s"Parsing failed, consumed ${output.offset} chars")
@@ -315,13 +318,16 @@ class ParserSpec extends FlatSpec with Matchers {
 //    Block(2, List(), Required(Var("c"), 0), List(Line()))
 //  )
 
-//  """def Maybe a
-//    |    def Just val:a
-//    |    def Nothing
-//  """.stripMargin ?= "foo"
+  "import Std .  Math  .Vector".stripMargin ?= Import("Std", "Math", "Vector")
 
-  import org.enso.syntax.text.ast.meta.Pattern.Match._
-  "import Std".stripMargin ?= "foo"
+  """def Maybe a
+    |    def Just val:a
+    |    def Nothing
+  """.stripMargin ?= {
+    val defJust    = Def("Just", List("val" $ ":" $ "a"))
+    val defNothing = Def("Nothing")
+    Def("Maybe", List("a"), Some(Block(4, defJust, defNothing)))
+  }
 
   //Match(
   //  List1(
