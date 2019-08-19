@@ -469,6 +469,7 @@ object AST {
 
   type Block = _Block
   final case class _Block(
+    tp: Block.Type,
     indent: Int,
     emptyLines: List[Int],
     firstLine: Block.Line.NonEmpty,
@@ -487,18 +488,28 @@ object AST {
   }
 
   object Block {
+    sealed trait Type
+    final case object Continuous    extends Type
+    final case object Discontinuous extends Type
+
     def apply(
+      tp: Type,
       indent: Int,
       emptyLines: List[Int],
       firstLine: Line.NonEmpty,
       lines: List[Line]
-    ): Block = _Block(indent, emptyLines, firstLine, lines)
+    ): Block = _Block(tp, indent, emptyLines, firstLine, lines)
 
-    def apply(indent: Int, firstLine: Line.NonEmpty, lines: List[Line]): Block =
-      Block(indent, List(), firstLine, lines)
+    def apply(
+      tp: Type,
+      indent: Int,
+      firstLine: Line.NonEmpty,
+      lines: List[Line]
+    ): Block =
+      Block(tp, indent, List(), firstLine, lines)
 
-    def apply(indent: Int, firstLine: AST, lines: AST*): Block =
-      Block(indent, Line.Required(firstLine), lines.toList.map(Line(_)))
+    def apply(tp: Type, indent: Int, firstLine: AST, lines: AST*): Block =
+      Block(tp, indent, Line.Required(firstLine), lines.toList.map(Line(_)))
 
     def unapply(t: Block): Option[(Int, Line.NonEmpty, List[Line])] =
       Some((t.indent, t.firstLine, t.lines))

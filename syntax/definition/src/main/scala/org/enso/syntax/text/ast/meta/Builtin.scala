@@ -139,6 +139,19 @@ object Builtin {
         }
     }
 
+//    val def_foreign = Definition(
+//      Var("if")   -> Pattern.Expr(),
+//      Var("then") -> Pattern.Expr()
+//    ) {
+//      case (None, List(s1, s2)) =>
+//        (s1.body.toStream, s2.body.toStream) match {
+//          case (List(t1), List(t2)) =>
+//            AST.Mixfix(List1(s1.head, s2.head), List1(t1.el, t2.el))
+//          case _ => internalError
+//        }
+//      case _ => internalError
+//    }
+
     Registry(
       def_group,
       def_if_then,

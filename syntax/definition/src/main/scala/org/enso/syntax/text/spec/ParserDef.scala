@@ -8,6 +8,7 @@ import org.enso.flexer.automata.Pattern._
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Text.Segment.EOL
 
+import scala.annotation.tailrec
 import scala.reflect.runtime.universe.reify
 
 case class ParserDef() extends flexer.Parser[AST.Module] {
@@ -85,6 +86,16 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
         case None    => marked
         case Some(r) => AST.App(r, off.use(), marked)
       })
+    }
+
+    def last(): Option[AST] = {
+      @tailrec
+      def go(ast: AST): AST = ast match {
+        case AST.Marked(_, t)  => go(t)
+        case AST._App(_, _, t) => go(t)
+        case t                 => t
+      }
+      current.map(go)
     }
   }
 
@@ -511,6 +522,7 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     def build(): AST.Block = logger.trace {
       submitLine()
       AST.Block(
+        AST.Block.Continuous,
         current.indent,
         current.emptyLines.reverse,
         unwrap(current.firstLine),
@@ -519,14 +531,24 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     }
 
     def submit(): Unit = logger.trace {
-      val block = build()
-      val block2 =
-        if (current.isValid) block
-        else AST.Block.InvalidIndentation(block)
+      val block   = build()
+      val isValid = current.isValid
 
       result.pop()
       off.pop()
       pop()
+
+      val block2 = result.last() match {
+        case None => block
+        case Some(ast) =>
+          if (!ast.isInstanceOf[AST.Opr]) block
+          else block.copy(tp = AST.Block.Discontinuous)
+      }
+
+      val block3 =
+        if (isValid) block2
+        else AST.Block.InvalidIndentation(block2)
+
       result.app(block2)
       logger.endGroup()
     }

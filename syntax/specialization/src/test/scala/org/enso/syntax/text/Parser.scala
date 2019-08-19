@@ -346,8 +346,16 @@ class ParserSpec extends FlatSpec with Matchers {
   """.stripMargin ?= {
     val defJust    = Def("Just", List("val" $ ":" $ "a"))
     val defNothing = Def("Nothing")
-    Def("Maybe", List("a"), Some(Block(4, defJust, defNothing)))
+    Def(
+      "Maybe",
+      List("a"),
+      Some(Block(Block.Continuous, 4, defJust, defNothing))
+    )
   }
+
+  """foo ->
+    |    bar
+  """.stripMargin ?= "foo" $_ "->" $_ Block(Block.Discontinuous, 4, "bar")
 
   "if a then b" ?= Mixfix(List1[AST.Ident]("if", "then"), List1[AST]("a", "b"))
   "if a then b else c" ?= Mixfix(
@@ -409,9 +417,10 @@ class ParserSpec extends FlatSpec with Matchers {
 // Some benchmarks failing?
 // Benchmarks are slower now - readjust (maybe profile later)
 
-// [ ] ->
+// [x] ->
 // [x] = = =
-// [ ] blocks after operator vs non operator
+// [x] blocks after operator vs non operator
+// [ ] operator blocks
 // [ ] freeze and skip flags
 // [ ] foreign
-// [ ] warnings
+// [ ] warnings in scala code
