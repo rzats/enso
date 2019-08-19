@@ -276,12 +276,20 @@ class ParserSpec extends FlatSpec with Matchers {
   //// Comments ////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  "foo   #L1NE"        ?= "foo" $___ Comment("L1NE")
-  "#\n    L1NE\n LIN2" ?= Comment.Block(0, List("", "   L1NE", "LIN2"))
-  "#L1NE\nLIN2" ?= Module(
-    Line(Comment.Block(0, List("L1NE"))),
-    Line(Cons("LIN2"))
-  )
+  "foo   #L1NE" ?= "foo" $___ Comment("L1NE")
+
+  // FIXME: Think if we can express it using macros. We should be able to.
+//  "#\n    L1NE\n LIN2" ?= Comment.Block(0, List("", "   L1NE", "LIN2"))
+//  "#L1NE\nLIN2" ?= Module(
+//    Line(Comment.Block(0, List("L1NE"))),
+//    Line(Cons("LIN2"))
+//  )
+
+  //////////////////////////////////////////////////////////////////////////////
+  //// Flags/// ////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  "a #= b c" ?= "a" $_ "#=" $_ ("b" $_ "c")
 
   //////////////////////////////////////////////////////////////////////////////
   //// Blocks //////////////////////////////////////////////////////////////////
@@ -368,6 +376,18 @@ class ParserSpec extends FlatSpec with Matchers {
   "if (a then b" ?= amb_if_(amb_group("a" $_ "then" $_ "b"))
 
   //////////////////////////////////////////////////////////////////////////////
+  //// Foreign /////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  val pyLine1 = "import re"
+  val pyLine2 = """re.match(r"[^@]+@[^@]+\.[^@]+", "foo@ds.pl") != None"""
+  s"""validateEmail address = foreign Python3
+     |    $pyLine1
+     |    $pyLine2
+  """.stripMargin ?= ("validateEmail" $_ "address") $_ "=" $_
+  Foreign(4, "Python3", List(pyLine1, pyLine2))
+
+  //////////////////////////////////////////////////////////////////////////////
   //// Large Input /////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
@@ -412,15 +432,9 @@ class ParserSpec extends FlatSpec with Matchers {
 // TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO //
 ////////////////////////////////////////////////////////////////////////////////
 
-// Comments parsing
-// Block parsing fixes
-// Some benchmarks failing?
-// Benchmarks are slower now - readjust (maybe profile later)
-
-// [x] ->
-// [x] = = =
-// [x] blocks after operator vs non operator
+// [ ] Comments parsing
+// [ ] Block parsing fixes
+// [ ] Some benchmarks failing?
+// [ ] Benchmarks are slower now - readjust (maybe profile later)
 // [ ] operator blocks
-// [ ] freeze and skip flags
-// [ ] foreign
 // [ ] warnings in scala code

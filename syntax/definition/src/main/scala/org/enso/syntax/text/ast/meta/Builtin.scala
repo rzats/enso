@@ -7,6 +7,7 @@ import org.enso.syntax.text.AST.Macro.Definition
 import org.enso.syntax.text.AST.Cons
 import org.enso.syntax.text.AST.Opr
 import org.enso.syntax.text.AST.Var
+import org.enso.syntax.text.ast.Repr
 
 object Builtin {
 
@@ -139,18 +140,45 @@ object Builtin {
         }
     }
 
-//    val def_foreign = Definition(
-//      Var("if")   -> Pattern.Expr(),
-//      Var("then") -> Pattern.Expr()
-//    ) {
-//      case (None, List(s1, s2)) =>
-//        (s1.body.toStream, s2.body.toStream) match {
-//          case (List(t1), List(t2)) =>
-//            AST.Mixfix(List1(s1.head, s2.head), List1(t1.el, t2.el))
-//          case _ => internalError
-//        }
-//      case _ => internalError
-//    }
+    val def_skip = Definition(
+      Some(Pattern.Any(Some(false)).many1.build.or(Pattern.Expr())),
+      Opr("#=") -> Pattern.Any(Some(false)).many1.build.or(Pattern.Expr())
+    ) {
+      case (Some(pfx), List(s1)) =>
+        (pfx.toStream, s1.body.toStream) match {
+          case (List(l), List(r)) => AST.App(l.el, Opr("#="), r.el)
+          case t                  => internalError
+        }
+    }
+
+    val def_foreign = Definition(
+      Var("foreign") -> (Pattern.Cls[AST.Cons]() :: Pattern.Cls[AST.Block]())
+    ) {
+      case (None, List(s1)) =>
+        s1.body.toStream match {
+          case List(langAST, Shifted(_, bodyAST: AST.Block)) =>
+            val indent     = bodyAST.indent
+            val lang       = langAST.el.show()
+            val body       = bodyAST.show()
+            val bodyLines  = body.split("\\r?\\n").toList.drop(1)
+            val bodyLines2 = bodyLines.map(_.drop(indent))
+            AST.Foreign(indent, lang, bodyLines2)
+          case _ => internalError
+        }
+      case _ => internalError
+    }
+
+    val def_comment = Definition(
+      Opr("#") -> Pattern.AnyBut(Pattern.Cls[AST.Block]).many
+    ) {
+      case (None, List(s1)) =>
+        val body = s1.body.toStream
+          .map(t => (Repr.R + t.off + t.el.repr).show())
+          .mkString("")
+        AST.Comment(body)
+
+      case _ => internalError
+    }
 
     Registry(
       def_group,
@@ -159,7 +187,9 @@ object Builtin {
       def_import,
       def_def,
       def_arrow,
-      def_assign
+      def_assign,
+      def_foreign,
+      def_comment
     )
   }
 
