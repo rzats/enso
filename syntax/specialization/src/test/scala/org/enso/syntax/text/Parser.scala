@@ -22,7 +22,7 @@ class ParserSpec extends FlatSpec with Matchers {
     val output = parser.run(input, markers)
     output match {
       case Result(offset, Result.Success(module)) =>
-        val rmodule = parser.resolveMacros(module).asInstanceOf[AST.Module]
+        val rmodule = parser.resolveMacros(module)
         assert(rmodule == result)
         assert(module.show() == input)
       case _ => fail(s"Parsing failed, consumed ${output.offset} chars")
@@ -34,7 +34,7 @@ class ParserSpec extends FlatSpec with Matchers {
     val output = parser.run(input, markers)
     output match {
       case Result(offset, Result.Success(module)) =>
-        val rmodule = parser.resolveMacros(module).asInstanceOf[AST.Module]
+        val rmodule = parser.resolveMacros(module)
         val tail    = module.lines.tail
         if (!tail.forall(_.elem.isEmpty)) fail("Multi-line block")
         else {
@@ -405,7 +405,9 @@ class ParserSpec extends FlatSpec with Matchers {
 // Some benchmarks failing?
 // Benchmarks are slower now - readjust (maybe profile later)
 
-// ->
-// = = =
-// blocks after operator vs non operator
-// freeze and skip flags
+// [ ] ->
+// [x] = = =
+// [ ] blocks after operator vs non operator
+// [ ] freeze and skip flags
+// [ ] foreign
+// [ ] warnings

@@ -111,17 +111,20 @@ object Builtin {
       case _ => internalError
     }
 
-    // TODO:
-    // ->
-    // = = =
-    // foreign
+    val def_arrow = Definition(
+      Some((Pattern.Any())),
+      Opr("->") -> Pattern.Expr()
+    ) {
+      case _ => ???
+    }
 
     Registry(
       def_group,
       def_if_then,
       def_if_then_else,
       def_import,
-      def_def
+      def_def,
+      def_arrow
     )
   }
 

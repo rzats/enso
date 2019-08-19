@@ -3,7 +3,6 @@ package org.enso.syntax.text
 import org.enso.flexer
 import org.enso.syntax.text
 import org.enso.syntax.text.ast.meta.Builtin
-import org.enso.syntax.text.AST.Marker
 import org.enso.syntax.text.prec.Macro
 import org.enso.syntax.text.spec.ParserDef
 import org.enso.syntax.text.spec.ParserDef2
@@ -28,6 +27,9 @@ class Parser {
     * use such in the future when the interpreter will provide information about
     * defined macros other than [[Builtin.registry]].
     */
+  def resolveMacros(ast: AST.Module): AST.Module =
+    ast.map(resolveMacros)
+
   def resolveMacros(ast: AST): AST = {
     ast match {
       case ast: AST.Macro.Match =>
@@ -36,7 +38,7 @@ class Parser {
           case Some(spec) =>
             resolveMacros(spec.finalizer(ast.segs.toList().map(_.el)))
         }
-      case ast => ast.map(resolveMacros)
+      case _ => ast.map(resolveMacros)
     }
   }
 
@@ -114,7 +116,7 @@ object Main extends App {
 
   val in_arr1 = "a b -> c d"
 
-  val inp = "a = foo.bar.baz = 10"
+  val inp = "a b  c   -> d"
   val out = parser.run(inp, Seq())
   pprint.pprintln(out, width = 50, height = 10000)
 

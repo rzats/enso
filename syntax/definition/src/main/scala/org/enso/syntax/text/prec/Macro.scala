@@ -62,7 +62,8 @@ object Macro {
             case Some(tr) =>
               logger.log("New segment")
               builder.startSegment(el1, off)
-              builder.mixfix  = tr.value.map(Some(_)).getOrElse(builder.mixfix)
+              builder.macroDef =
+                tr.value.map(Some(_)).getOrElse(builder.macroDef)
               builder.context = builder.context.copy(tree = tr)
               go(t2_)
 
@@ -72,8 +73,8 @@ object Macro {
                   logger.log("New macro")
                   val context = builder.context
                   pushBuilder(el1, t1.off)
-                  builder.mixfix  = tr.value
-                  builder.context = Builder.Context(tr, Some(context))
+                  builder.macroDef = tr.value
+                  builder.context  = Builder.Context(tr, Some(context))
                   go(t2_)
 
                 case None =>
@@ -87,7 +88,6 @@ object Macro {
                   (currentClosed || parentPrecWin) && parentBreak match {
                     case true =>
                       logger.log("Parent close")
-
                       val subBuilder = builder
                       popBuilder()
                       builder.merge(subBuilder)

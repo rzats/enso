@@ -605,7 +605,10 @@ object AST {
 
     //// Matched ////
 
-    final case class Match(segs: Shifted.List1[Match.Segment]) extends Macro {
+    final case class Match(
+      pfx: Option[Pattern.Match],
+      segs: Shifted.List1[Match.Segment]
+    ) extends Macro {
       val repr               = R + segs.map(_.repr)
       def map(f: AST => AST) = this
       def path(): List1[AST] = segs.toList1().map(_.el.head)
@@ -645,11 +648,12 @@ object AST {
 
     type Definition = __Definition__
     final case class __Definition__(
-      segments: List1[Definition.Segment],
+      backPat: Option[Pattern],
+      segs: List1[Definition.Segment],
       finalizer: Definition.Finalizer
     ) {
-      def path:     List1[AST]     = segments.map(_.head)
-      def patterns: List1[Pattern] = segments.map(_.pattern)
+      def path:    List1[AST]     = segs.map(_.head)
+      def fwdPats: List1[Pattern] = segs.map(_.pattern)
     }
     object Definition {
       import Pattern._
@@ -664,9 +668,18 @@ object AST {
       }
 
       def apply(t1: Segment.Tup, ts: Segment.Tup*)(fin: Finalizer): Definition =
-        Definition(List1(t1, ts: _*), fin)
+        Definition(None, List1(t1, ts: _*), fin)
 
-      def apply(segTups: List1[Segment.Tup], fin: Finalizer): Definition = {
+      def apply(backPat: Option[Pattern], t1: Segment.Tup, ts: Segment.Tup*)(
+        fin: Finalizer
+      ): Definition =
+        Definition(backPat, List1(t1, ts: _*), fin)
+
+      def apply(
+        backPat: Option[Pattern],
+        segTups: List1[Segment.Tup],
+        fin: Finalizer
+      ): Definition = {
         type PP = Pattern => Pattern
         val checkValid: PP = _ | ErrTillEnd("unmatched pattern")
         val checkFull: PP  = TillEndMarkUnmatched(_, "unmatched tokens")
@@ -674,15 +687,16 @@ object AST {
         val addDefaultChecks: List1[Segment] => List1[Segment] =
           _.map(_.map(checkValid)).mapInit(_.map(checkFull))
 
-        val segs           = segTups.map(Segment(_))
-        val segsWithChecks = addDefaultChecks(segs)
+        val segs             = segTups.map(Segment(_))
+        val segsWithChecks   = addDefaultChecks(segs)
+        val backPatWithCheck = backPat.map(checkValid)
         def finalizerWithChecks(segs: List[Macro.Match.Segment]) = {
           if (!segs.forall(_.isValid)) {
             val stream = segs.flatMap(_.toStream)
             AST.Unexpected("invalid statement", stream)
           } else fin(segs)
         }
-        __Definition__(segsWithChecks, finalizerWithChecks)
+        __Definition__(backPatWithCheck, segsWithChecks, finalizerWithChecks)
       }
 
     }
