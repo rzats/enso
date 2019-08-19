@@ -32,7 +32,8 @@ object Builtin {
       Var("def") -> {
         import Pattern._
         val head = Cls[Cons].or("missing name").tag("name")
-        val args = NonSpacedExpr().tag("parameter").many.tag("parameters")
+        val args =
+          Pattern.NonSpacedExpr_().tag("parameter").many.tag("parameters")
         val body = Cls[AST.Block].tag("body").opt
         head :: args :: body
       }
@@ -169,7 +170,9 @@ object Builtin {
     }
 
     val def_comment = Definition(
-      Opr("#") -> Pattern.AnyBut(Pattern.Cls[AST.Block]).many
+      Opr("#") -> Pattern
+        .FromBegin(Pattern.Any().many)
+        .or(Pattern.AnyBut(Pattern.Cls[AST.Block]).many)
     ) {
       case (None, List(s1)) =>
         val body = s1.body.toStream
