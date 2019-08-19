@@ -113,8 +113,8 @@ object Builtin {
     }
 
     val def_arrow = Definition(
-      Some(Pattern.Any(Some(false)).many1.build.or(Pattern.Expr())),
-      Opr("->") -> Pattern.Any(Some(false)).many1.build.or(Pattern.Expr())
+      Some(Pattern.NonSpacedExpr().or(Pattern.Expr())),
+      Opr("->") -> Pattern.NonSpacedExpr().or(Pattern.Expr())
     ) {
       case (Some(pfx), List(s1)) =>
         (pfx.toStream, s1.body.toStream) match {
@@ -130,8 +130,8 @@ object Builtin {
     // For example, `f x= g h` will parse as `f (x = g h)`.
 
     val def_assign = Definition(
-      Some(Pattern.Any(Some(false)).many1.build.or(Pattern.Expr())),
-      Opr("=") -> Pattern.Any(Some(false)).many1.build.or(Pattern.Expr())
+      Some(Pattern.NonSpacedExpr().or(Pattern.Expr())),
+      Opr("=") -> Pattern.NonSpacedExpr().or(Pattern.Expr())
     ) {
       case (Some(pfx), List(s1)) =>
         (pfx.toStream, s1.body.toStream) match {
@@ -141,8 +141,8 @@ object Builtin {
     }
 
     val def_skip = Definition(
-      Some(Pattern.Any(Some(false)).many1.build.or(Pattern.Expr())),
-      Opr("#=") -> Pattern.Any(Some(false)).many1.build.or(Pattern.Expr())
+      Some(Pattern.NonSpacedExpr().or(Pattern.Expr())),
+      Opr("#=") -> Pattern.NonSpacedExpr().or(Pattern.Expr())
     ) {
       case (Some(pfx), List(s1)) =>
         (pfx.toStream, s1.body.toStream) match {

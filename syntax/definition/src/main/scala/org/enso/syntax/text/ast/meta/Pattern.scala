@@ -162,11 +162,7 @@ object Pattern {
   }
 
   object NonSpacedExpr {
-    def apply() = Build(AnyBut(Cls[AST.Block]) :: Many(NonSpacedAny()))
-    def unapply(t: Pattern): Boolean = t match {
-      case Build(Many1(NonSpacedAny())) => true
-      case _                            => false
-    }
+    def apply() = Pattern.Any(Some(false)).many1.build
   }
 
   object SepList {
