@@ -18,7 +18,7 @@ object Builtin {
       Opr("(") -> Pattern.Opt(Pattern.Expr()),
       Opr(")") -> Pattern.Nothing()
     ) {
-      case List(st1, _) =>
+      case (None, List(st1, _)) =>
         st1.body.toStream match {
           case List()  => AST.Group()
           case List(t) => AST.Group(t)
@@ -36,7 +36,7 @@ object Builtin {
         head :: args :: body
       }
     ) {
-      case List(st1) =>
+      case (None, List(st1)) =>
         import Pattern.Match._
         st1.body match {
           case Seq(Cls(name), Seq(Many(argsMatches), bodyMatch)) =>
@@ -62,7 +62,7 @@ object Builtin {
       Var("import") ->
       Pattern.SepList(Pattern.Cls[Cons], AST.Opr("."), "expected module name")
     ) {
-      case List(s1) =>
+      case (None, List(s1)) =>
         import Pattern.Match._
         s1.body match {
           case Seq(headMatch, Many(tailMatch)) =>
@@ -85,7 +85,7 @@ object Builtin {
       Var("if")   -> Pattern.Expr(),
       Var("then") -> Pattern.Expr()
     ) {
-      case List(s1, s2) =>
+      case (None, List(s1, s2)) =>
         (s1.body.toStream, s2.body.toStream) match {
           case (List(t1), List(t2)) =>
             AST.Mixfix(List1(s1.head, s2.head), List1(t1.el, t2.el))
@@ -99,7 +99,7 @@ object Builtin {
       Var("then") -> Pattern.Expr(),
       Var("else") -> Pattern.Expr()
     ) {
-      case List(s1, s2, s3) =>
+      case (None, List(s1, s2, s3)) =>
         (s1.body.toStream, s2.body.toStream, s3.body.toStream) match {
           case (List(t1), List(t2), List(t3)) =>
             AST.Mixfix(
@@ -112,10 +112,31 @@ object Builtin {
     }
 
     val def_arrow = Definition(
-      Some((Pattern.Any())),
-      Opr("->") -> Pattern.Expr()
+      Some(Pattern.Any(Some(false)).many1.build.or(Pattern.Expr())),
+      Opr("->") -> Pattern.Any(Some(false)).many1.build.or(Pattern.Expr())
     ) {
-      case _ => ???
+      case (Some(pfx), List(s1)) =>
+        (pfx.toStream, s1.body.toStream) match {
+          case (List(l), List(r)) => AST.App(l.el, Opr("->"), r.el)
+          case _                  => internalError
+        }
+    }
+
+    // Unfortunately, assignment operator has to be defined as macro unless
+    // operator - like macros behave like real operators and can have different
+    // precedences. The precedence of assignment have to be lower than the
+    // arrow. This design makes it behave like `->`, which may not be desirable.
+    // For example, `f x= g h` will parse as `f (x = g h)`.
+
+    val def_assign = Definition(
+      Some(Pattern.Any(Some(false)).many1.build.or(Pattern.Expr())),
+      Opr("=") -> Pattern.Any(Some(false)).many1.build.or(Pattern.Expr())
+    ) {
+      case (Some(pfx), List(s1)) =>
+        (pfx.toStream, s1.body.toStream) match {
+          case (List(l), List(r)) => AST.App(l.el, Opr("="), r.el)
+          case t                  => internalError
+        }
     }
 
     Registry(
@@ -124,7 +145,8 @@ object Builtin {
       def_if_then_else,
       def_import,
       def_def,
-      def_arrow
+      def_arrow,
+      def_assign
     )
   }
 

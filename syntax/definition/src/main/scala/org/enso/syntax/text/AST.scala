@@ -609,7 +609,12 @@ object AST {
       pfx: Option[Pattern.Match],
       segs: Shifted.List1[Match.Segment]
     ) extends Macro {
-      val repr               = R + segs.map(_.repr)
+      val repr = {
+        val pfxStream = pfx.map(_.toStream.reverse).getOrElse(List())
+        val pfxRepr   = pfxStream.map(t => R + t.el + t.off)
+        val segsRepr  = segs.map(_.repr)
+        R + pfxRepr + segsRepr
+      }
       def map(f: AST => AST) = this
       def path(): List1[AST] = segs.toList1().map(_.el.head)
     }
@@ -657,7 +662,7 @@ object AST {
     }
     object Definition {
       import Pattern._
-      type Finalizer = List[Macro.Match.Segment] => AST
+      type Finalizer = (Option[Pattern.Match], List[Macro.Match.Segment]) => AST
 
       final case class Segment(head: AST, pattern: Pattern) {
         def map(f: Pattern => Pattern): Segment = copy(pattern = f(pattern))
@@ -690,11 +695,18 @@ object AST {
         val segs             = segTups.map(Segment(_))
         val segsWithChecks   = addDefaultChecks(segs)
         val backPatWithCheck = backPat.map(checkValid)
-        def finalizerWithChecks(segs: List[Macro.Match.Segment]) = {
-          if (!segs.forall(_.isValid)) {
-            val stream = segs.flatMap(_.toStream)
+        def finalizerWithChecks(
+          pfx: Option[Pattern.Match],
+          segs: List[Macro.Match.Segment]
+        ) = {
+          val pfxFail  = !pfx.forall(_.isValid)
+          val segsFail = !segs.forall(_.isValid)
+          if (pfxFail || segsFail) {
+            val pfxStream  = pfx.map(_.toStream).getOrElse(List())
+            val segsStream = segs.flatMap(_.toStream)
+            val stream     = pfxStream ++ segsStream
             AST.Unexpected("invalid statement", stream)
-          } else fin(segs)
+          } else fin(pfx, segs)
         }
         __Definition__(backPatWithCheck, segsWithChecks, finalizerWithChecks)
       }

@@ -1,7 +1,6 @@
 package org.enso.syntax.text.prec
 
 import org.enso.Logger
-import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.ast.meta.Builder

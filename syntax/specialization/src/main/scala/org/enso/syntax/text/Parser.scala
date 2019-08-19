@@ -1,7 +1,6 @@
 package org.enso.syntax.text
 
 import org.enso.flexer
-import org.enso.syntax.text
 import org.enso.syntax.text.ast.meta.Builtin
 import org.enso.syntax.text.prec.Macro
 import org.enso.syntax.text.spec.ParserDef
@@ -36,7 +35,7 @@ class Parser {
         Builtin.registry.get(ast.path) match {
           case None => throw new Error("Macro definition not found")
           case Some(spec) =>
-            resolveMacros(spec.finalizer(ast.segs.toList().map(_.el)))
+            resolveMacros(spec.finalizer(ast.pfx, ast.segs.toList().map(_.el)))
         }
       case _ => ast.map(resolveMacros)
     }
@@ -116,7 +115,7 @@ object Main extends App {
 
   val in_arr1 = "a b -> c d"
 
-  val inp = "a b  c   -> d"
+  val inp = "v' = v .x=1"
   val out = parser.run(inp, Seq())
   pprint.pprintln(out, width = 50, height = 10000)
 
