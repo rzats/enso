@@ -198,6 +198,9 @@ lazy val syntax = (project in file("syntax/specialization"))
     parallelExecution in Benchmark := false
   )
 
+lazy val graphSyntax = (project in file("syntax/graph"))
+  .dependsOn(syntax)
+
 lazy val pkg = (project in file("pkg"))
   .settings(
     mainClass in (Compile, run) := Some("org.enso.pkg.Main"),
