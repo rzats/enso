@@ -61,6 +61,7 @@ object Macro {
         case Nil => finalize()
         case (t1 @ Shifted(off, el1: AST.Ident)) :: t2_ =>
           logger.log(s"Token $t1")
+          logger.beginGroup()
           val wasLineBegin = isLineBegin
           isLineBegin = false
           builder.context.lookup(el1) match {
@@ -70,6 +71,7 @@ object Macro {
               builder.macroDef =
                 tr.value.map(Some(_)).getOrElse(builder.macroDef)
               builder.context = builder.context.copy(tree = tr)
+              logger.endGroup()
               go(t2_)
 
             case None =>
@@ -80,6 +82,7 @@ object Macro {
                   pushBuilder(el1, t1.off, wasLineBegin)
                   builder.macroDef = tr.value
                   builder.context  = Builder.Context(tr, Some(context))
+                  logger.endGroup()
                   go(t2_)
 
                 case None =>
@@ -96,10 +99,12 @@ object Macro {
                       val subBuilder = builder
                       popBuilder()
                       builder.merge(subBuilder)
+                      logger.endGroup()
                       go(input)
                     case false =>
                       logger.log("Add token")
                       builder.current.revBody ::= t1
+                      logger.endGroup()
                       go(t2_)
                   }
               }
