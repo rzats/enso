@@ -618,7 +618,8 @@ object AST {
 
     final case class Match(
       pfx: Option[Pattern.Match],
-      segs: Shifted.List1[Match.Segment]
+      segs: Shifted.List1[Match.Segment],
+      resolved: AST
     ) extends Macro {
       val repr = {
         val pfxStream = pfx.map(_.toStream.reverse).getOrElse(List())
