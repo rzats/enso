@@ -585,10 +585,20 @@ object AST {
   import Block.Line
 
   final case class Module(lines: List1[Line]) extends AST {
+
     val repr = R + lines.head + lines.tail.map(R + '\n' + _)
 
     def map(f: AST => AST)        = copy(lines = lines.map(_.map(f)))
     def mapLines(f: Line => Line) = Module(lines.map(f))
+
+    def insert(index: Int, addedLine: Line): Module = {
+      // when adding the first line, we want to just place it, not prepend to
+      // placeholder empty line
+      if (lines.size == 1 && lines.head.elem.isEmpty)
+        Module(List1(addedLine))
+      else
+        Module(lines.insert(index, addedLine))
+    }
   }
 
   object Module {
@@ -760,7 +770,7 @@ object AST {
   //////////////////////////////////////////////////////////////////////////////
 
   final case class Import(path: List1[Cons]) extends AST {
-    val repr               = R
+    val repr               = "import " + path.map(_.name).toList.mkString(".")
     def map(f: AST => AST) = this
   }
   object Import {

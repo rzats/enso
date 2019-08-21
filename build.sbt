@@ -200,6 +200,10 @@ lazy val syntax = (project in file("syntax/specialization"))
 
 lazy val graphSyntax = (project in file("syntax/graph"))
   .dependsOn(syntax)
+  .configs(Test)
+  .settings(
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.5" % Test
+  )
 
 lazy val pkg = (project in file("pkg"))
   .settings(

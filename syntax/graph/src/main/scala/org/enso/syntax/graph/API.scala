@@ -27,8 +27,28 @@ object CommonAPI {
     *
     * */
   object Module {
-    type NameSegment = String
-    type Name        = List1[NameSegment]
+    type Name = List1[AST.Cons]
+
+    final case class IllegalModuleNameText(text: String) extends Exception {
+      override def getMessage: String =
+        s"$text is not a valid module representation: it should be a dot-separated expression"
+    }
+
+    object Name {
+
+      /** Construct module name from strings like "Foo.Baz" */
+      def apply(text: String): Name = List1(text.split('.')) match {
+        case Some(nameParts) =>
+          // TODO someone should verify that Cons start upper-cased
+          nameParts.map(AST.Cons(_))
+        case None =>
+          throw IllegalModuleNameText(text)
+      }
+
+      def apply(iterable: Iterable[String]): Name = {
+        List1(AST.Cons("Foo"))
+      }
+    }
 
     type Context  = Project.Location
     type Id       = Name
@@ -101,15 +121,19 @@ trait StateManager {
   import CommonAPI._
 
   /** Lists modules in a project. */
-  def availableModules(): List[Module.Id]
+  def availableModules(): Seq[Module.Id]
 
   /** Obtains the AST for a given [[Module.Id]] */
-  def getModuleAst(module: Module.Id): AST
+  def getModuleAst(module: Module.Id): AST.Module
 
   /** Overwrites module's AST with a new one. */
-  def setModuleAst(module: Module.Id, ast: AST): Unit
+  def setModuleAst(module: Module.Id, ast: AST.Module): Unit
 
   // TODO: external update notifications
+}
+
+trait NotificationConsumer {
+  def send(notification: API.Notification): Unit
 }
 
 object API {
@@ -289,10 +313,10 @@ object API {
       */
     sealed trait Invalidate extends Notification
     object Invalidate {
-      case class Node(node: API.Node.Location)
-      case class Graph(graph: API.Graph.Location)
-      case class Module(module: CommonAPI.Module.Location)
-      case class Project()
+      case class Node(node: API.Node.Location)             extends Invalidate
+      case class Graph(graph: API.Graph.Location)          extends Invalidate
+      case class Module(module: CommonAPI.Module.Location) extends Invalidate
+      case class Project()                                 extends Invalidate
     }
 
     case class TextInserted(
@@ -307,6 +331,12 @@ object API {
 
   case class TextPosition(index: Int)
   case class TextSpan(start: TextPosition, length: Int)
+
+  /***** Exceptions */
+  final case class ImportAlreadyExistsException(name: Module.Name)
+      extends Exception {
+    override def getMessage: String = s"Module $name is already imported"
+  }
 }
 
 trait TextAPI {
@@ -331,8 +361,12 @@ trait GraphAPI {
 
   /////////////////////////////////////////////////////////////////////////////
   def getGraph(loc: Graph.Location): Graph.Info
-  def getDefinitions(loc: Module.Location): List[Definition.Info]
+  def getDefinitions(loc: Module.Location): Seq[Definition.Info]
   // TODO other entities? (visible through Graph API)
+  /** Manage Imports */
+  def importedModules(module: Module.Location): Seq[Module.Name]
+  def importModule(context: Module.Id, importee: Module.Name): Unit
+  def removeImport(moduleToNotBeImportedAnymore: Module.Name)
   //////////////////////////////////////////////////////////////////////////////
   def addNode(
     context: Node.Context,

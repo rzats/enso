@@ -8,9 +8,13 @@ package object data {
     def apply[T](el: T, tail: List[T]): List1[T] = new List1(el, tail)
     def apply[T](el: T, tail: T*):      List1[T] = new List1(el, tail.toList)
 
-    def apply[T](list: List[T]): Option[List1[T]] = fromListOption(list)
+    def apply[T](list: List[T]):   Option[List1[T]] = fromListOption(list)
+    def apply[T](array: Array[T]): Option[List1[T]] = fromIterableOption(array)
 
     def unapply[T](t: List1[T]): Option[(T, List[T])] = Some((t.head, t.tail))
+
+    def fromIterableOption[T](itr: Iterable[T]): Option[List1[T]] =
+      fromListOption(itr.toList)
 
     def fromListOption[T](lst: List[T]): Option[List1[T]] = lst match {
       case Nil     => None
@@ -28,6 +32,20 @@ package object data {
 
       def intersperse[B >: T](t: B): List1[B] =
         List1(lst.head, lst.tail.flatMap(s => List(t, s)))
+    }
+
+    implicit class List1_with_insert[T](lst: List1[T]) {
+      def insert(index: Int, element: T): List1[T] = {
+        if (index == 0)
+          lst.prepend(element)
+        else {
+          def insertToList(list: List[T], i: Int) = {
+            val (front, back) = list.splitAt(i - 1)
+            front ++ (element :: back)
+          }
+          List1(lst.head, insertToList(lst.tail, index - 1))
+        }
+      }
     }
   }
 }
