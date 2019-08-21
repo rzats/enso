@@ -17,7 +17,7 @@ scalacOptions in ThisBuild ++= Seq(
   "-language:higherKinds",         // Allow higher-kinded types
   "-language:implicitConversions", // Allow definition of implicit functions called views
   "-unchecked",                    // Enable additional warnings where generated code depends on assumptions.
-  "-Xcheckinit",                   // Wrap field accessors to throw an exception on uninitialized access.
+//  "-Xcheckinit",                   // Wrap field accessors to throw an exception on uninitialized access.
 //  "-Xfatal-warnings",                 // Fail the compilation if there are any warnings.
 //  "-Xfuture",                         // Turn on future language features.
   "-Xlint:adapted-args",              // Warn if an argument list is modified to match the receiver.
@@ -54,7 +54,7 @@ scalacOptions in ThisBuild ++= Seq(
   "-Ywarn-unused:privates",           // Warn if a private member is unused.
   "-Ywarn-value-discard",             // Warn when non-Unit expression results are unused.
   "-language:implicitConversions",
-  "-Xmacro-settings:-logging@org.enso"
+//  "-Xmacro-settings:-logging@org.enso"
 //  "-Xmacro-settings:-logging@org.enso.flexer.automata"
 )
 

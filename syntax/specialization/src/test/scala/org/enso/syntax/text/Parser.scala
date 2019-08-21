@@ -3,15 +3,15 @@ package org.enso.syntax.text
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.data.Tree
-import org.enso.syntax.text.AST._
-import org.enso.syntax.text.AST.implicits._
-import org.enso.syntax.text.ast.DSL._
 import org.enso.flexer.Parser.Result
-import org.enso.flexer
-import org.scalatest._
+import org.enso.flexer.Reader
 import org.enso.syntax.text.AST.Block.Line
 import org.enso.syntax.text.AST.Text.Segment.EOL
 import org.enso.syntax.text.AST.Text.Segment.Plain
+import org.enso.syntax.text.AST._
+import org.enso.syntax.text.AST.implicits._
+import org.enso.syntax.text.ast.DSL._
+import org.scalatest._
 
 class ParserSpec extends FlatSpec with Matchers {
 
@@ -19,19 +19,19 @@ class ParserSpec extends FlatSpec with Matchers {
 
   def assertModule(input: String, result: AST, markers: Markers): Assertion = {
     val parser = Parser()
-    val output = parser.run(input, markers)
+    val output = parser.run(new Reader(input), markers)
     output match {
       case Result(offset, Result.Success(module)) =>
         val rmodule = parser.resolveMacros(module)
         assert(rmodule == result)
-        assert(module.show() == input)
+        assert(module.show() == new Reader(input).toString())
       case _ => fail(s"Parsing failed, consumed ${output.offset} chars")
     }
   }
 
   def assertExpr(input: String, result: AST, markers: Markers): Assertion = {
     val parser = Parser()
-    val output = parser.run(input, markers)
+    val output = parser.run(new Reader(input), markers)
     output match {
       case Result(offset, Result.Success(module)) =>
         val rmodule = parser.resolveMacros(module)
@@ -42,7 +42,7 @@ class ParserSpec extends FlatSpec with Matchers {
             case None => fail("Empty expression")
             case Some(e) =>
               assert(e == result)
-              assert(module.show() == input)
+              assert(module.show() == new Reader(input).toString())
           }
         }
       case _ => fail(s"Parsing failed, consumed ${output.offset} chars")
@@ -50,10 +50,10 @@ class ParserSpec extends FlatSpec with Matchers {
   }
 
   def assertIdentity(input: String): Assertion = {
-    val output = Parser().run(input)
+    val output = Parser().run(new Reader(input))
     output match {
       case Result(offset, Result.Success(value)) =>
-        assert(value.show() == input)
+        assert(value.show() == new Reader(input).toString())
       case _ => fail(s"Parsing failed, consumed ${output.offset} chars")
     }
   }
@@ -183,6 +183,10 @@ class ParserSpec extends FlatSpec with Matchers {
   //////////////////////////////////////////////////////////////////////////////
   //// Text ////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
+
+  //////////////
+  //// Text ////
+  //////////////
 
   "'"       ?= Text.Unclosed(Text())
   "''"      ?= Text()
@@ -386,8 +390,9 @@ class ParserSpec extends FlatSpec with Matchers {
   //// Large Input /////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  ("(" * 100000).testIdentity
-  ("OVERFLOW" * flexer.Parser.BUFFER_SIZE).testIdentity
+  ("(" * 10000).testIdentity
+  ("OVERFLOW " * 2000).testIdentity
+  ("\uD800\uDF1E " * 2000).testIdentity
 
   //////////////////////////////////////////////////////////////////////////////
   //// OTHER (TO BE PARTITIONED)////////////////////////////////////////////////
@@ -421,6 +426,13 @@ class ParserSpec extends FlatSpec with Matchers {
 //
 //  """.testIdentity
 
+  ///////////////////////
+  //// Preprocessing ////
+  ///////////////////////
+
+  "\t"   ?= Module(Line(4))
+  "\r"   ?= Module(Line(), Line())
+  "\r\n" ?= Module(Line(), Line())
 }
 
 ////////////////////////////////////////////////////////////////////////////////

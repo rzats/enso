@@ -1,7 +1,10 @@
 package org.enso.syntax.text.spec
 
+import java.io.DataInputStream
+
 import org.enso.data.VectorMap
 import org.enso.flexer
+import org.enso.flexer.Reader
 import org.enso.flexer.State
 import org.enso.flexer.automata.Pattern
 import org.enso.flexer.automata.Pattern._
@@ -23,12 +26,12 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
   //// API ////
   /////////////
 
-  def run(input: String, markers: Markers): Result[AST.Module] = {
+  def run(input: Reader, markers: Markers): Result[AST.Module] = {
     result.markers = VectorMap(markers)
     run(input)
   }
 
-  override def run(input: String): Result[AST.Module] = {
+  override def run(input: Reader): Result[AST.Module] = {
     block.onBegin(0)
     state.begin(block.FIRSTCHAR)
     super.run(input)
@@ -78,7 +81,7 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
       app(fn(currentMatch))
 
     def app(ast: AST): Unit = logger.trace {
-      val marked = markers.get(offset - ast.span - 1) match {
+      val marked = markers.get(reader.charOffset - ast.byteSpan) match {
         case None         => ast
         case Some(marker) => AST.Marked(marker, ast)
       }
@@ -605,7 +608,7 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     def onEOFLine(): Unit = logger.trace {
       submitLine()
       state.end()
-      off.on(-1)
+      off.on()
       onEOF()
     }
 
