@@ -50,11 +50,6 @@ object Macro {
       popBuilder() match {
         case Some(bldr) =>
           logger.log("End of input (in stack)")
-//          println(bldr.current.stream)
-//          println(builder.current.stream)
-//          println(builder.revSegs)
-//          val rstream = builder.mergex(bldr)
-//          go(rstream)
           builder.merge(bldr)
           finalize()
         case None =>
@@ -66,63 +61,26 @@ object Macro {
     def go(input: AST.Stream): AST = {
       input match {
         case Nil =>
-          val builders = (builder :: builderStack)
-//
+          val builders = builder :: builderStack
           var newRevBuilders: List[Builder] = List()
-//
           var subStream: AST.Stream = List()
-          for (b <- builders) {
-//            println("")
-//            println("-----------")
-//            println(b.revSegs)
-//            println(b.current.stream)
-            val noLastPattern = b.macroDef.map(_.last.pattern) == Some(None)
-//            println(b.revSegs)
+          for (bldr <- builders) {
+            val noLastPattern = bldr.macroDef.map(_.last.pattern).contains(None)
             if (noLastPattern) {
-//              println(">>>")
               val (revLeftUnusedStream, matched, rightUnusedStream) =
-                b.build(List())
-//              revOutStream = rightUnusedStream ++ (matched :: revLeftUnusedStream)
-//              println(s"matched:")
-//              pprint.pprintln(matched, width = 50, height = 10000)
-//              println(s"revLeftUnusedStream:")
-//              pprint.pprintln(revLeftUnusedStream, width = 50, height = 10000)
-//              println(s"rightUnusedStream:")
-//              pprint.pprintln(rightUnusedStream, width = 50, height = 10000)
-//              println("!!!!")
-//              println(subStream)
-//              println(revLeftUnusedStream)
-//              println(matched)
-//              println(rightUnusedStream)
+                bldr.build(List())
               subStream = subStream ++ (rightUnusedStream.reverse :+ matched) ++ revLeftUnusedStream
             } else {
-//              println("~~~~~~~~~~~~~~")
-//              println(b.current.stream)
-              b.current.revStream = subStream ++ b.current.revStream
+              bldr.current.revStream = subStream ++ bldr.current.revStream
               subStream           = List()
-//              println(b.current.stream)
-              newRevBuilders +:= b
+              newRevBuilders +:= bldr
             }
-//
-//            println(s"OUTSTREAM:")
-//            pprint.pprintln(revOutStream, width = 50, height = 10000)
-//
-//            println("")
-          }
 
+          }
           val newBuilders = newRevBuilders.reverse
 
           builder      = newBuilders.head
           builderStack = newBuilders.tail
-////          println("---------------------------------")
-////          println("---------------------------------")
-////          println("---------------------------------")
-////          pprint.pprintln(revOutStream, width = 50, height = 10000)
-//
-//          builder = builders.head
-//          builder.current.stream ++= revOutStream.reverse
-//
-//          builder.buildAsModule()
           finalize()
         case (t1 @ Shifted(off, el1: AST.Ident)) :: t2_ =>
           logger.log(s"Token $t1")
@@ -137,19 +95,8 @@ object Macro {
                 tr.value.map(Some(_)).getOrElse(builder.macroDef)
               builder.context = builder.context.copy(tree = tr)
               val knownMacro = builder.context.isEmpty
-//              if (false) { // knownMacro
-//                builder.current.stream = t2_
-//                popBuilder() match {
-//                  case Some(bldr) =>
-//                    logger.log("Building known macro")
-//                    val newStream = builder.mergex(bldr)
-//                    go(newStream)
-//                  case _ => ??? // impossible, module dos not have segments
-//                }
-//              } else {
               logger.endGroup()
               go(t2_)
-//              }
 
             case None =>
               root.lookup(el1) match {
@@ -199,9 +146,5 @@ object Macro {
     }
     val stream = AST.tokenize(t).toList()
     go(stream)
-//    val stream = AST.tokenize(t)
-//    val ss     = List1(Shifted(stream.head), stream.tail)
-//    val ss2    = Operator.rebuildNonSpaced(ss)
-//    go(stream)
   }
 }
