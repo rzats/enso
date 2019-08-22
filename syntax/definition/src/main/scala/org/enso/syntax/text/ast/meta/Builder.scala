@@ -32,30 +32,12 @@ class Builder(
   }
 
   def merge(that: Builder): Unit = {
-    println("--- MERGE ---")
     val revLeftStream = current.revStream
-//    val (revUsedLeftSrc, revUnusedLeftSrc) =
-//      that.current.ast match {
-//        case opr: AST.Opr =>
-//          revLeftStream.span {
-//            case Shifted(_, opr2: AST.Opr) => opr.prec < opr2.prec
-//            case _                         => true
-//          }
-//        case _ => (List(), revLeftStream)
-//      }
     val (revUnusedLeftTgt, matched, rightUnusedTgt) =
       that.build(revLeftStream)
     val result = List1(matched, rightUnusedTgt)
-    current.revStream = result.toList.reverse ++ revUnusedLeftTgt // ++ revUnusedLeftSrc
+    current.revStream = result.toList.reverse ++ revUnusedLeftTgt
   }
-
-//  def mergex(that: Builder): AST.Stream = {
-//    val revLeftStream = current.stream.reverse
-//    val (revLeftUnusedStream, matched, rightUnusedStream) =
-//      that.build(revLeftStream)
-//    current.stream = revLeftUnusedStream.reverse :+ matched
-//    rightUnusedStream
-//  }
 
   def build(
     revStreamL: AST.Stream
@@ -85,12 +67,12 @@ class Builder(
         val tailStream    = revSegStreams.head
         val segs          = revSegs.reverse
 
-        println("$$$")
-        println(revSegBldrs)
-        println("-")
-        println(revSegPats)
-        println("-")
-        println(revSegsOuts)
+//        println("$$$")
+//        println(revSegBldrs)
+//        println("-")
+//        println(revSegPats)
+//        println("-")
+//        println(revSegsOuts)
 
         val (segs2, pfxMatch, newLeftStream) = mdef.back match {
           case None => (segs, None, revStreamL)
@@ -125,10 +107,10 @@ class Builder(
 //            case s :: ss => List1(s, ss) :+ newTok
 //          }
 
-        println("@@@@@")
-        println(newLeftStream)
-        println(newTok)
-        println(tailStream)
+//        println("@@@@@")
+//        println(newLeftStream)
+//        println(newTok)
+//        println(tailStream)
 
         (newLeftStream, newTok, tailStream)
 
@@ -149,8 +131,8 @@ class Builder(
   def buildAsModule(): AST = {
     build(List())._2.head.el match {
       case Macro.Match(_, _, mod) =>
-        println("module build")
-        println(mod)
+//        println("module build")
+//        println(mod)
         mod
       case _ =>
         throw new scala.Error("Impossible happened.")

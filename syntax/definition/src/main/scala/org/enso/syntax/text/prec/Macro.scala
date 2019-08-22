@@ -72,26 +72,26 @@ object Macro {
 //
           var subStream: AST.Stream = List()
           for (b <- builders) {
-            println("")
-            println("-----------")
-            println(b.revSegs)
+//            println("")
+//            println("-----------")
+//            println(b.revSegs)
 //            println(b.current.stream)
             val noLastPattern = b.macroDef.map(_.last.pattern) == Some(None)
 //            println(b.revSegs)
             if (noLastPattern) {
-              println(">>>")
+//              println(">>>")
               val (revLeftUnusedStream, matched, rightUnusedStream) =
                 b.build(List())
 //              revOutStream = rightUnusedStream ++ (matched :: revLeftUnusedStream)
-              println(s"matched:")
-              pprint.pprintln(matched, width = 50, height = 10000)
-              println(s"revLeftUnusedStream:")
-              pprint.pprintln(revLeftUnusedStream, width = 50, height = 10000)
-              println(s"rightUnusedStream:")
-              pprint.pprintln(rightUnusedStream, width = 50, height = 10000)
+//              println(s"matched:")
+//              pprint.pprintln(matched, width = 50, height = 10000)
+//              println(s"revLeftUnusedStream:")
+//              pprint.pprintln(revLeftUnusedStream, width = 50, height = 10000)
+//              println(s"rightUnusedStream:")
+//              pprint.pprintln(rightUnusedStream, width = 50, height = 10000)
               subStream = subStream ++ revLeftUnusedStream ++ (matched :: rightUnusedStream)
             } else {
-              println("~~~~~~~~~~~~~~")
+//              println("~~~~~~~~~~~~~~")
 //              println(b.current.stream)
               b.current.revStream = subStream.reverse ++ b.current.revStream
               subStream           = List()
