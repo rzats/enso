@@ -67,13 +67,6 @@ class Builder(
         val tailStream    = revSegStreams.head
         val segs          = revSegs.reverse
 
-//        println("$$$")
-//        println(revSegBldrs)
-//        println("-")
-//        println(revSegPats)
-//        println("-")
-//        println(revSegsOuts)
-
         val (segs2, pfxMatch, newLeftStream) = mdef.back match {
           case None => (segs, None, revStreamL)
           case Some(pat) =>
@@ -102,16 +95,6 @@ class Builder(
         val template = Macro.Match(pfxMatch, shiftSegs, resolved)
         val newTok   = Shifted(segs2.head.off, template)
 
-//          val result = tailStream match {
-//            case Nil     => List1(newTok)
-//            case s :: ss => List1(s, ss) :+ newTok
-//          }
-
-//        println("@@@@@")
-//        println(newLeftStream)
-//        println(newTok)
-//        println(tailStream)
-
         (newLeftStream, newTok, tailStream)
 
     }
@@ -130,10 +113,7 @@ class Builder(
 
   def buildAsModule(): AST = {
     build(List())._2.head.el match {
-      case Macro.Match(_, _, mod) =>
-//        println("module build")
-//        println(mod)
-        mod
+      case Macro.Match(_, _, mod) => mod
       case _ =>
         throw new scala.Error("Impossible happened.")
     }
@@ -189,13 +169,7 @@ object Builder {
       reversed: Boolean = false
     ): (Shifted[Match.Segment], AST.Stream) = {
       pat.matchOpt(revStream.reverse, lineBegin, reversed) match {
-        case None =>
-          println("!!!!!!!!")
-          println(revStream)
-          println(lineBegin)
-          println(reversed)
-          println(pat)
-          throw new Error(
+        case None => throw new Error(
             "Internal error: template pattern segment was unmatched"
           )
         case Some(rr) =>
