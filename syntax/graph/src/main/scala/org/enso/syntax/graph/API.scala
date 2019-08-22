@@ -91,7 +91,7 @@ trait SessionManager {
     * @return function's result
     *
     */
-  def inTransaction[T](name: Option[String], f: => T): T
+  def inTransaction[T](name: Option[String] = None)(f: => T): T
 
   /** Generates a string that denotes the selected nodes.
     *
@@ -128,10 +128,10 @@ trait StateManager {
   def availableModules(): Seq[Module.Id]
 
   /** Obtains the AST for a given [[Module.Id]] */
-  def getModuleAst(module: Module.Id): AST.Module
+  def getModule(module: Module.Id): AST.Module
 
   /** Overwrites module's AST with a new one. */
-  def setModuleAst(module: Module.Id, ast: AST.Module): Unit
+  def setModule(module: Module.Id, ast: AST.Module): Unit
 
   // TODO: external update notifications
 }

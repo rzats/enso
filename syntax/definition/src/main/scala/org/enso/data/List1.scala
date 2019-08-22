@@ -32,26 +32,24 @@ package object data {
 
       def intersperse[B >: T](t: B): List1[B] =
         List1(lst.head, lst.tail.flatMap(s => List(t, s)))
-    }
 
-    implicit class List1_more_ops[T](lst: List1[T]) {
-      def insert(index: Int, element: T): List1[T] = {
-        if (index == 0)
-          lst.prepend(element)
-        else {
-          def insertToList(list: List[T], i: Int) = {
-            val (front, back) = list.splitAt(i)
-            front ++ (element :: back)
-          }
-          List1(lst.head, insertToList(lst.tail, index - 1))
-        }
+      private def insertToList[B >: T](
+        list: List[B],
+        i: Int,
+        element: B
+      ): List[B] = {
+        val (front, back) = list.splitAt(i)
+        front ++ (element :: back)
+      }
+
+      def insert[B >: T](index: Int, element: B): List1[B] = {
+        if (index == 0) lst.prepend(element)
+        else List1(lst.head, insertToList(lst.tail, index - 1, element))
       }
 
       def removeAt(index: Int): List[T] = {
-        if (index == 0)
-          lst.tail
-        else
-          lst.head :: lst.tail.patch(index - 1, Nil, 1)
+        if (index == 0) lst.tail
+        else lst.head :: lst.tail.patch(index - 1, Nil, 1)
       }
 
       def indexWhere(p: T => Boolean, from: Int = 0): Option[Int] =

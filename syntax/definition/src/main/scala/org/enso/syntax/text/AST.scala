@@ -625,16 +625,15 @@ object AST {
     def map(f: AST => AST)        = copy(lines = lines.map(_.map(f)))
     def mapLines(f: Line => Line) = Module(lines.map(f))
 
-    def flatMapAst[B](f: AST => GenTraversableOnce[B]): List[B] =
+    def flatTraverse[B](f: AST => GenTraversableOnce[B]): List[B] =
       lines.toList.flatMap(_.elem).flatMap(f(_))
 
     def insert(index: Int, addedLine: Line): Module = {
-      // when adding the first line, we want to just place it, not prepend to
-      // placeholder empty line
-      if (lines.size == 1 && lines.head.elem.isEmpty)
-        Module(List1(addedLine))
-      else
-        Module(lines.insert(index, addedLine))
+      val moduleIsEmpty = lines.size == 1 && lines.head.elem.isEmpty
+      val newLines =
+        if (moduleIsEmpty) List1(addedLine)
+        else lines.insert(index, addedLine)
+      Module(newLines)
     }
     def insert(index: Int, addedLineAst: AST): Module =
       insert(index, Line(addedLineAst))

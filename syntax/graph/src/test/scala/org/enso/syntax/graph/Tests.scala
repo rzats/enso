@@ -18,7 +18,7 @@ final case class StateManagerMock(var program: String) extends StateManager {
   override def availableModules(): Seq[Module.Id] =
     Seq(StateManagerMock.mainModule)
 
-  override def getModuleAst(module: Id): AST.Module = {
+  override def getModule(module: Id): AST.Module = {
     val moduleAst = AstUtils.parse(program)
     var counter   = 0;
     moduleAst.map(ast => {
@@ -32,7 +32,7 @@ final case class StateManagerMock(var program: String) extends StateManager {
     })
   }
 
-  override def setModuleAst(module: Id, ast: AST.Module): Unit = {
+  override def setModule(module: Id, ast: AST.Module): Unit = {
     if (module != StateManagerMock.mainModule)
       throw new Exception(s"no such module: $module")
 

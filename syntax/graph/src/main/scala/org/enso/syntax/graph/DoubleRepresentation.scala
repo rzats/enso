@@ -13,17 +13,47 @@ import org.enso.syntax.graph.CommonAPI.Module
 import org.enso.syntax.text.AST.App.Infix
 import org.enso.syntax.text.AST.Block.Line
 
+import scala.reflect.ClassTag
+
 object Extensions {
 
+  def downcast[T: ClassTag](ast: AST): Option[T] = {
+    val tag = implicitly[ClassTag[T]]
+    ast match {
+      case AST.Marked(_, nested) => downcast(nested)
+      case tag(t)                => Some(t)
+      case _                     => None
+    }
+  }
+
+  val DDD = downcast[AST.App.Infix](AST.Blank)
+
+  /////////////////////
+
+  trait FromAST[T] {
+    def fromAST(ast: AST): Option[T]
+  }
+
+  implicit val astToInfix: FromAST[Infix] = {
+    // TODO: do we somewhere named constant for "=" ?
+    case AST.Marked(_, nested)       => astToInfix.fromAST(nested)
+    case i @ Infix(_, AST.Opr(_), _) => Some(i)
+    case _                           => None
+  }
+
   implicit class Ast_ops(ast: AST) {
-    def asDefinitionInfix: Option[Infix] = ast match {
+
+    def as[T: FromAST]: Option[T] =
+      implicitly[FromAST[T]].fromAST(ast)
+
+    def toAssignment: Option[Infix] = ast match {
       // TODO: do we somewhere named constant for "=" ?
-      case AST.Marked(_, nested)         => nested.asDefinitionInfix
+      case AST.Marked(_, nested)         => nested.toAssignment
       case i @ Infix(_, AST.Opr("="), _) => Some(i)
       case _                             => None
     }
-    def asImport: Option[Import] = ast match {
-      case AST.Marked(_, nested) => nested.asImport
+    def toImport: Option[Import] = ast match {
+      case AST.Marked(_, nested) => nested.toImport
       case i @ Import(_)         => Some(i)
       case _                     => None
     }
@@ -47,7 +77,7 @@ object Extensions {
     }
 
     def imports(module: Module.Name): Boolean = {
-      ast.asImport.exists(_.path == module)
+      ast.toImport.exists(_.path == module)
     }
 
     def definitionAst: Option[AST.Marked] = ast match {
@@ -61,7 +91,7 @@ object Extensions {
     def asNode: Option[Node.Info] =
       ast.definitionAst.flatMap {
         case AST.Marked(marker, defAst) =>
-          val (lhs, rhs) = defAst.asDefinitionInfix match {
+          val (lhs, rhs) = defAst.toAssignment match {
             case Some(Infix(l, AST.Opr("="), r)) => (Some(l), r)
             case None                            => (None, defAst)
           }
@@ -94,16 +124,16 @@ object Extensions {
   }
 
   implicit class Line_ops(line: Line) {
-    def asImport: Option[Import] = line.elem.flatMap(_.asImport)
+    def asImport: Option[Import] = line.elem.flatMap(_.toImport)
     def imports(module: Module.Name): Boolean =
       line.elem.exists(_.imports(module))
-    def asDefinition: Option[Infix]     = line.elem.flatMap(_.asDefinitionInfix)
+    def asDefinition: Option[Infix]     = line.elem.flatMap(_.toAssignment)
     def asNode:       Option[Node.Info] = line.elem.flatMap(_.asNode)
   }
 
   implicit class Module_ops(module: AST.Module) {
     def importedModules: List[Module.Name] = module.imports.map(_.path)
-    def imports:         List[Import]      = module.flatMapAst(_.asImport)
+    def imports:         List[Import]      = module.flatTraverse(_.toImport)
     def lineIndexOf(ast: AST): Option[Int] = {
       module.lines.indexWhere(_.elem.contains(ast))
     }
@@ -127,7 +157,7 @@ object DefInfo {
     if (ast.opr.name == "=") Some(DefInfo(ast.larg, ast.rarg))
     else None
   def apply(ast: AST): Option[DefInfo] =
-    ast.asDefinitionInfix.flatMap(DefInfo(_))
+    ast.toAssignment.flatMap(DefInfo(_))
 }
 
 object AstUtils {
@@ -161,8 +191,8 @@ final case class DoubleRepresentation(
 
   def getGraph(loc: API.Definition.Graph.Location): Definition.Graph.Info = ???
   def getGraph(loc: Module.Graph.Location): Module.Graph.Info = {
-    val ast   = state.getModuleAst(loc.module)
-    val nodes = ast.flatMapAst(_.asNode)
+    val ast   = state.getModule(loc.module)
+    val nodes = ast.flatTraverse(_.asNode)
     Module.Graph.Info(nodes, Seq())
   }
 
@@ -188,12 +218,12 @@ final case class DoubleRepresentation(
   def removeConnection(graph: Port.Context, from: Output.Id, to: Input.Id) = ???
 
   override def importedModules(module: Module.Location): Seq[Module.Name] = {
-    val ast = state.getModuleAst(module)
+    val ast = state.getModule(module)
     ast.imports.map(_.path)
   }
 
   override def importModule(context: Module.Id, importee: Module.Name): Unit = {
-    val ast            = state.getModuleAst(context)
+    val ast            = state.getModule(context)
     val currentImports = ast.imports
     if (currentImports.exists(_ imports importee))
       throw ImportAlreadyExistsException(importee)
@@ -205,7 +235,7 @@ final case class DoubleRepresentation(
       .getOrElse(0)
 
     val newAst = ast.insert(lineToPlaceImport, Import(importee))
-    state.setModuleAst(context, newAst)
+    state.setModule(context, newAst)
     notifier.send(API.Notification.Invalidate.Module(context))
   }
 
@@ -213,14 +243,14 @@ final case class DoubleRepresentation(
     context: Module.Id,
     importToRemove: Module.Name
   ): Unit = {
-    val ast = state.getModuleAst(context)
+    val ast = state.getModule(context)
     val lineIndex = ast.lineIndexWhere(_ imports importToRemove) match {
       case Some(index) => index
       case None        => throw NoSuchImportException(importToRemove)
     }
 
     val newAst = ast.removeAt(lineIndex)
-    state.setModuleAst(context, newAst)
+    state.setModule(context, newAst)
     notifier.send(API.Notification.Invalidate.Module(context))
   }
 }
