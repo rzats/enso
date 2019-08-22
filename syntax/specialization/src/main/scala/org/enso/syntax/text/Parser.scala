@@ -247,7 +247,8 @@ object Main extends App {
 //  val inp = "foreign Py\n xx"
 //val inp = "(a) b = c"
 //val inp = "a = b -> c"
-  val inp = "v' = v .x=1"
+//val inp = "a = b -> c d"
+  val inp = "a -> a.x = 5"
 //  val inp = "x(x[a))"
   val out = parser.run(inp, Seq())
   pprint.pprintln(out, width = 50, height = 10000)

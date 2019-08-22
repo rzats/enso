@@ -50,9 +50,9 @@ object Macro {
       popBuilder() match {
         case Some(bldr) =>
           logger.log("End of input (in stack)")
-          println(bldr.current.stream)
-          println(builder.current.stream)
-          println(builder.revSegs)
+//          println(bldr.current.stream)
+//          println(builder.current.stream)
+//          println(builder.revSegs)
 //          val rstream = builder.mergex(bldr)
 //          go(rstream)
           builder.merge(bldr)
@@ -75,7 +75,7 @@ object Macro {
             println("")
             println("-----------")
             println(b.revSegs)
-            println(b.current.stream)
+//            println(b.current.stream)
             val noLastPattern = b.macroDef.map(_.last.pattern) == Some(None)
 //            println(b.revSegs)
             if (noLastPattern) {
@@ -92,10 +92,10 @@ object Macro {
               subStream = subStream ++ revLeftUnusedStream ++ (matched :: rightUnusedStream)
             } else {
               println("~~~~~~~~~~~~~~")
-              println(b.current.stream)
-              b.current.stream ++= subStream
-              subStream = List()
-              println(b.current.stream)
+//              println(b.current.stream)
+              b.current.revStream = subStream.reverse ++ b.current.revStream
+              subStream           = List()
+//              println(b.current.stream)
               newRevBuilders +:= b
             }
 //
@@ -175,10 +175,7 @@ object Macro {
                       go(input)
                     case false =>
                       logger.log("Add token")
-                      // FIXME: slow
-                      builder.current.stream = builder.current.stream ++ List(
-                          t1
-                        )
+                      builder.current.revStream +:= t1
                       logger.endGroup()
                       go(t2_)
                   }
@@ -186,13 +183,11 @@ object Macro {
           }
         case (t1 @ Shifted(off, el1: AST.Block)) :: t2_ =>
           val nt1 = Shifted(off, el1.map(transform))
-          // FIXME: slow
-          builder.current.stream = builder.current.stream ++ List(nt1)
+          builder.current.revStream +:= nt1
           go(t2_)
 
         case t1 :: t2_ =>
-          // FIXME: slow
-          builder.current.stream = builder.current.stream ++ List(t1)
+          builder.current.revStream +:= t1
           go(t2_)
 
       }

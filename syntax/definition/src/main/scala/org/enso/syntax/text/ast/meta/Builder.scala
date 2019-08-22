@@ -32,7 +32,8 @@ class Builder(
   }
 
   def merge(that: Builder): Unit = {
-    val revLeftStream = current.stream.reverse
+    println("--- MERGE ---")
+    val revLeftStream = current.revStream
     val (revUsedLeftSrc, revUnusedLeftSrc) =
       that.current.ast match {
         case opr: AST.Opr =>
@@ -45,7 +46,7 @@ class Builder(
     val (revUnusedLeftTgt, matched, rightUnusedTgt) =
       that.build(revUsedLeftSrc)
     val result = List1(matched, rightUnusedTgt)
-    current.stream = revUnusedLeftSrc.reverse ++ revUnusedLeftTgt.reverse ++ result.toList
+    current.revStream = result.toList.reverse ++ revUnusedLeftTgt ++ revUnusedLeftSrc
   }
 
 //  def mergex(that: Builder): AST.Stream = {
@@ -84,6 +85,13 @@ class Builder(
         val tailStream    = revSegStreams.head
         val segs          = revSegs.reverse
 
+        println("$$$")
+        println(revSegBldrs)
+        println("-")
+        println(revSegPats)
+        println("-")
+        println(revSegsOuts)
+
         val (segs2, pfxMatch, newLeftStream) = mdef.back match {
           case None => (segs, None, revStreamL)
           case Some(pat) =>
@@ -116,6 +124,12 @@ class Builder(
 //            case Nil     => List1(newTok)
 //            case s :: ss => List1(s, ss) :+ newTok
 //          }
+
+        println("@@@@@")
+        println(newLeftStream)
+        println(newTok)
+        println(tailStream)
+
         (newLeftStream, newTok, tailStream)
 
     }
@@ -183,18 +197,19 @@ object Builder {
     val lineBegin: Boolean = false
   ) {
     import Macro._
-    var stream: AST.Stream = List()
+    var revStream: AST.Stream = List()
 
-    def buildAST(): Option[Shifted[AST]] = Pattern.buildASTFrom(stream)
+    def buildAST(): Option[Shifted[AST]] =
+      Pattern.buildASTFrom(revStream.reverse)
 
     def build(
       pat: Pattern,
       reversed: Boolean = false
     ): (Shifted[Match.Segment], AST.Stream) = {
-      pat.matchOpt(stream, lineBegin, reversed) match {
+      pat.matchOpt(revStream.reverse, lineBegin, reversed) match {
         case None =>
           println("!!!!!!!!")
-          println(stream)
+          println(revStream)
           println(lineBegin)
           println(reversed)
           println(pat)
@@ -209,6 +224,6 @@ object Builder {
     //////////////////////////////////////
 
     override def toString: String =
-      s"SegmentBuilder($offset, $stream)"
+      s"SegmentBuilder($offset, $revStream)"
   }
 }
