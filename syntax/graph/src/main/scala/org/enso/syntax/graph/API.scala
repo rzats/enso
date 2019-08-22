@@ -4,6 +4,7 @@ import java.util.UUID
 
 import org.enso.data.List1
 import org.enso.syntax.text.AST
+import org.enso.syntax.text.AST.Marker
 
 /** Parts of API expected to to be used not only by text/graph APIs but
   * also other parts of GUI backend */
@@ -227,8 +228,8 @@ object API {
       inputs: Seq[Port.Info],
       output: Port.Info,
       flags: Set[Flag],
-      stats: Stats,
-      metadata: Metadata
+      stats: Option[Stats],
+      marker: Marker
     )
   }
 

@@ -1,6 +1,7 @@
 package org.enso.syntax.graph
 
 import org.enso.data.List1
+import org.enso.syntax.graph
 import org.enso.syntax.graph.Extensions._
 import org.enso.syntax.graph.CommonAPI.Module.Id
 import org.enso.syntax.text.AST
@@ -13,13 +14,13 @@ import scala.reflect.ClassTag
 /** Mock project state - contains a single module named `Main` with given body.
   */
 final case class StateManagerMock(var program: String) extends StateManager {
-  var ast: AST.Module = AstUtils.parse(program)
+  var ast: AST.Module = ParserUtils.parse(program)
 
   override def availableModules(): Seq[Module.Id] =
     Seq(StateManagerMock.mainModule)
 
   override def getModule(module: Id): AST.Module = {
-    val moduleAst = AstUtils.parse(program)
+    val moduleAst = ParserUtils.parse(program)
     var counter   = 0;
     moduleAst.map(ast => {
       // unmarked node asts should get their markers
@@ -100,6 +101,25 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     )._1
   }
 
+  test("recognizing lack of imports") {
+    withDR(
+      "",
+      dr => {
+        val imports = dr.importedModules(mockModule)
+        imports should have length 0
+      }
+    )
+  }
+  test("recognizing single import") {
+    withDR(
+      "import Foo.Baz",
+      dr => {
+        val imports = dr.importedModules(mockModule)
+        imports should have length 1
+        imports should contain(Module.Name("Foo.Baz"))
+      }
+    )
+  }
   test("adding first import") {
     checkThatTransforms(
       "",
