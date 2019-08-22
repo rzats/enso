@@ -113,8 +113,15 @@ object Builtin {
       case _ => internalError
     }
 
+    val nonSpacedExpr = Pattern.Any(Some(false)).many1.build
+    val expr =
+      Pattern
+        .Except(Pattern.ClsOpr(Some(Opr("->").prec)), Pattern.Any())
+        .many1
+        .build
+
     val def_arrow = Definition(
-      Some(Pattern.NonSpacedExpr().or(Pattern.Expr())),
+      Some(nonSpacedExpr.or(expr)),
       Opr("->") -> Pattern.NonSpacedExpr().or(Pattern.Expr())
     ) {
       case (Some(pfx), List(s1)) =>

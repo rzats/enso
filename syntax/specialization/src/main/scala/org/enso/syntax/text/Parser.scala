@@ -235,7 +235,7 @@ object Main extends App {
       |    def Nothing
     """.stripMargin
 
-  val in_arr1 = "a b -> c d"
+  val in_arr1 = "a = b -> c d"
 
   // (if a) then
   // if (a then)
@@ -248,7 +248,7 @@ object Main extends App {
 //val inp = "(a) b = c"
 //val inp = "a = b -> c"
 //val inp = "a = b -> c d"
-  val inp = "a -> a.x = 5"
+  val inp = "a = b -> c d"
 //  val inp = "x(x[a))"
   val out = parser.run(inp, Seq())
   pprint.pprintln(out, width = 50, height = 10000)
