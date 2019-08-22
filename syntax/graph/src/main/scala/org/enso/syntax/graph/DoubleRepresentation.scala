@@ -154,7 +154,7 @@ object ParserUtils {
 
 final case class DoubleRepresentation(
   state: StateManager,
-  notifier: NotificationConsumer
+  notifier: NotificationSink
 ) extends GraphAPI {
   import CommonAPI._
   import API._
@@ -210,7 +210,7 @@ final case class DoubleRepresentation(
 
     val newAst = module.insert(lineToPlaceImport, Import(importee))
     state.setModule(context, newAst)
-    notifier.send(API.Notification.Invalidate.Module(context))
+    notifier.retrieve(API.Notification.Invalidate.Module(context))
   }
 
   override def removeImport(
@@ -225,6 +225,6 @@ final case class DoubleRepresentation(
 
     val newAst = ast.removeAt(lineIndex)
     state.setModule(context, newAst)
-    notifier.send(API.Notification.Invalidate.Module(context))
+    notifier.retrieve(API.Notification.Invalidate.Module(context))
   }
 }

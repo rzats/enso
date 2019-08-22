@@ -44,9 +44,9 @@ final case class StateManagerMock(var program: String) extends StateManager {
   }
 }
 
-final case class NotificationConsumerMock() extends NotificationConsumer {
+final case class NotificationSinkMock() extends NotificationSink {
   var notificationsReceived: Seq[API.Notification] = Seq()
-  override def send(notification: API.Notification): Unit = {
+  override def retrieve(notification: API.Notification): Unit = {
     println(s"Got notification: $notification")
     notificationsReceived = notificationsReceived :+ notification
   }
@@ -64,7 +64,7 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     f: DoubleRepresentation => R
   ): (R, AST.Module) = {
     val state                = StateManagerMock(program)
-    val notificationConsumer = NotificationConsumerMock()
+    val notificationConsumer = NotificationSinkMock()
     val result               = f(DoubleRepresentation(state, notificationConsumer))
     (result, state.ast)
   }

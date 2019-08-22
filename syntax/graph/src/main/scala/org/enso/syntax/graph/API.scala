@@ -4,76 +4,15 @@ import java.util.UUID
 
 import org.enso.data.List1
 import org.enso.syntax.text.AST
+import org.enso.syntax.text.AST.Cons
 import org.enso.syntax.text.AST.Marker
-
-/** Parts of API expected to to be used not only by text/graph APIs but
-  * also other parts of GUI backend */
-object CommonAPI {
-
-  /** Backend always run in the context of single project. From its perspective,
-    * the project is eternal.
-    **/
-  object Project {
-    type Context  = Nothing
-    type Id       = Unit
-    type Location = Id
-
-    // TODO: if we wanted to add some representation of project state, it might
-    // go here. or not.
-  }
-
-  /** Luna module. Modules are paired with `*.luna` files.
-    *
-    * Module consists of imports, root graph and definitions.
-    *
-    * */
-  object Module {
-    type Name = List1[AST.Cons]
-
-    final case class IllegalModuleNameText(text: String) extends Exception {
-      override def getMessage: String =
-        s"$text is not a valid module representation: it should be a dot-separated expression"
-    }
-
-    object Name {
-
-      /** Construct module name from strings like "Foo.Baz" */
-      def apply(text: String): Name = Name(text.split('.'))
-
-      def apply(iterable: Iterable[String]): Name = {
-        List1.fromIterableOption(iterable) match {
-          case Some(nameParts) =>
-            // TODO someone should verify that Cons start upper-cased
-            nameParts.map(AST.Cons(_))
-          case None =>
-            throw IllegalModuleNameText(iterable.toString())
-        }
-      }
-    }
-
-    type Context  = Project.Location
-    type Id       = Name
-    type Location = Id
-
-    object Graph {
-      val Graph: API.Graph.type = API.Graph
-      final case class Id(id: Module.Id)                 extends Graph.Id
-      final case class Context(id: Module.Context)       extends Graph.Context
-      final case class Location(module: Module.Location) extends Graph.Location
-
-      final case class Info(
-        nodes: Seq[API.Node.Info],
-        links: Seq[API.Connection]
-      ) extends API.Graph.Info
-    }
-  }
-}
 
 /** Layer over Double Representation and other backend services. Directly under
   * GUI. */
 trait SessionManager {
   import API._
 
+  /** Position in the graph's rendering space */
   final case class Position(x: Double, y: Double)
 
   /** Executes given function in a single transaction.
@@ -123,7 +62,7 @@ trait SessionManager {
   *
   * */
 trait StateManager {
-  import CommonAPI._
+  import API.Module
 
   /** Lists modules in a project. */
   def availableModules(): Seq[Module.Id]
@@ -137,12 +76,70 @@ trait StateManager {
   // TODO: external update notifications
 }
 
-trait NotificationConsumer {
-  def send(notification: API.Notification): Unit
+trait NotificationSink {
+  def retrieve(notification: API.Notification): Unit
 }
 
 object API {
-  import CommonAPI._
+
+  /** Backend always run in the context of single project. From its perspective,
+    * the project is eternal.
+    **/
+  object Project {
+    type Context  = Nothing
+    type Id       = Unit
+    type Location = Id
+
+    // TODO: if we wanted to add some representation of project state, it might
+    // go here. or not.
+  }
+
+  /** Luna module. Modules are paired with `*.luna` files.
+    *
+    * Module consists of imports, root graph and definitions.
+    *
+    * */
+  object Module {
+    type Name = List1[Cons]
+
+    final case class IllegalModuleNameText(text: String) extends Exception {
+      override def getMessage: String =
+        s"$text is not a valid module representation: it should be a dot-separated expression"
+    }
+
+    object Name {
+
+      /** Construct module name from strings like "Foo.Baz" */
+      def apply(text: String): Name = Name(text.split('.'))
+
+      def apply(iterable: Iterable[String]): Name = {
+        List1.fromIterableOption(iterable) match {
+          case Some(nameParts) =>
+            // TODO someone should verify that Cons start upper-cased
+            nameParts.map(Cons(_))
+          case None =>
+            throw IllegalModuleNameText(iterable.toString())
+        }
+      }
+    }
+
+    type Context  = Project.Location
+    type Id       = Name
+    type Location = Id
+
+    /** Module's root-level graph. It has no inputs nor outputs. */
+    object Graph {
+      val Graph: API.Graph.type = API.Graph
+      final case class Id(id: Module.Id)                 extends Graph.Id
+      final case class Context(id: Module.Context)       extends Graph.Context
+      final case class Location(module: Module.Location) extends Graph.Location
+
+      final case class Info(
+        nodes: Seq[API.Node.Info],
+        links: Seq[API.Connection]
+      ) extends API.Graph.Info
+    }
+  }
 
   object AST {
 
@@ -166,9 +163,9 @@ object API {
 
     final case class Info(name: String, id: Id)
 
+    /** Definition's graph. It has output and may have inputs. */
     object Graph {
       final case class Info(
-        // TODO is this what we want?
         nodes: Seq[Node.Info],
         links: Seq[Connection],
         inputs: Seq[API.Graph.Input.Info],
@@ -183,6 +180,9 @@ object API {
   }
 
   /** Graph describes a [[Definition]] body or a [[Module]]'s root body.
+    *
+    * Please see [[Definition.Graph]] and [[Module.Graph]] for types subclassing
+    * the traits defined here.
     */
   object Graph {
     sealed trait Id
@@ -194,7 +194,7 @@ object API {
       def links: Seq[Connection]
     }
 
-    /** Subset of ports being graph (i.e. definition) inputs and outputs */
+    /** Class of ports being graph inputs and outputs. */
     object Port {
       type Id      = API.Port.Id
       type Context = API.Port.GraphSocket
@@ -283,6 +283,7 @@ object API {
 
   case class Connection(src: Output.Location, tgt: Input.Location)
 
+  /** Each change to the project state shall be covered by a Notification. */
   sealed trait Notification
   object Notification {
 
@@ -322,10 +323,10 @@ object API {
       */
     sealed trait Invalidate extends Notification
     object Invalidate {
-      case class Node(node: API.Node.Location)             extends Invalidate
-      case class Graph(graph: API.Graph.Location)          extends Invalidate
-      case class Module(module: CommonAPI.Module.Location) extends Invalidate
-      case class Project()                                 extends Invalidate
+      case class Node(node: API.Node.Location)       extends Invalidate
+      case class Graph(graph: API.Graph.Location)    extends Invalidate
+      case class Module(module: API.Module.Location) extends Invalidate
+      case class Project()                           extends Invalidate
     }
 
     case class TextInserted(
@@ -352,7 +353,6 @@ object API {
 }
 
 trait TextAPI {
-  import CommonAPI._
   import API._
 
   // view
@@ -368,7 +368,6 @@ trait TextAPI {
 }
 
 trait GraphAPI {
-  import CommonAPI._
   import API._
 
   /////////////////////////////////////////////////////////////////////////////
