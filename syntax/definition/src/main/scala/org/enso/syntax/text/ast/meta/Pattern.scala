@@ -389,10 +389,6 @@ object Pattern {
     lineBegin: Boolean,
     reversed: Boolean
   ): Option[MatchResult] = {
-
-    if (reversed) println("\n-------------")
-    if (reversed) println(stream)
-
     def matchList(p: Pattern, stream: Stream): (List[Match], Stream) = {
       @tailrec
       def go(stream: Stream, revOut: List[Match]): (List[Match], Stream) =

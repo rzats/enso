@@ -17,7 +17,7 @@ object Builtin {
 
     val def_group = Definition(
       Opr("(") -> Pattern.Opt(Pattern.Expr()),
-      Opr(")") -> Pattern.Nothing()
+      Opr(")")
     ) {
       case (None, List(st1, _)) =>
         st1.body.toStream match {

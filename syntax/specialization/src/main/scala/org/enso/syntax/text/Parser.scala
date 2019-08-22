@@ -157,7 +157,7 @@ class Parser {
         Builtin.registry.get(ast.path) match {
           case None => throw new Error("Macro definition not found")
           case Some(spec) =>
-            resolveMacros(spec.finalizer(ast.pfx, ast.segs.toList().map(_.el)))
+            resolveMacros(spec.fin(ast.pfx, ast.segs.toList().map(_.el)))
         }
       case _ => ast.map(resolveMacros)
     }
@@ -239,8 +239,16 @@ object Main extends App {
 
   // (if a) then
   // if (a then)
-  val inp = "(a) c = b"
-  val in2 = "(a) c = b)"
+  // (a) b = c
+  // (a) b = c)
+  val in3 = "(a) b = c"
+  val in4 = "if a then (b)"
+  val in2 = "(a) b = c]"
+//  val inp = "foreign Py\n xx"
+//val inp = "(a) b = c"
+//val inp = "a = b -> c"
+  val inp = "a + b-> c"
+//  val inp = "x(x[a))"
   val out = parser.run(inp, Seq())
   pprint.pprintln(out, width = 50, height = 10000)
 
@@ -262,3 +270,13 @@ object Main extends App {
   println()
 
 }
+
+// 1. Parsing patterns in-place with segments
+// 2.
+// (
+// (_)
+// _<
+// ( < )
+// if x then (a)
+// ((a))
+// if x then a = v
