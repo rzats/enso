@@ -1,8 +1,11 @@
 package org.enso.syntax.graph
 
+import java.util.UUID
+
 import org.enso.syntax.graph.API._
-import org.enso.data.List1
+import org.enso.data.List1._
 import org.enso.flexer.Parser.Result
+import org.enso.flexer.Reader
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Import
 import org.enso.syntax.text.Parser
@@ -10,15 +13,121 @@ import org.enso.syntax.graph.CommonAPI.Module
 import org.enso.syntax.text.AST.App.Infix
 import org.enso.syntax.text.AST.Block.Line
 
-object LineHelpers {
-  def asImport(line: Line): Option[Import] = line.elem match {
-    case Some(i @ Import(_)) => Some(i)
-    case _                   => None
+object Extensions {
+
+  implicit class Ast_ops(ast: AST) {
+    def asDefinitionInfix: Option[Infix] = ast match {
+      // TODO: do we somewhere named constant for "=" ?
+      case AST.Marked(_, nested)         => nested.asDefinitionInfix
+      case i @ Infix(_, AST.Opr("="), _) => Some(i)
+      case _                             => None
+    }
+    def asImport: Option[Import] = ast match {
+      case AST.Marked(_, nested) => nested.asImport
+      case i @ Import(_)         => Some(i)
+      case _                     => None
+    }
+    def asVar: Option[AST.Var] = ast match {
+      case AST.Marked(_, nested) => nested.asVar
+      case v @ AST.Var(_)        => Some(v)
+      case _                     => None
+    }
+    def asName: Option[String] = ast.asVar.map(_.name)
+
+    def requiresId: Boolean = {
+      ast match {
+        case _: AST.Var       => true
+        case _: AST.App       => true
+        case _: AST.App.Left  => true
+        case _: AST.App.Right => true
+        case _: AST.App.Infix => true
+        case _: AST.Number    => true
+        case _                => false
+      }
+    }
+
+    def imports(module: Module.Name): Boolean = {
+      ast.asImport.exists(_.path == module)
+    }
+
+    def definitionAst: Option[AST.Marked] = ast match {
+      case _: Import          => None
+      case marked: AST.Marked => Some(marked)
+      case other =>
+        println(s"warning unmarked perhaps definition: $other")
+        None
+    }
+
+    def asNode: Option[Node.Info] =
+      ast.definitionAst.flatMap {
+        case AST.Marked(marker, defAst) =>
+          val (lhs, rhs) = defAst.asDefinitionInfix match {
+            case Some(Infix(l, AST.Opr("="), r)) => (Some(l), r)
+            case None                            => (None, defAst)
+          }
+
+          val definition = lhs.map(DefInfo(_, rhs))
+
+          // definition with inputs is a function
+          // and a function is not a node
+          if (definition.exists(_.inputAsts.nonEmpty))
+            return None
+
+          val id               = marker.id
+          val spanTree         = null
+          val expr             = Expr(rhs.show(), spanTree)
+          val inputs           = Seq()
+          val outputName       = definition.flatMap(_.name)
+          val output           = Port.Info(None, outputName, Seq())
+          val flags: Set[Flag] = Set.empty
+          val stats            = null
+          val metadata         = null
+
+          val node = Node.Info(id, expr, inputs, output, flags, stats, metadata)
+          Some(node)
+      }
+
+    def flattenApps: Seq[AST] = ast match {
+      case AST.App(lhs, rhs) => lhs.flattenApps :+ rhs
+      case nonAppAst         => Seq(nonAppAst)
+    }
   }
-  def asDefinition(line: Line): Option[Infix] = line.elem match {
-    case Some(i @ Infix(_, AST.Opr("="), _)) => Some(i)
-    case _                                   => None
+
+  implicit class Line_ops(line: Line) {
+    def asImport: Option[Import] = line.elem.flatMap(_.asImport)
+    def imports(module: Module.Name): Boolean =
+      line.elem.exists(_.imports(module))
+    def asDefinition: Option[Infix]     = line.elem.flatMap(_.asDefinitionInfix)
+    def asNode:       Option[Node.Info] = line.elem.flatMap(_.asNode)
   }
+
+  implicit class Module_ops(module: AST.Module) {
+    def importedModules: List[Module.Name] = module.imports.map(_.path)
+    def imports:         List[Import]      = module.flatMapAst(_.asImport)
+    def lineIndexOf(ast: AST): Option[Int] = {
+      module.lines.indexWhere(_.elem.contains(ast))
+    }
+    def lineIndexWhere(p: AST => Boolean): Option[Int] = {
+      module.lines.indexWhere(_.elem.exists(p))
+    }
+  }
+}
+
+// TODO ugly
+import Extensions._
+
+case class DefInfo(lhs: AST, rhs: AST) {
+  val lhsParts: Seq[AST]              = lhs.flattenApps
+  val name: Option[String]            = lhsParts.headOption.flatMap(_.asName)
+  val inputAsts: Seq[AST]             = lhsParts.tail
+  val inputNames: Seq[Option[String]] = inputAsts.map(_.asName)
+}
+object DefInfo {
+  def apply(ast: AST.App.Infix): Option[DefInfo] =
+    if (ast.opr.name == "=") Some(DefInfo(ast.larg, ast.rarg))
+    else None
+  def apply(ast: AST): Option[DefInfo] =
+    ast.asDefinitionInfix.flatMap(DefInfo(_))
 }
 
 object AstUtils {
@@ -29,80 +138,17 @@ object AstUtils {
         throw new Exception("Parsing failed: " + result.toString)
     }
   }
-
-  def lineAsts(ast: AST.Module): List[AST] =
-    ast.lines.toList.flatMap(_.elem)
-
-  def collectImports(ast: AST.Module): List[AST.Import] = {
-    ast.lines.toList.flatMap(LineHelpers asImport _)
-  }
-
   def prettyPrint(ast: AST.Module): Unit = {
     println("------")
     println(org.enso.syntax.text.Main.pretty(ast.toString))
     println("------")
     println(ast.show())
   }
-
-  def experimental(): Unit = {
-    val parser  = new Parser()
-    val program = """import Foo
-                    |
-                    |import Foo.Bar
-                    |
-                    |""".stripMargin
-    val result  = parser.run(program)
-    println(result)
-  }
-
   def parse(program: String, markers: Parser.Markers = Seq()): AST.Module = {
     val parser = new Parser()
-    val result = parser.run(program, markers)
+    val result = parser.run(new Reader(program), markers)
     val ast    = expectAst(result)
     parser.resolveMacros(ast)
-  }
-
-  def importedModules(ast: AST.Module): List[Module.Id] = {
-    val imports: List[AST.Import] = collectImports(ast)
-    imports.map(_.path)
-  }
-
-  def asDefinition(): PartialFunction[AST, (AST, AST)] = {
-    case Infix(l, AST.Opr("="), r) => (l, r)
-  }
-
-  def asVarName: PartialFunction[AST, String] = {
-    case AST.Var(name) => name
-  }
-
-  def flattenDefinitionLhs(ast: AST): List1[AST] = {
-    ast match {
-      case AST.App(lhs, rhs) => flattenDefinitionLhs(lhs) :+ rhs
-      case nonAppAst         => List1(nonAppAst)
-    }
-  }
-
-  def getDefinitionName(ast: AST): String = {
-    println(s"Looking for name in ${ast.show()}")
-    ast match {
-      case AST.Var(varname) => varname
-      case AST.App(lhs, _)  => getDefinitionName(lhs)
-      case sth =>
-        throw new Exception(s"not supported AST element: $sth")
-    }
-  }
-
-  case class Definition(lhs: AST, rhs: AST) {
-    val lhsParts: List1[AST]    = flattenDefinitionLhs(lhs)
-    val name: String            = asVarName(lhsParts.head)
-    val inputAsts: Seq[AST]     = lhsParts.tail
-    val inputNames: Seq[String] = inputAsts.map(asVarName)
-  }
-
-  def definitions(ast: AST.Module): Seq[Definition] = {
-    lineAsts(ast).collect {
-      case Infix(l, AST.Opr("="), r) => Definition(l, r)
-    }
   }
 }
 
@@ -113,7 +159,13 @@ final case class DoubleRepresentation(
   import CommonAPI._
   import API._
 
-  def getGraph(loc: Graph.Location):        Graph.Info            = ???
+  def getGraph(loc: API.Definition.Graph.Location): Definition.Graph.Info = ???
+  def getGraph(loc: Module.Graph.Location): Module.Graph.Info = {
+    val ast   = state.getModuleAst(loc.module)
+    val nodes = ast.flatMapAst(_.asNode)
+    Module.Graph.Info(nodes, Seq())
+  }
+
   def getDefinitions(loc: Module.Location): List[Definition.Info] = ???
   def addNode(
     context: Node.Context,
@@ -136,31 +188,39 @@ final case class DoubleRepresentation(
   def removeConnection(graph: Port.Context, from: Output.Id, to: Input.Id) = ???
 
   override def importedModules(module: Module.Location): Seq[Module.Name] = {
-    val ast     = state.getModuleAst(module)
-    val imports = AstUtils.collectImports(ast)
-    imports.map(_.path)
+    val ast = state.getModuleAst(module)
+    ast.imports.map(_.path)
   }
 
-  def importModule(context: Module.Id, importee: Module.Name): Unit = {
+  override def importModule(context: Module.Id, importee: Module.Name): Unit = {
     val ast            = state.getModuleAst(context)
-    val currentImports = AstUtils.collectImports(ast)
-    if (currentImports.exists(i => i.path == importee))
+    val currentImports = ast.imports
+    if (currentImports.exists(_ imports importee))
       throw ImportAlreadyExistsException(importee)
 
     // the new import shall be placed in the line after the last import in the
     // module or at the beginning of the file
-    val lineToPlaceImport = currentImports.lastOption match {
-      case Some(lastImport) =>
-        val lastIndex = ast.lines.toList.indexWhere(_.elem.contains(lastImport))
-        lastIndex + 1
-      case None =>
-        0
-    }
-    val addedImportLine = Line(Import(importee))
+    val lineToPlaceImport = currentImports.lastOption
+      .flatMap(ast.lineIndexOf(_).map(_ + 1))
+      .getOrElse(0)
 
-    val newAst = ast.insert(lineToPlaceImport, addedImportLine)
+    val newAst = ast.insert(lineToPlaceImport, Import(importee))
     state.setModuleAst(context, newAst)
     notifier.send(API.Notification.Invalidate.Module(context))
   }
-  def removeImport(moduleToNotBeImportedAnymore: Module.Name) = ???
+
+  override def removeImport(
+    context: Module.Id,
+    importToRemove: Module.Name
+  ): Unit = {
+    val ast = state.getModuleAst(context)
+    val lineIndex = ast.lineIndexWhere(_ imports importToRemove) match {
+      case Some(index) => index
+      case None        => throw NoSuchImportException(importToRemove)
+    }
+
+    val newAst = ast.removeAt(lineIndex)
+    state.setModuleAst(context, newAst)
+    notifier.send(API.Notification.Invalidate.Module(context))
+  }
 }

@@ -34,18 +34,31 @@ package object data {
         List1(lst.head, lst.tail.flatMap(s => List(t, s)))
     }
 
-    implicit class List1_with_insert[T](lst: List1[T]) {
+    implicit class List1_more_ops[T](lst: List1[T]) {
       def insert(index: Int, element: T): List1[T] = {
         if (index == 0)
           lst.prepend(element)
         else {
           def insertToList(list: List[T], i: Int) = {
-            val (front, back) = list.splitAt(i - 1)
+            val (front, back) = list.splitAt(i)
             front ++ (element :: back)
           }
           List1(lst.head, insertToList(lst.tail, index - 1))
         }
       }
+
+      def removeAt(index: Int): List[T] = {
+        if (index == 0)
+          lst.tail
+        else
+          lst.head :: lst.tail.patch(index - 1, Nil, 1)
+      }
+
+      def indexWhere(p: T => Boolean, from: Int = 0): Option[Int] =
+        lst.toList.indexWhere(p, from) match {
+          case -1    => None
+          case index => Some(index)
+        }
     }
   }
 }

@@ -1,5 +1,7 @@
 package org.enso.syntax.text
 
+import java.util.UUID
+
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.data.Tree
@@ -77,7 +79,9 @@ class ParserSpec extends FlatSpec with Matchers {
     def testIdentity  = testBase in { assertIdentity(input) }
   }
 
-  val markers = 0 to 100 map (offset => offset -> Marker(offset))
+  val markers = 0 to 100 map (
+      offset => offset -> Marker(UUID.fromString(offset.toString))
+    )
 
   //////////////////////////////////////////////////////////////////////////////
   //// Identifiers /////////////////////////////////////////////////////////////
@@ -427,7 +431,6 @@ class ParserSpec extends FlatSpec with Matchers {
 
   pop1<>pop2<>pop3 . sorted . unique . take (length pop1) . pure
   """.testIdentity
-
 
   ///////////////////////
   //// Preprocessing ////

@@ -37,16 +37,16 @@ object CommonAPI {
     object Name {
 
       /** Construct module name from strings like "Foo.Baz" */
-      def apply(text: String): Name = List1(text.split('.')) match {
-        case Some(nameParts) =>
-          // TODO someone should verify that Cons start upper-cased
-          nameParts.map(AST.Cons(_))
-        case None =>
-          throw IllegalModuleNameText(text)
-      }
+      def apply(text: String): Name = Name(text.split('.'))
 
       def apply(iterable: Iterable[String]): Name = {
-        List1(AST.Cons("Foo"))
+        List1.fromIterableOption(iterable) match {
+          case Some(nameParts) =>
+            // TODO someone should verify that Cons start upper-cased
+            nameParts.map(AST.Cons(_))
+          case None =>
+            throw IllegalModuleNameText(iterable.toString())
+        }
       }
     }
 
@@ -56,9 +56,14 @@ object CommonAPI {
 
     object Graph {
       val Graph: API.Graph.type = API.Graph
-      final case class Id(id: Module.Id)             extends Graph.Id
-      final case class Context(id: Module.Context)   extends Graph.Context
-      final case class Location(id: Module.Location) extends Graph.Location
+      final case class Id(id: Module.Id)                 extends Graph.Id
+      final case class Context(id: Module.Context)       extends Graph.Context
+      final case class Location(module: Module.Location) extends Graph.Location
+
+      final case class Info(
+        nodes: Seq[API.Node.Info],
+        links: Seq[API.Connection]
+      ) extends API.Graph.Info
     }
   }
 }
@@ -66,7 +71,6 @@ object CommonAPI {
 /** Layer over Double Representation and other backend services. Directly under
   * GUI. */
 trait SessionManager {
-  import CommonAPI._
   import API._
 
   final case class Position(x: Double, y: Double)
@@ -162,6 +166,14 @@ object API {
     final case class Info(name: String, id: Id)
 
     object Graph {
+      final case class Info(
+        // TODO is this what we want?
+        nodes: Seq[Node.Info],
+        links: Seq[Connection],
+        inputs: Seq[API.Graph.Input.Info],
+        output: API.Graph.Output.Info
+      ) extends API.Graph.Info
+
       val Graph: API.Graph.type = API.Graph
       final case class Id(id: Definition.Id)             extends Graph.Id
       final case class Context(id: Definition.Context)   extends Graph.Context
@@ -176,12 +188,10 @@ object API {
     sealed trait Context
     sealed trait Location
 
-    final case class Info(
-      nodes: List[Node.Info],
-      links: List[Connection],
-      inputs: List[Input.Info],
-      output: Output.Info
-    )
+    sealed trait Info {
+      def nodes: Seq[Node.Info]
+      def links: Seq[Connection]
+    }
 
     /** Subset of ports being graph (i.e. definition) inputs and outputs */
     object Port {
@@ -214,7 +224,7 @@ object API {
     final case class Info(
       id: Id,
       expr: Expr,
-      inputs: List[Port.Info],
+      inputs: Seq[Port.Info],
       output: Port.Info,
       flags: Set[Flag],
       stats: Stats,
@@ -223,13 +233,11 @@ object API {
   }
 
   //
-  final case class TODO()
+  trait TODO
 
   final case class Type(tp: TODO)
 
-  final case class SpanTree() {
-    ???
-  }
+  final case class SpanTree() extends TODO {}
 
   // TODO [MWU] as discussed, most likely we should pass the whole AST
   final case class Expr(text: String, spanTree: SpanTree)
@@ -248,7 +256,7 @@ object API {
     final case class Info(
       tp: Option[Type],
       name: Option[String],
-      children: List[Info]
+      children: Seq[Info]
     )
   }
 
@@ -337,6 +345,9 @@ object API {
       extends Exception {
     override def getMessage: String = s"Module $name is already imported"
   }
+  final case class NoSuchImportException(name: Module.Name) extends Exception {
+    override def getMessage: String = s"Module $name is not imported"
+  }
 }
 
 trait TextAPI {
@@ -360,13 +371,18 @@ trait GraphAPI {
   import API._
 
   /////////////////////////////////////////////////////////////////////////////
-  def getGraph(loc: Graph.Location): Graph.Info
+  def getGraph(loc: Graph.Location): Graph.Info = loc match {
+    case ctx @ Definition.Graph.Location(_) => getGraph(ctx)
+    case ctx @ Module.Graph.Location(_)     => getGraph(ctx)
+  }
+  def getGraph(loc: Definition.Graph.Location): Definition.Graph.Info
+  def getGraph(loc: Module.Graph.Location): Module.Graph.Info
   def getDefinitions(loc: Module.Location): Seq[Definition.Info]
   // TODO other entities? (visible through Graph API)
   /** Manage Imports */
   def importedModules(module: Module.Location): Seq[Module.Name]
   def importModule(context: Module.Id, importee: Module.Name): Unit
-  def removeImport(moduleToNotBeImportedAnymore: Module.Name)
+  def removeImport(context: Module.Id, importToRemove: Module.Name): Unit
   //////////////////////////////////////////////////////////////////////////////
   def addNode(
     context: Node.Context,

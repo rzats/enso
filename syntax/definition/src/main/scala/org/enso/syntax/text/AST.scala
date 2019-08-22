@@ -1,5 +1,7 @@
 package org.enso.syntax.text
 
+import java.util.UUID
+
 import monocle.macros.GenLens
 import org.enso.data.List1._
 import org.enso.data.List1
@@ -11,6 +13,7 @@ import org.enso.syntax.text.ast.opr
 import org.enso.syntax.text.ast.text
 
 import scala.annotation.tailrec
+import scala.collection.GenTraversableOnce
 
 sealed trait AST extends AST.Symbol {
   def map(f: AST => AST): AST
@@ -46,9 +49,9 @@ object AST {
   type Stream1 = List1[SAST]
 
   sealed trait Symbol extends Repr.Provider {
-    def byteSpan: Int  = repr.byteSpan
-    def span:   Int    = repr.span
-    def show(): String = repr.show()
+    def byteSpan: Int    = repr.byteSpan
+    def span:     Int    = repr.span
+    def show():   String = repr.show()
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -85,7 +88,10 @@ object AST {
   //// Marker //////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  final case class Marker(id: Int)
+  final case class Marker(id: UUID)
+  object Marker {
+    def apply(i: Int): Marker = Marker(new UUID(0, i))
+  }
 
   final case class Marked(marker: Marker, ast: AST) extends AST {
     val repr               = ast.repr
@@ -619,6 +625,9 @@ object AST {
     def map(f: AST => AST)        = copy(lines = lines.map(_.map(f)))
     def mapLines(f: Line => Line) = Module(lines.map(f))
 
+    def flatMapAst[B](f: AST => GenTraversableOnce[B]): List[B] =
+      lines.toList.flatMap(_.elem).flatMap(f(_))
+
     def insert(index: Int, addedLine: Line): Module = {
       // when adding the first line, we want to just place it, not prepend to
       // placeholder empty line
@@ -626,6 +635,17 @@ object AST {
         Module(List1(addedLine))
       else
         Module(lines.insert(index, addedLine))
+    }
+    def insert(index: Int, addedLineAst: AST): Module =
+      insert(index, Line(addedLineAst))
+
+    def removeAt(index: Int): Module = {
+      val newLines = List1(lines.removeAt(index)) match {
+        case Some(list1) => list1
+        // if we removed the last line, restore an empty one
+        case None => List1(Line(None))
+      }
+      Module(newLines)
     }
   }
 
@@ -779,11 +799,12 @@ object AST {
     val symbol = "#"
 
     final case class SingleLine(text: String) extends Comment {
-    val repr               = R + Comment.symbol + text
-    def map(f: AST => AST) = this
+      val repr               = R + Comment.symbol + text
+      def map(f: AST => AST) = this
     }
 
-    final case class MultiLine(offset: Int, lines: List[String]) extends Comment {
+    final case class MultiLine(offset: Int, lines: List[String])
+        extends Comment {
       def map(f: AST => AST) = this
       val repr = {
         val commentBlock = lines match {
