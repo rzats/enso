@@ -203,8 +203,8 @@ object Builtin {
       def_import,
       def_def,
       def_arrow,
-      def_assign,
-      def_skip,
+//      def_assign,
+//      def_skip,
       def_foreign,
       def_comment,
       def_struct_comment

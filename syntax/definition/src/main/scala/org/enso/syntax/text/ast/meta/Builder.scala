@@ -33,21 +33,28 @@ class Builder(
 
   def merge(that: Builder): Unit = {
     val revLeftStream = current.stream.reverse
-    val (revLeftUnusedStream, matched, rightUnusedStream) =
-      that.build(revLeftStream)
-    val result = List1(matched, rightUnusedStream)
-//    println("---- merge ----")
-//    println(rightUnusedStream)
-    current.stream = revLeftUnusedStream.reverse ++ result.toList
+    val (revUsedLeftSrc, revUnusedLeftSrc) =
+      that.current.ast match {
+        case opr: AST.Opr =>
+          revLeftStream.span {
+            case Shifted(_, opr2: AST.Opr) => opr.prec < opr2.prec
+            case _                         => true
+          }
+        case _ => (List(), revLeftStream)
+      }
+    val (revUnusedLeftTgt, matched, rightUnusedTgt) =
+      that.build(revUsedLeftSrc)
+    val result = List1(matched, rightUnusedTgt)
+    current.stream = revUnusedLeftSrc.reverse ++ revUnusedLeftTgt.reverse ++ result.toList
   }
 
-  def mergex(that: Builder): AST.Stream = {
-    val revLeftStream = current.stream.reverse
-    val (revLeftUnusedStream, matched, rightUnusedStream) =
-      that.build(revLeftStream)
-    current.stream = revLeftUnusedStream.reverse :+ matched
-    rightUnusedStream
-  }
+//  def mergex(that: Builder): AST.Stream = {
+//    val revLeftStream = current.stream.reverse
+//    val (revLeftUnusedStream, matched, rightUnusedStream) =
+//      that.build(revLeftStream)
+//    current.stream = revLeftUnusedStream.reverse :+ matched
+//    rightUnusedStream
+//  }
 
   def build(
     revStreamL: AST.Stream

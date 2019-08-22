@@ -132,19 +132,19 @@ object Macro {
                 tr.value.map(Some(_)).getOrElse(builder.macroDef)
               builder.context = builder.context.copy(tree = tr)
               val knownMacro = builder.context.isEmpty
-              if (false) { // knownMacro
-                builder.current.stream = t2_
-                popBuilder() match {
-                  case Some(bldr) =>
-                    logger.log("Building known macro")
-                    val newStream = builder.mergex(bldr)
-                    go(newStream)
-                  case _ => ??? // impossible, module dos not have segments
-                }
-              } else {
-                logger.endGroup()
-                go(t2_)
-              }
+//              if (false) { // knownMacro
+//                builder.current.stream = t2_
+//                popBuilder() match {
+//                  case Some(bldr) =>
+//                    logger.log("Building known macro")
+//                    val newStream = builder.mergex(bldr)
+//                    go(newStream)
+//                  case _ => ??? // impossible, module dos not have segments
+//                }
+//              } else {
+              logger.endGroup()
+              go(t2_)
+//              }
 
             case None =>
               root.lookup(el1) match {
