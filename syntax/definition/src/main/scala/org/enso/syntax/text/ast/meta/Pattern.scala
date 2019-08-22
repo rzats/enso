@@ -61,6 +61,7 @@ object Pattern {
   final case class FromBegin(pat: Pattern)           extends Of[Match]
   final case class Tag(tag: String, pat: Pattern)    extends Of[Match]
   final case class Err(msg: String, pat: Pattern)    extends Of[SAST]
+  final case class ClsOpr(maxPrec: Option[Int])      extends Of[SAST]
   final case class Cls[T <: AST](spaced: Spaced)(implicit val tag: ClassTag[T])
       extends Of[Shifted[T]]
 
@@ -389,7 +390,6 @@ object Pattern {
     lineBegin: Boolean,
     reversed: Boolean
   ): Option[MatchResult] = {
-
     def matchList(p: Pattern, stream: Stream): (List[Match], Stream) = {
       @tailrec
       def go(stream: Stream, revOut: List[Match]): (List[Match], Stream) =
@@ -449,6 +449,18 @@ object Pattern {
                 case Some(r2) =>
                   ret(p, (r1.elem, r2.elem), r2.stream)
               }
+          }
+
+        case p @ Pattern.ClsOpr(maxPrec) =>
+          stream match {
+            case Shifted(off, t: AST.Opr) :: ss => {
+              val isOk = maxPrec match {
+                case None       => true
+                case Some(prec) => prec >= t.prec
+              }
+              if (isOk) ret(p, Shifted(off, t), ss) else None
+            }
+            case _ => None
           }
 
         case p @ Pattern.Cls(spaced) =>

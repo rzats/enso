@@ -17,7 +17,7 @@ object Builtin {
 
     val def_group = Definition(
       Opr("(") -> Pattern.Opt(Pattern.Expr()),
-      Opr(")") -> Pattern.Nothing()
+      Opr(")")
     ) {
       case (None, List(st1, _)) =>
         st1.body.toStream match {
@@ -113,8 +113,15 @@ object Builtin {
       case _ => internalError
     }
 
+    val nonSpacedExpr = Pattern.Any(Some(false)).many1.build
+    val expr =
+      Pattern
+        .Except(Pattern.ClsOpr(Some(Opr("->").prec)), Pattern.Any())
+        .many1
+        .build
+
     val def_arrow = Definition(
-      Some(Pattern.NonSpacedExpr().or(Pattern.Expr())),
+      Some(nonSpacedExpr.or(expr)),
       Opr("->") -> Pattern.NonSpacedExpr().or(Pattern.Expr())
     ) {
       case (Some(pfx), List(s1)) =>
@@ -203,8 +210,8 @@ object Builtin {
       def_import,
       def_def,
       def_arrow,
-      def_assign,
-      def_skip,
+//      def_assign,
+//      def_skip,
       def_foreign,
       def_comment,
       def_struct_comment
