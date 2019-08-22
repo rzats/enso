@@ -249,12 +249,9 @@ object Main extends App {
 //val inp = "(a) b = c"
 //val inp = "a = b -> c"
 //val inp = "a = b -> c d"
-  val inp     = "foreign Py foo"
-  val pyLine1 = "import re"
-  val pyLine2 = """re.match(r"[^@]+@[^@]+\.[^@]+", "foo@ds.pl") != None"""
-  val inp2    = s"""validateEmail address = foreign Python3
-                |    $pyLine1
-                |    $pyLine2""".stripMargin
+  val inp = "foreign Py foo"
+  val inp2 =
+    """(a) c = b"""
 //  val inp = "x(x[a))"
   val out = parser.run(new Reader(inp2), Seq())
   pprint.pprintln(out, width = 50, height = 10000)

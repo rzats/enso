@@ -89,11 +89,16 @@ object Macro {
 //              pprint.pprintln(revLeftUnusedStream, width = 50, height = 10000)
 //              println(s"rightUnusedStream:")
 //              pprint.pprintln(rightUnusedStream, width = 50, height = 10000)
-              subStream = subStream ++ revLeftUnusedStream ++ (matched :: rightUnusedStream)
+//              println("!!!!")
+//              println(subStream)
+//              println(revLeftUnusedStream)
+//              println(matched)
+//              println(rightUnusedStream)
+              subStream = subStream ++ (rightUnusedStream.reverse :+ matched) ++ revLeftUnusedStream
             } else {
 //              println("~~~~~~~~~~~~~~")
 //              println(b.current.stream)
-              b.current.revStream = subStream.reverse ++ b.current.revStream
+              b.current.revStream = subStream ++ b.current.revStream
               subStream           = List()
 //              println(b.current.stream)
               newRevBuilders +:= b
