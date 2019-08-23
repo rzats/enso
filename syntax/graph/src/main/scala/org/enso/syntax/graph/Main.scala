@@ -22,7 +22,10 @@ object Main extends App {
       |add x (y, z) = x + y
     """.stripMargin
 
-  def playWith(input: String = program): Unit = {}
+  def playWith(input: String = program): Unit = {
+    val ast = ParserUtils.parse(input)
+    ParserUtils.prettyPrint(ast)
+  }
 
   playWith(program)
 }

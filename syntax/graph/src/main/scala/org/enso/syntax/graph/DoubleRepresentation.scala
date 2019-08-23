@@ -50,6 +50,7 @@ object Extensions {
         case _: AST.App.Left  => true
         case _: AST.App.Right => true
         case _: AST.App.Infix => true
+        case _: AST.App.Sides => true
         case _: AST.Number    => true
         case _                => false
       }
@@ -73,10 +74,13 @@ object Extensions {
       if (assignment.exists(_.inputAsts.nonEmpty))
         return None
 
-      val id               = marked.marker.id
-      val spanTree         = API.SpanTree() // TODO
-      val expr             = Expr(rhs.show(), spanTree)
-      val inputs           = Seq() // TODO deduce from rhs
+      val id       = marked.marker.id
+      val spanTree = API.SpanTree() // TODO
+      val expr     = Expr(rhs.show(), spanTree)
+
+      val inputAsts = rhs.groupTopInputs
+      // TODO subports
+      val inputs           = inputAsts.map(_.asPort)
       val outputName       = assignment.flatMap(_.name)
       val output           = Port.Info(None, outputName, Seq())
       val flags: Set[Flag] = Set.empty // TODO
@@ -90,6 +94,20 @@ object Extensions {
     def flattenApps: List1[AST] = ast match {
       case AST.App(lhs, rhs) => lhs.flattenApps :+ rhs
       case nonAppAst         => List1(nonAppAst)
+    }
+
+    def groupTopInputs: Seq[AST] = ast match {
+      case _: AST.App                 => ast.flattenApps.tail
+      case _: AST.App.Sides           => Seq(AST.Blank, AST.Blank)
+      case AST.App.Infix(lhs, _, rhs) => Seq(lhs, rhs)
+//      case _: AST.Var                 => Seq()
+//      case _: AST.Literal             => Seq()
+//      case _: AST.Number              => Seq()
+      case _ => Seq()
+    }
+
+    def asPort: Port.Info = ast match {
+      case _ => Port.Empty
     }
   }
 

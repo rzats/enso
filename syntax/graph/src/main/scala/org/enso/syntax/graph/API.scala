@@ -12,9 +12,6 @@ import org.enso.syntax.text.AST.Marker
 trait SessionManager {
   import API._
 
-  /** Position in the graph's rendering space */
-  final case class Position(x: Double, y: Double)
-
   /** Executes given function in a single transaction.
     *
     * Transactions are atomic -- if any of the actions included failed, the
@@ -52,7 +49,17 @@ trait SessionManager {
     * @param position Position where pasted nodes should appear (e.g. mouse
     *                 cursor position).
     */
-  def paste(graph: Graph.Location, copyData: String, position: Position)
+  def paste(
+    graph: Graph.Location,
+    copyData: String,
+    position: SessionManager.Position
+  )
+}
+
+object SessionManager {
+
+  /** Position in the graph's rendering space */
+  final case class Position(x: Double, y: Double)
 }
 
 /** Access to the State Manager -- a component that owns a project state.
@@ -266,6 +273,14 @@ object API {
       name: Option[String],
       children: Seq[Info]
     )
+
+    object Info {
+      def apply():                    Info = Info(None, None, Seq())
+      def apply(children: Seq[Info]): Info = Info(None, None, children)
+    }
+
+    /**  port that we don't really know anything about */
+    val Empty = Info(None, None, Seq())
   }
 
   /** A port that produces values ("output", "source"). */
@@ -411,6 +426,10 @@ trait GraphAPI {
   def addPort(port: Graph.Port.Location, name: String, tp: Option[Type]) // TODO how to handle type
   def removePort(port: Graph.Port.Location)
   //////////////////////////////////////////////////////////////////////////////
+  // TODO connected node may be unnamed and then name needs to be generated
+  //      preferably generated name should use information from interpreter
+  //      (like the resolved function definition) so we should either take here
+  //      optional name or optional name generator
   def addConnection(graph: Port.Context, from: Output.Id, to: Input.Id)
   def removeConnection(graph: Port.Context, from: Output.Id, to: Input.Id)
 }

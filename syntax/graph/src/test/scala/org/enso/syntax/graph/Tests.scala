@@ -21,7 +21,7 @@ final case class StateManagerMock(var program: String) extends StateManager {
   override def getModule(module: Module.Id): AST.Module = {
     if (module == StateManagerMock.mainModule)
       ast
-    else throw new graph.StateManager.ModuleNotFoundException(module)
+    else throw graph.StateManager.ModuleNotFoundException(module)
   }
 
   override def setModule(module: Module.Id, ast: AST.Module): Unit = {
@@ -200,25 +200,58 @@ class Tests extends FunSuite with org.scalatest.Matchers {
       }
     )
   }
-  test("get trivial literal node") {
+  test("node trivial literal") {
     checkModuleSingleNodeGraph(
       "15",
       node => {
         node.expr.text should equal("15")
         node.inputs should have size 0
         node.output.name should equal(None)
-        node.flags should equal(Set.empty)
+        node.flags shouldBe empty
       }
     )
   }
-  test("get trivial var node") {
+  test("node trivial var") {
     checkModuleSingleNodeGraph(
       "foo",
       node => {
         node.expr.text should equal("foo")
         node.inputs should have size 0
         node.output.name should equal(None)
-        node.flags should equal(Set.empty)
+        node.flags shouldBe empty
+      }
+    )
+  }
+  test("node trivial infix operator") {
+    checkModuleSingleNodeGraph(
+      "+",
+      node => {
+        node.expr.text should equal("+")
+        node.inputs should have size 2
+        node.inputs should equal(Seq(Port.Empty, Port.Empty))
+        node.flags shouldBe empty
+      }
+    )
+  }
+  test("node single arg app") {
+    checkModuleSingleNodeGraph(
+      "foo 4",
+      node => {
+        node.expr.text should equal("foo 4")
+        node.inputs should have size 1
+        node.inputs should equal(Seq(Port.Empty))
+        node.flags shouldBe empty
+      }
+    )
+  }
+  test("node two arg app") {
+    checkModuleSingleNodeGraph(
+      "foo a _",
+      node => {
+        node.expr.text should equal("foo a _")
+        node.inputs should have size 2
+        node.inputs should equal(Seq(Port.Empty, Port.Empty))
+        node.flags shouldBe empty
       }
     )
   }
@@ -229,7 +262,18 @@ class Tests extends FunSuite with org.scalatest.Matchers {
         node.expr.text should equal("15")
         node.inputs should have size 0
         node.output.name should equal(Some("a"))
-        node.flags should equal(Set.empty)
+        node.flags shouldBe empty
+      }
+    )
+  }
+  test("get infix node") {
+    checkModuleSingleNodeGraph(
+      "a+2",
+      node => {
+        node.expr.text should equal("a+2")
+        node.inputs should have size 2
+        node.inputs should equal(Seq(Port.Empty, Port.Empty))
+        node.flags shouldBe empty
       }
     )
   }
