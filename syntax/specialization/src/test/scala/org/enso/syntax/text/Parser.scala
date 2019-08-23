@@ -451,8 +451,9 @@ class ParserSpec extends FlatSpec with Matchers {
   "\r"   ?= Module(Line(), Line())
   "\r\n" ?= Module(Line(), Line())
 
-}
+//  "a + b * g" ?#= Marked(Marker(0), Var("marked"))
 
+}
 ////////////////////////////////////////////////////////////////////////////////
 // TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO //
 ////////////////////////////////////////////////////////////////////////////////

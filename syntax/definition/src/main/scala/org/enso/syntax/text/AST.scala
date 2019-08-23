@@ -646,6 +646,7 @@ object AST {
     //// Matched ////
 
     final case class Match(
+      marker: Marker,
       pfx: Option[Pattern.Match],
       segs: Shifted.List1[Match.Segment],
       resolved: AST
