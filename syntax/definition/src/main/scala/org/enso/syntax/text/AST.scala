@@ -46,9 +46,9 @@ object AST {
   type Stream1 = List1[SAST]
 
   sealed trait Symbol extends Repr.Provider {
-    def byteSpan: Int  = repr.byteSpan
-    def span:   Int    = repr.span
-    def show(): String = repr.show()
+    def byteSpan: Int    = repr.byteSpan
+    def span:     Int    = repr.span
+    def show():   String = repr.show()
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -815,11 +815,12 @@ object AST {
     val symbol = "#"
 
     final case class SingleLine(text: String) extends Comment {
-    val repr               = R + Comment.symbol + text
-    def map(f: AST => AST) = this
+      val repr               = R + symbol + symbol + text
+      def map(f: AST => AST) = this
     }
 
-    final case class MultiLine(offset: Int, lines: List[String]) extends Comment {
+    final case class MultiLine(offset: Int, lines: List[String])
+        extends Comment {
       def map(f: AST => AST) = this
       val repr = {
         val commentBlock = lines match {
@@ -831,12 +832,12 @@ object AST {
             }
             (R + line) +: indentedLines
         }
-        R + "#" + commentBlock
+        R + symbol + symbol + commentBlock
       }
     }
 
-    final case class Structural(ast: AST) extends AST {
-      val repr               = R + symbol + symbol + " " + ast
+    final case class Disable(ast: AST) extends AST {
+      val repr               = R + symbol + " " + ast
       def map(f: AST => AST) = copy(ast = f(ast))
     }
 
