@@ -26,11 +26,6 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
   //// API ////
   /////////////
 
-  def run(input: Reader, markers: Markers): Result[AST.Module] = {
-    result.markers = VectorMap(markers)
-    run(input)
-  }
-
   override def run(input: Reader): Result[AST.Module] = {
     state.begin(block.MODULE)
     super.run(input)
@@ -60,9 +55,8 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
 
   final object result {
 
-    var markers: VectorMap[Int, AST.Marker] = VectorMap()
-    var current: Option[AST]                = None
-    var stack: List[Option[AST]]            = Nil
+    var current: Option[AST]     = None
+    var stack: List[Option[AST]] = Nil
 
     def push(): Unit = logger.trace {
       logger.log(s"Pushed: $current")
@@ -80,20 +74,15 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
       app(fn(currentMatch))
 
     def app(ast: AST): Unit = logger.trace {
-      val marked = markers.get(reader.charOffset - ast.byteSpan) match {
-        case None         => ast
-        case Some(marker) => AST.Marked(marker, ast)
-      }
       current = Some(current match {
-        case None    => marked
-        case Some(r) => AST.App(r, off.use(), marked)
+        case None    => ast
+        case Some(r) => AST.App(r, off.use(), ast)
       })
     }
 
     def last(): Option[AST] = {
       @tailrec
       def go(ast: AST): AST = ast match {
-        case AST.Marked(_, t)  => go(t)
         case AST._App(_, _, t) => go(t)
         case t                 => t
       }
@@ -677,5 +666,4 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
 
 object ParserDef2 {
   type Result[T] = flexer.Parser.Result[T]
-  type Markers   = scala.Seq[(Int, AST.Marker)]
 }

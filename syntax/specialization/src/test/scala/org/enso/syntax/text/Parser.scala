@@ -15,11 +15,9 @@ import org.scalatest._
 
 class ParserSpec extends FlatSpec with Matchers {
 
-  type Markers = Seq[(Int, Marker)]
-
-  def assertModule(input: String, result: AST, markers: Markers): Assertion = {
+  def assertModule(input: String, result: AST): Assertion = {
     val parser = Parser()
-    val output = parser.run(new Reader(input), markers)
+    val output = parser.run(new Reader(input))
     output match {
       case Result(offset, Result.Success(module)) =>
         val rmodule = parser.resolveMacros(module)
@@ -29,9 +27,9 @@ class ParserSpec extends FlatSpec with Matchers {
     }
   }
 
-  def assertExpr(input: String, result: AST, markers: Markers): Assertion = {
+  def assertExpr(input: String, result: AST): Assertion = {
     val parser = Parser()
-    val output = parser.run(new Reader(input), markers)
+    val output = parser.run(new Reader(input))
     output match {
       case Result(offset, Result.Success(module)) =>
         val rmodule = parser.resolveMacros(module)
@@ -71,13 +69,13 @@ class ParserSpec extends FlatSpec with Matchers {
 
     private val testBase = it should parseTitle(input)
 
-    def ?=(out: AST)    = testBase in { assertExpr(input, out, Seq()) }
-    def ?=(out: Module) = testBase in { assertModule(input, out, Seq()) }
-    def ?#=(out: AST) = testBase in { assertExpr(input, out, markers) }
-    def testIdentity  = testBase in { assertIdentity(input) }
+    def ?=(out: AST)    = testBase in { assertExpr(input, out) }
+    def ?=(out: Module) = testBase in { assertModule(input, out) }
+//    def ?#=(out: AST) = testBase in { assertExpr(input, out, markers) }
+    def testIdentity = testBase in { assertIdentity(input) }
   }
 
-  val markers = 0 to 100 map (offset => offset -> Marker(offset))
+//  val markers = 0 to 100 map (offset => offset -> Marker(offset))
 
   //////////////////////////////////////////////////////////////////////////////
   //// Identifiers /////////////////////////////////////////////////////////////
@@ -271,16 +269,16 @@ class ParserSpec extends FlatSpec with Matchers {
   //// Markers /////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  "marked" ?#= Marked(Marker(0), Var("marked"))
-  "Marked" ?#= Marked(Marker(0), Cons("Marked"))
-  "111111" ?#= Marked(Marker(0), Number(111111))
-  "'    '" ?#= Marked(Marker(0), Text("    "))
-  "++++++" ?#= Marked(Marker(0), Opr("++++++"))
-  "+++++=" ?#= Marked(Marker(0), Opr.Mod("+++++"))
-  "a b  c" ?#= Marked(Marker(0), Var("a")) $_ Marked(Marker(2), Var("b")) $__ Marked(
-    Marker(5),
-    Var("c")
-  )
+//  "marked" ?#= Marked(Marker(0), Var("marked"))
+//  "Marked" ?#= Marked(Marker(0), Cons("Marked"))
+//  "111111" ?#= Marked(Marker(0), Number(111111))
+//  "'    '" ?#= Marked(Marker(0), Text("    "))
+//  "++++++" ?#= Marked(Marker(0), Opr("++++++"))
+//  "+++++=" ?#= Marked(Marker(0), Opr.Mod("+++++"))
+//  "a b  c" ?#= Marked(Marker(0), Var("a")) $_ Marked(Marker(2), Var("b")) $__ Marked(
+//    Marker(5),
+//    Var("c")
+//  )
 
   //////////////////////////////////////////////////////////////////////////////
   //// Comments ////////////////////////////////////////////////////////////////

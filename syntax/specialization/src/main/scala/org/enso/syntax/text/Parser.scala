@@ -32,7 +32,7 @@ import scala.annotation.tailrec
   *
   * Macro resolution steps:
   *
-  * 1. Parser is executed by using the [[Parser.run]] function. It reads source
+  * 1. Parser is executed by using the [[Parser#run]] function. It reads source
   * code and outputs a token stream [[AST.Stream]]. The token stream contains a
   * very narrow range of possible elements: [[AST.Blank]], [[AST.Var]],
   * [[AST.Cons]], [[AST.Opr]], [[AST.Number]], [[AST.Text]], and [[AST.Block]],
@@ -130,7 +130,7 @@ import scala.annotation.tailrec
   * to work with by automated tools like the interpreter, while all the spacing
   * information is stored only in the basic set of tokens and [[AST.Macro]]
   * tokens. Each AST node has a [[AST.map]] function for mapping over sub-nodes,
-  * which allows easy building of AST traversals. The [[Parser.resolveMacros]]
+  * which allows easy building of AST traversals. The [[Parser#resolveMacros]]
   * is such a traversal, which applies [[AST.Macro.Definition.Finalizer]] to
   * each [[AST.Macro.Match]] found in the AST, while loosing a lot of positional
   * information.
@@ -139,11 +139,8 @@ class Parser {
   import Parser._
   private val engine = newEngine()
 
-  def run(
-    input: Reader,
-    markers: Markers = Seq()
-  ): Result[AST.Module] =
-    engine.run(input, markers).map(Macro.run)
+  def run(input: Reader): Result[AST.Module] =
+    engine.run(input).map(Macro.run)
 
   /** Although this function does not use any Parser-specific API now, it will
     * use such in the future when the interpreter will provide information about
@@ -167,7 +164,6 @@ class Parser {
 }
 
 object Parser {
-  type Markers   = ParserDef2.Markers
   type Result[T] = flexer.Parser.Result[T]
   private val newEngine = flexer.Parser.compile(ParserDef())
 
@@ -249,9 +245,9 @@ object Main extends App {
 //val inp = "(a) b = c"
 //val inp = "a = b -> c"
 //val inp = "a = b -> c d"
-  val inp = "x = skip (a.b)"
+  val inp = "(a)"
 //  val inp = "x(x[a))"
-  val out = parser.run(new Reader(inp), Seq())
+  val out = parser.run(new Reader(inp))
   pprint.pprintln(out, width = 50, height = 10000)
 
   out match {

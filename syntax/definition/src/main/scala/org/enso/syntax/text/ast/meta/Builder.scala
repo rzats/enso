@@ -92,7 +92,7 @@ class Builder(
         }
 
         val resolved = mdef.fin(pfxMatch, shiftSegs.toList().map(_.el))
-        val template = Macro.Match(AST.Marker(0), pfxMatch, shiftSegs, resolved)
+        val template = Macro.Match(pfxMatch, shiftSegs, resolved)
         val newTok   = Shifted(segs2.head.off, template)
 
         (newLeftStream, newTok, tailStream)
