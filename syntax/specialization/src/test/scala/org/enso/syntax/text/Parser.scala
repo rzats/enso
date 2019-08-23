@@ -152,10 +152,16 @@ class ParserSpec extends FlatSpec with Matchers {
   //// Arrows //////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  "a -> b"      ?= "a" $_ "->" $_ "b"
-  "a -> b -> c" ?= "a" $_ "->" $_ ("b" $_ "->" $_ "c")
-  "a b -> c d"  ?= ("a" $_ "b") $_ "->" $_ ("c" $_ "d")
-  "a b-> c d"   ?= "a" $_ ("b" $_ "->" $_ ("c" $_ "d"))
+  "a -> b"         ?= "a" $_ "->" $_ "b"
+  "a -> b -> c"    ?= "a" $_ "->" $_ ("b" $_ "->" $_ "c")
+  "a b -> c d"     ?= ("a" $_ "b") $_ "->" $_ ("c" $_ "d")
+  "a b-> c d"      ?= "a" $_ ("b" $_ "->" $_ ("c" $_ "d"))
+  "a = b -> c d"   ?= "a" $_ "=" $_ ("b" $_ "->" $_ ("c" $_ "d"))
+  "a = b-> c d"    ?= "a" $_ "=" $_ ("b" $_ "->" $_ ("c" $_ "d"))
+  "a + b -> c d"   ?= ("a" $_ "+" $_ "b") $_ "->" $_ ("c" $_ "d")
+  "a + b-> c d"    ?= "a" $_ "+" $_ ("b" $_ "->" $_ ("c" $_ "d"))
+  "a + b-> c = d"  ?= "a" $_ "+" $_ ("b" $_ "->" $_ ("c" $_ "=" $_ "d"))
+  "a = b -> c = d" ?= "a" $_ "=" $_ ("b" $_ "->" $_ ("c" $_ "=" $_ "d"))
 
   //////////////////////////////////////////////////////////////////////////////
   //// Layout //////////////////////////////////////////////////////////////////
@@ -284,15 +290,24 @@ class ParserSpec extends FlatSpec with Matchers {
   //// Comments ////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  "foo   #L1"      ?= "foo" $___ Comment.SingleLine("L1")
-  "#\n    L1\n L2" ?= Comment.MultiLine(0, List("", "    L1", " L2"))
-  "#L1\nL2"        ?= Module(Line(Comment.SingleLine("L1")), Line(Cons("L2")))
+  "foo   ##L1"      ?= "foo" $___ Comment.SingleLine("L1")
+  "##\n    L1\n L2" ?= Comment.MultiLine(0, List("", "    L1", " L2"))
+  "##L1\nL2"        ?= Module(Line(Comment.SingleLine("L1")), Line(Cons("L2")))
+  "foo #a b"        ?= "foo" $_ Comment.Disable("a" $_ "b")
 
   //////////////////////////////////////////////////////////////////////////////
-  //// Flags/// ////////////////////////////////////////////////////////////////
+  //// Flags ///////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  "a #= b c" ?= "a" $_ "#=" $_ ("b" $_ "c")
+  "x = skip a"             ?= "x" $_ "=" $_ "a"
+  "x = skip a.fn"          ?= "x" $_ "=" $_ "a"
+  "x = skip fn a"          ?= "x" $_ "=" $_ "a"
+  "x = skip (a)"           ?= "x" $_ "=" $_ "a"
+  "x = skip (a.fn)"        ?= "x" $_ "=" $_ "a"
+  "x = skip (a + b)"       ?= "x" $_ "=" $_ "a"
+  "x = skip ((a + b) + c)" ?= "x" $_ "=" $_ "a"
+  "x = skip ()"            ?= "x" $_ "=" $_ Group()
+//  "a = freeze b c" ?= "a" $_ "#=" $_ ("b" $_ "c") // freeze
 
   //////////////////////////////////////////////////////////////////////////////
   //// Mixfixes ////////////////////////////////////////////////////////////////
@@ -329,6 +344,7 @@ class ParserSpec extends FlatSpec with Matchers {
   "((a))"       ?= Group(Group("a"))
   "(((a)))"     ?= Group(Group(Group("a")))
   "( (  a   ))" ?= Group(Group("a"))
+  "(a) (b)"     ?= Group("a") $_ Group("b")
   "("           ?= amb("(", List(List(")")))
   "(("          ?= amb_group(group_())
 
@@ -384,9 +400,9 @@ class ParserSpec extends FlatSpec with Matchers {
   //// Large Input /////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-//  ("(" * 10000).testIdentity
-//  ("OVERFLOW " * 2000).testIdentity
-//  ("\uD800\uDF1E " * 2000).testIdentity
+  ("(" * 10000).testIdentity
+  ("OVERFLOW " * 2000).testIdentity
+  ("\uD800\uDF1E " * 2000).testIdentity
 
   //////////////////////////////////////////////////////////////////////////////
   //// OTHER (TO BE PARTITIONED)////////////////////////////////////////////////
@@ -439,15 +455,17 @@ class ParserSpec extends FlatSpec with Matchers {
   "\r"   ?= Module(Line(), Line())
   "\r\n" ?= Module(Line(), Line())
 
-}
+//  "a + b * g" ?#= Marked(Marker(0), Var("marked"))
 
+}
 ////////////////////////////////////////////////////////////////////////////////
 // TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO //
 ////////////////////////////////////////////////////////////////////////////////
 
-// [ ] Layout parsing fixes [PR review]
 // [ ] Some benchmarks are sometimes failing?
 // [ ] Benchmarks are slower now - readjust (maybe profile later)
 // [ ] operator blocks
 // [ ] warnings in scala code
 // [ ] Comments parsing
+// [ ] Undefined parsing
+// [ ] All block types

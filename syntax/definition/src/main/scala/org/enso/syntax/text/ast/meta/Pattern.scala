@@ -175,6 +175,13 @@ object Pattern {
     }
   }
 
+  object OprExpr {
+    def apply(opr:String) = {
+      val base = Except(ClsOpr(Some(AST.Opr(opr).prec)), Any())
+      base.many1.build
+    }
+  }
+
   object NonSpacedExpr {
     def apply() = Any(Some(false)).many1.build
   }

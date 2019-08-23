@@ -92,7 +92,7 @@ class Builder(
         }
 
         val resolved = mdef.fin(pfxMatch, shiftSegs.toList().map(_.el))
-        val template = Macro.Match(pfxMatch, shiftSegs, resolved)
+        val template = Macro.Match(AST.Marker(0), pfxMatch, shiftSegs, resolved)
         val newTok   = Shifted(segs2.head.off, template)
 
         (newLeftStream, newTok, tailStream)
@@ -113,9 +113,8 @@ class Builder(
 
   def buildAsModule(): AST = {
     build(List())._2.head.el match {
-      case Macro.Match(_, _, mod) => mod
-      case _ =>
-        throw new scala.Error("Impossible happened.")
+      case m: Macro.Match => m.resolved
+      case _              => throw new scala.Error("Impossible happened.")
     }
   }
 }
@@ -169,7 +168,8 @@ object Builder {
       reversed: Boolean = false
     ): (Shifted[Match.Segment], AST.Stream) = {
       pat.matchOpt(revStream.reverse, lineBegin, reversed) match {
-        case None => throw new Error(
+        case None =>
+          throw new Error(
             "Internal error: template pattern segment was unmatched"
           )
         case Some(rr) =>

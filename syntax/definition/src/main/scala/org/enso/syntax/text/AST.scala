@@ -674,6 +674,7 @@ object AST {
     //// Matched ////
 
     final case class Match(
+      marker: Marker,
       pfx: Option[Pattern.Match],
       segs: Shifted.List1[Match.Segment],
       resolved: AST
@@ -843,7 +844,7 @@ object AST {
     val symbol = "#"
 
     final case class SingleLine(text: String) extends Comment {
-      val repr               = R + Comment.symbol + text
+      val repr               = R + symbol + symbol + text
       def map(f: AST => AST) = this
     }
 
@@ -860,12 +861,12 @@ object AST {
             }
             (R + line) +: indentedLines
         }
-        R + "#" + commentBlock
+        R + symbol + symbol + commentBlock
       }
     }
 
-    final case class Structural(ast: AST) extends AST {
-      val repr               = R + symbol + symbol + " " + ast
+    final case class Disable(ast: AST) extends AST {
+      val repr               = R + symbol + " " + ast
       def map(f: AST => AST) = copy(ast = f(ast))
     }
 

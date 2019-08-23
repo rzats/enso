@@ -249,11 +249,9 @@ object Main extends App {
 //val inp = "(a) b = c"
 //val inp = "a = b -> c"
 //val inp = "a = b -> c d"
-  val inp = "foreign Py foo"
-  val inp2 =
-    """(a) c = b"""
+  val inp = "x = skip a.b"
 //  val inp = "x(x[a))"
-  val out = parser.run(new Reader(inp2), Seq())
+  val out = parser.run(new Reader(inp), Seq())
   pprint.pprintln(out, width = 50, height = 10000)
 
   out match {
