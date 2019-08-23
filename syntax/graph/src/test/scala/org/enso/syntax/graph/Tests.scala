@@ -1,6 +1,7 @@
 package org.enso.syntax.graph
 
 import org.enso.data.List1
+import org.enso.syntax.graph
 import org.enso.syntax.graph.Extensions._
 import org.enso.syntax.text.AST
 import org.enso.syntax.graph.API._
@@ -18,18 +19,9 @@ final case class StateManagerMock(var program: String) extends StateManager {
     Seq(StateManagerMock.mainModule)
 
   override def getModule(module: Module.Id): AST.Module = {
-    if(module.)
-    val moduleAst = ParserUtils.parse(program)
-    var counter   = 0;
-    moduleAst.map(ast => {
-      // unmarked node asts should get their markers
-      if (ast.requiresId) {
-        val markedAst = AST.Marked(AST.Marker(counter), ast)
-        counter += 1
-        markedAst
-      } else
-        ast
-    })
+    if (module == StateManagerMock.mainModule)
+      ast
+    else throw new graph.StateManager.ModuleNotFoundException(module)
   }
 
   override def setModule(module: Module.Id, ast: AST.Module): Unit = {
