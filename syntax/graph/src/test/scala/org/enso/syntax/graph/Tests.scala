@@ -1,11 +1,9 @@
 package org.enso.syntax.graph
 
 import org.enso.data.List1
-import org.enso.syntax.graph
 import org.enso.syntax.graph.Extensions._
-import org.enso.syntax.graph.CommonAPI.Module.Id
 import org.enso.syntax.text.AST
-import org.enso.syntax.graph.CommonAPI._
+import org.enso.syntax.graph.API._
 import org.enso.syntax.text.AST.Cons
 import org.scalatest._
 
@@ -19,7 +17,8 @@ final case class StateManagerMock(var program: String) extends StateManager {
   override def availableModules(): Seq[Module.Id] =
     Seq(StateManagerMock.mainModule)
 
-  override def getModule(module: Id): AST.Module = {
+  override def getModule(module: Module.Id): AST.Module = {
+    if(module.)
     val moduleAst = ParserUtils.parse(program)
     var counter   = 0;
     moduleAst.map(ast => {
@@ -33,7 +32,7 @@ final case class StateManagerMock(var program: String) extends StateManager {
     })
   }
 
-  override def setModule(module: Id, ast: AST.Module): Unit = {
+  override def setModule(module: Module.Id, ast: AST.Module): Unit = {
     if (module != StateManagerMock.mainModule)
       throw new Exception(s"no such module: $module")
 

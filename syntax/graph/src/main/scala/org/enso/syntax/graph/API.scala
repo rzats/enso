@@ -76,6 +76,13 @@ trait StateManager {
   // TODO: external update notifications
 }
 
+object StateManager {
+  case class ModuleNotFoundException(module: API.Module.Id) extends Exception {
+    override def getMessage: String =
+      s"Module $module cannot be found in the project"
+  }
+}
+
 trait NotificationSink {
   def retrieve(notification: API.Notification): Unit
 }

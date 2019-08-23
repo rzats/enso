@@ -10,7 +10,6 @@ import org.enso.flexer.Reader
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Import
 import org.enso.syntax.text.Parser
-import org.enso.syntax.graph.CommonAPI.Module
 import org.enso.syntax.text.AST.App.Infix
 import org.enso.syntax.text.AST.Block.Line
 
@@ -147,8 +146,17 @@ object ParserUtils {
     val parser = new Parser()
     val result = parser.run(new Reader(program), markers)
     val ast    = expectAst(result)
-    ast
-    // parser.resolveMacros(ast)
+
+    var counter = 0
+    ast.map(astNode => {
+      // unmarked node asts should get their markers
+      if (astNode.requiresId) {
+        val markedAst = AST.Marked(AST.Marker(counter), astNode)
+        counter += 1
+        markedAst
+      } else
+        astNode
+    })
   }
 }
 
@@ -156,8 +164,6 @@ final case class DoubleRepresentation(
   state: StateManager,
   notifier: NotificationSink
 ) extends GraphAPI {
-  import CommonAPI._
-  import API._
 
   def getGraph(loc: API.Definition.Graph.Location): Definition.Graph.Info = ???
   def getGraph(loc: Module.Graph.Location): Module.Graph.Info = {
