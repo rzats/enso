@@ -463,3 +463,4 @@ class ParserSpec extends FlatSpec with Matchers {
 // [ ] Comments parsing
 // [ ] Undefined parsing
 // [ ] All block types
+// [ ] Unary minus

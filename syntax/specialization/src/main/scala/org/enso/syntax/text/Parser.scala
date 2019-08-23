@@ -245,7 +245,7 @@ object Main extends App {
 //val inp = "(a) b = c"
 //val inp = "a = b -> c"
 //val inp = "a = b -> c d"
-  val inp = "(a)"
+  val inp = "a = +"
 //  val inp = "x(x[a))"
   val out = parser.run(new Reader(inp))
   pprint.pprintln(out, width = 50, height = 10000)

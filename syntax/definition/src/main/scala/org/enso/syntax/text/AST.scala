@@ -9,10 +9,12 @@ import org.enso.syntax.text.ast.Repr.R
 import org.enso.syntax.text.ast.Repr
 import org.enso.syntax.text.ast.opr
 import org.enso.syntax.text.ast.text
+import java.util.UUID
 
 import scala.annotation.tailrec
 
 sealed trait AST extends AST.Symbol {
+  val id: Option[UUID]
   def map(f: AST => AST): AST
 }
 
@@ -21,7 +23,7 @@ object AST {
   object implicits extends Ident.implicits {
     implicit def stringToAST(str: String): AST = {
       if (str == "") throw new Error("Empty literal")
-      if (str == "_") Blank
+      if (str == "_") Blank()
       else if (str.head.isLower) Var(str)
       else if (str.head.isUpper) Cons(str)
       else Opr(str)
@@ -58,8 +60,8 @@ object AST {
   def tokenize(ast: AST): Shifted.List1[AST] = {
     @tailrec
     def go(ast: AST, out: AST.Stream): Shifted.List1[AST] = ast match {
-      case _App(fn, off, arg) => go(fn, Shifted(off, arg) :: out)
-      case anyAst             => Shifted.List1(anyAst, out)
+      case _App(fn, off, arg, _) => go(fn, Shifted(off, arg) :: out)
+      case anyAst                => Shifted.List1(anyAst, out)
     }
     go(ast, List())
   }
@@ -68,14 +70,19 @@ object AST {
   //// Invalid /////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  trait Invalid extends AST
+  trait Invalid extends AST {
+    val id = None
+  }
 
   final case class Unrecognized(str: String) extends Invalid {
     val repr               = str
     def map(f: AST => AST) = this
   }
 
-  final case class Unexpected(msg: String, stream: Stream) extends Invalid {
+  final case class Unexpected(
+    msg: String,
+    stream: Stream
+  ) extends Invalid {
     val repr = R + stream
     def map(f: AST => AST) =
       copy(stream = stream.map(t => t.copy(el = f(t.el))))
@@ -102,8 +109,10 @@ object AST {
     val name: String
   }
   object Ident {
-    final case class InvalidSuffix(elem: Ident, suffix: String)
-        extends AST.Invalid {
+    final case class InvalidSuffix(
+      elem: Ident,
+      suffix: String
+    ) extends AST.Invalid {
       val repr               = R + elem + suffix
       def map(f: AST => AST) = this
     }
@@ -111,7 +120,7 @@ object AST {
     trait implicits extends Var.implicits with Cons.implicits {
       implicit def stringToIdent(str: String): Ident = {
         if (str == "") throw new Error("Empty literal")
-        if (str == "_") Blank
+        if (str == "_") Blank()
         else if (str.head.isLower) Var(str)
         else if (str.head.isUpper) Cons(str)
         else Opr(str)
@@ -123,13 +132,13 @@ object AST {
   //// Ident///////////// //////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  final case object Blank extends Ident {
+  final case class Blank(id: Option[UUID] = None) extends Ident {
     val name               = "_"
     val repr               = name
     def map(f: AST => AST) = this
   }
 
-  final case class Var(name: String) extends Ident {
+  final case class Var(name: String, id: Option[UUID] = None) extends Ident {
     val repr               = name
     def map(f: AST => AST) = this
   }
@@ -139,11 +148,14 @@ object AST {
     }
   }
 
-  final case class Cons(name: String) extends Ident {
+  type Cons = _Cons
+  final case class _Cons(name: String, id: Option[UUID] = None) extends Ident {
     val repr               = name
     def map(f: AST => AST) = this
   }
   object Cons {
+    def apply(name: String): Cons           = _Cons(name)
+    def unapply(t: Cons):    Option[String] = Some(t.name)
     trait implicits {
       implicit def stringToCons(str: String): Cons = Cons(str)
     }
@@ -153,16 +165,21 @@ object AST {
   //// Opr /////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  final case class Opr(name: String) extends Opr.Class {
+  type Opr = _Opr
+  final case class _Opr(name: String, id: Option[UUID] = None)
+      extends Opr.Class {
     val (prec, assoc)      = Opr.Info.of(name)
     val repr               = name
     def map(f: AST => AST) = this
   }
-
   object Opr {
+    def apply(name: String): Opr            = _Opr(name)
+    def unapply(t: Opr):     Option[String] = Some(t.name)
+
     sealed trait Class extends Ident
 
-    final case class Mod(name: String) extends Opr.Class {
+    final case class Mod(name: String, id: Option[UUID] = None)
+        extends Opr.Class {
       override val repr      = name + '='
       def map(f: AST => AST) = this
     }
@@ -185,7 +202,12 @@ object AST {
   //////////////////////////////////////////////////////////////////////////////
 
   type App = _App
-  final case class _App(func: AST, off: Int = 1, arg: AST) extends AST {
+  final case class _App(
+    func: AST,
+    off: Int = 1,
+    arg: AST,
+    id: Option[UUID] = None
+  ) extends AST {
     val repr               = R + func + off + arg
     def map(f: AST => AST) = copy(func = f(func), arg = f(arg))
   }
@@ -210,7 +232,12 @@ object AST {
       Infix(larg, opr, rarg)
 
     type Left = _Left
-    final case class _Left(arg: AST, off: Int = 0, op: Opr) extends AST {
+    final case class _Left(
+      arg: AST,
+      off: Int = 0,
+      op: Opr,
+      id: Option[UUID] = None
+    ) extends AST {
       val repr               = R + arg + off + op
       def map(f: AST => AST) = copy(arg = f(arg))
     }
@@ -221,7 +248,12 @@ object AST {
     }
 
     type Right = _Right
-    final case class _Right(opr: Opr, off: Int = 0, arg: AST) extends AST {
+    final case class _Right(
+      opr: Opr,
+      off: Int = 0,
+      arg: AST,
+      id: Option[UUID] = None
+    ) extends AST {
       val repr               = R + opr + off + arg
       def map(f: AST => AST) = copy(arg = f(arg))
     }
@@ -231,7 +263,7 @@ object AST {
       def unapply(t: Right) = Some((t.opr, t.arg))
     }
 
-    final case class Sides(opr: Opr) extends AST {
+    final case class Sides(opr: Opr, id: Option[UUID] = None) extends AST {
       val repr               = R + opr
       def map(f: AST => AST) = this
     }
@@ -242,7 +274,8 @@ object AST {
       loff: Int = 1,
       opr: Opr,
       roff: Int = 1,
-      rarg: AST
+      rarg: AST,
+      id: Option[UUID] = None
     ) extends AST {
       val repr               = R + larg + loff + opr + roff + rarg
       def map(f: AST => AST) = copy(larg = f(larg), rarg = f(rarg))
@@ -264,7 +297,11 @@ object AST {
   //// Number //////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  final case class Number(base: Option[String], int: String) extends AST {
+  final case class Number(
+    base: Option[String],
+    int: String,
+    id: Option[UUID] = None
+  ) extends AST {
     val repr               = base.map(_ + "_").getOrElse("") + int
     def map(f: AST => AST) = this
   }
@@ -339,7 +376,8 @@ object AST {
 
     final case class Interpolated(
       quote: Text.Quote,
-      segments: List[Interpolated.Segment]
+      segments: List[Interpolated.Segment],
+      id: Option[UUID] = None
     ) extends Class[Interpolated] {
       type Segment = Interpolated.Segment
       val quoteChar = '\''
@@ -350,8 +388,11 @@ object AST {
         Raw(quote, segments.map(s => Segment.Plain(s.repr.show())))
     }
 
-    final case class Raw(quote: Text.Quote, segments: List[Raw.Segment])
-        extends Class[Raw] {
+    final case class Raw(
+      quote: Text.Quote,
+      segments: List[Raw.Segment],
+      id: Option[UUID] = None
+    ) extends Class[Raw] {
       type Segment = Raw.Segment
       val quoteChar = '"'
       def _dup(quote: Quote, segments: List[Segment]) =
@@ -364,7 +405,8 @@ object AST {
       indent: Int,
       quoteChar: Char,
       quote: Text.Quote,
-      segments: List[Segment]
+      segments: List[Segment],
+      id: Option[UUID] = None
     ) extends Class[MultiLine] {
       type Segment = Text.Segment
       override lazy val bodyRepr = R + segments.flatMap {
@@ -495,7 +537,8 @@ object AST {
     override val indent: Int,
     override val emptyLines: List[Int],
     override val firstLine: Block.Line.NonEmpty,
-    override val lines: List[Block.Line]
+    override val lines: List[Block.Line],
+    override val id: Option[UUID] = None
   ) extends Block(typ, indent, emptyLines, firstLine, lines) {
     def replaceType(typ: Block.Type) = copy(typ = typ)
     def map(f: AST => AST) =
@@ -507,7 +550,8 @@ object AST {
     override val indent: Int,
     override val emptyLines: List[Int],
     override val firstLine: Block.Line.NonEmpty,
-    override val lines: List[Block.Line]
+    override val lines: List[Block.Line],
+    override val id: Option[UUID] = None
   ) extends Block(typ, indent, emptyLines, firstLine, lines) {
     def replaceType(typ: Block.Type) = copy(typ = typ)
     def map(f: AST => AST) =
@@ -613,7 +657,8 @@ object AST {
 
   import Block.Line
 
-  final case class Module(lines: List1[Line]) extends AST {
+  final case class Module(lines: List1[Line], id: Option[UUID] = None)
+      extends AST {
     val repr = R + lines.head + lines.tail.map(newline + _)
 
     def map(f: AST => AST)        = copy(lines = lines.map(_.map(f)))
@@ -648,7 +693,8 @@ object AST {
     final case class Match(
       pfx: Option[Pattern.Match],
       segs: Shifted.List1[Match.Segment],
-      resolved: AST
+      resolved: AST,
+      id: Option[UUID] = None
     ) extends Macro {
       val repr = {
         val pfxStream = pfx.map(_.toStream.reverse).getOrElse(List())
@@ -676,7 +722,8 @@ object AST {
 
     final case class Ambiguous(
       segs: Shifted.List1[Ambiguous.Segment],
-      paths: Tree[AST, Unit]
+      paths: Tree[AST, Unit],
+      id: Option[UUID] = None
     ) extends Macro {
       val repr               = R + segs.map(_.repr)
       def map(f: AST => AST) = this
@@ -814,13 +861,17 @@ object AST {
   object Comment {
     val symbol = "#"
 
-    final case class SingleLine(text: String) extends Comment {
+    final case class SingleLine(text: String, id: Option[UUID] = None)
+        extends Comment {
       val repr               = R + symbol + symbol + text
       def map(f: AST => AST) = this
     }
 
-    final case class MultiLine(offset: Int, lines: List[String])
-        extends Comment {
+    final case class MultiLine(
+      offset: Int,
+      lines: List[String],
+      id: Option[UUID] = None
+    ) extends Comment {
       def map(f: AST => AST) = this
       val repr = {
         val commentBlock = lines match {
@@ -836,7 +887,7 @@ object AST {
       }
     }
 
-    final case class Disable(ast: AST) extends AST {
+    final case class Disable(ast: AST, id: Option[UUID] = None) extends AST {
       val repr               = R + symbol + " " + ast
       def map(f: AST => AST) = copy(ast = f(ast))
     }
@@ -847,7 +898,8 @@ object AST {
   //// Import //////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  final case class Import(path: List1[Cons]) extends AST {
+  final case class Import(path: List1[Cons], id: Option[UUID] = None)
+      extends AST {
     val repr               = R
     def map(f: AST => AST) = this
   }
@@ -861,7 +913,11 @@ object AST {
   //// Mixfix //////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  final case class Mixfix(name: List1[Ident], args: List1[AST]) extends AST {
+  final case class Mixfix(
+    name: List1[Ident],
+    args: List1[AST],
+    id: Option[UUID] = None
+  ) extends AST {
     val repr = {
       val lastRepr = if (name.length - args.length > 0) List(R) else List()
       val argsRepr = args.toList.map(R + " " + _) ++ lastRepr
@@ -875,7 +931,8 @@ object AST {
   //// Group ///////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  final case class Group(body: Option[AST] = None) extends AST {
+  final case class Group(body: Option[AST] = None, id: Option[UUID] = None)
+      extends AST {
     val repr               = R + body
     def map(f: AST => AST) = copy(body = body.map(f))
   }
@@ -889,8 +946,12 @@ object AST {
   //// Def /////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  final case class Def(name: Cons, args: List[AST], body: Option[AST])
-      extends AST {
+  final case class Def(
+    name: Cons,
+    args: List[AST],
+    body: Option[AST],
+    id: Option[UUID] = None
+  ) extends AST {
     import Def._
     val repr               = R + symbol ++ name + args.map(R ++ _) + body
     def map(f: AST => AST) = copy(args = args.map(f), body = body.map(f))
@@ -905,8 +966,12 @@ object AST {
   //// Foreign /////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  final case class Foreign(indent: Int, lang: String, code: List[String])
-      extends AST {
+  final case class Foreign(
+    indent: Int,
+    lang: String,
+    code: List[String],
+    id: Option[UUID] = None
+  ) extends AST {
     val repr = {
       val code2 = code.map(R + indent + _).mkString("\n")
       R + "foreign " + lang + "\n" + code2

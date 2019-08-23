@@ -83,8 +83,8 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     def last(): Option[AST] = {
       @tailrec
       def go(ast: AST): AST = ast match {
-        case AST._App(_, _, t) => go(t)
-        case t                 => t
+        case app: AST.App => go(app.arg)
+        case t            => t
       }
       current.map(go)
     }
@@ -175,7 +175,7 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
 
   ROOT            || ident._var   || reify { ident.on(AST.Var(_)) }
   ROOT            || ident.cons   || reify { ident.on(AST.Cons(_)) }
-  ROOT            || "_"          || reify { ident.on(AST.Blank) }
+  ROOT            || "_"          || reify { ident.on(AST.Blank()) }
   ident.SFX_CHECK || ident.errSfx || reify { ident.onErrSfx() }
   ident.SFX_CHECK || always       || reify { ident.onNoErrSfx() }
 
@@ -648,7 +648,7 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
   ////////////////
 
   final def onUnrecognized(): Unit = logger.trace {
-    result.app(AST.Unrecognized)
+    result.app(AST.Unrecognized(_))
   }
 
   final def onEOF(): Unit = logger.trace {

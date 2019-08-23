@@ -150,8 +150,8 @@ object Builtin {
               case AST.App(_, arg)           => arg
               case AST.App.Infix(self, _, _) => go(self)
               case m: AST.Macro.Match        => go(m.resolved)
-              case AST.Group(None)           => t
-              case AST.Group(Some(s))        => go(s)
+              case AST.Group(None, _)        => t
+              case AST.Group(Some(s), _)     => go(s)
               case _                         => t
             }
             go(body)
