@@ -13,6 +13,8 @@ import org.enso.syntax.text.ast.opr.Prec
 
 import scala.annotation.tailrec
 
+import org.enso.syntax.text.test2
+
 ////////////////
 //// Parser ////
 ////////////////
@@ -139,8 +141,9 @@ class Parser {
   import Parser._
   private val engine = newEngine()
 
-  def run(input: Reader): Result[AST.Module] =
+  def run(input: Reader, idMap: Map[(Int, Int), AST.ID]): Result[AST.Module] = {
     engine.run(input).map(Macro.run)
+  }
 
   /** Although this function does not use any Parser-specific API now, it will
     * use such in the future when the interpreter will provide information about
@@ -245,9 +248,9 @@ object Main extends App {
 //val inp = "(a) b = c"
 //val inp = "a = b -> c"
 //val inp = "a = b -> c d"
-  val inp = "a = +"
+  val inp = "a + b * c"
 //  val inp = "x(x[a))"
-  val out = parser.run(new Reader(inp))
+  val out = parser.run(new Reader(inp), Map())
   pprint.pprintln(out, width = 50, height = 10000)
 
   out match {
@@ -264,8 +267,15 @@ object Main extends App {
       println(mod.show())
       println("------")
 
+      mod.traverseWithOff { (off, ast) =>
+        println(s">> $off - ${off + ast.span}: $ast")
+        ast
+      }
+
   }
   println()
+
+  test2.AST.main()
 
 }
 

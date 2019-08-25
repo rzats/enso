@@ -53,6 +53,7 @@ scalacOptions in ThisBuild ++= Seq(
   "-Ywarn-unused:patvars",            // Warn if a variable bound in a pattern is unused.
   "-Ywarn-unused:privates",           // Warn if a private member is unused.
   "-Ywarn-value-discard",             // Warn when non-Unit expression results are unused.
+  "-Ypartial-unification",
 //  "-language:implicitConversions",
   "-Xmacro-settings:-logging@org.enso"
 //  "-Xmacro-settings:-logging@org.enso.flexer.automata"
@@ -120,7 +121,8 @@ lazy val syntax_definition = (project in file("syntax/definition"))
       "org.scala-lang"     % "scala-compiler" % "2.12.8",
       "org.feijoas"        %% "mango"         % "0.14",
       "org.apache.commons" % "commons-text"   % "1.6",
-      "org.scalameta"      %% "scalameta"     % "4.2.0"
+      "org.scalameta"      %% "scalameta"     % "4.2.0",
+      "org.typelevel"      %% "kittens"       % "1.2.1"
     ),
     libraryDependencies ++= Seq(
       "com.github.julien-truffaut" %% "monocle-core"  % monocleVersion,

@@ -14,11 +14,28 @@ import java.util.UUID
 import scala.annotation.tailrec
 
 sealed trait AST extends AST.Symbol {
-  val id: Option[UUID]
+  import AST._
+
+  val id: Option[ID]
+  def setID(id: ID): AST
+  def withNewID(): AST = this.setID(UUID.randomUUID())
   def map(f: AST => AST): AST
+  def mapWithOff(f: (Int, AST) => AST): AST
+
+  def traverseWithOff(f: (Int, AST) => AST): AST = {
+    def go(i: Int, t: AST): AST = {
+      t.mapWithOff { (j, ast) =>
+        val off = i + j
+        go(off, f(off, ast))
+      }
+    }
+    go(0, this)
+  }
 }
 
 object AST {
+
+  type ID = UUID
 
   object implicits extends Ident.implicits {
     implicit def stringToAST(str: String): AST = {
@@ -27,6 +44,16 @@ object AST {
       else if (str.head.isLower) Var(str)
       else if (str.head.isUpper) Cons(str)
       else Opr(str)
+    }
+  }
+
+  def offMapStream(stream: AST.Stream, f: (Int, AST) => AST): AST.Stream = {
+    var off = 0
+    stream.map { t =>
+      off += t.off
+      val out = t.copy(el = f(off, t.el))
+      off += t.el.span
+      out
     }
   }
 
@@ -71,7 +98,9 @@ object AST {
   //////////////////////////////////////////////////////////////////////////////
 
   trait Invalid extends AST {
-    val id = None
+    val id                               = None
+    def setID(newID: ID)                 = this
+    def mapWithOff(f: (Int, AST) => AST) = this
   }
 
   final case class Unrecognized(str: String) extends Invalid {
@@ -86,18 +115,10 @@ object AST {
     val repr = R + stream
     def map(f: AST => AST) =
       copy(stream = stream.map(t => t.copy(el = f(t.el))))
-  }
+    override def mapWithOff(f: (Int, AST) => AST) =
+      copy(stream = offMapStream(stream, f))
 
-//  //////////////////////////////////////////////////////////////////////////////
-//  //// Marker //////////////////////////////////////////////////////////////////
-//  //////////////////////////////////////////////////////////////////////////////
-//
-//  final case class Marker(id: Int)
-//
-//  final case class Marked(marker: Marker, ast: AST) extends AST {
-//    val repr               = ast.repr
-//    def map(f: AST => AST) = copy(ast = f(ast))
-//  }
+  }
 
   //////////////////////////////////////////////////////////////////////////////
   //// Literal /////////////////////////////////////////////////////////////////
@@ -129,18 +150,22 @@ object AST {
   }
 
   //////////////////////////////////////////////////////////////////////////////
-  //// Ident///////////// //////////////////////////////////////////////////////
+  //// Ident ///////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  final case class Blank(id: Option[UUID] = None) extends Ident {
-    val name               = "_"
-    val repr               = name
-    def map(f: AST => AST) = this
+  final case class Blank(id: Option[ID] = None) extends Ident {
+    val name                             = "_"
+    val repr                             = name
+    def setID(newID: ID)                 = copy(id = Some(newID))
+    def map(f: AST => AST)               = this
+    def mapWithOff(f: (Int, AST) => AST) = this
   }
 
-  final case class Var(name: String, id: Option[UUID] = None) extends Ident {
-    val repr               = name
-    def map(f: AST => AST) = this
+  final case class Var(name: String, id: Option[ID] = None) extends Ident {
+    val repr                             = name
+    def setID(newID: ID)                 = copy(id = Some(newID))
+    def map(f: AST => AST)               = this
+    def mapWithOff(f: (Int, AST) => AST) = this
   }
   object Var {
     trait implicits {
@@ -149,9 +174,11 @@ object AST {
   }
 
   type Cons = _Cons
-  final case class _Cons(name: String, id: Option[UUID] = None) extends Ident {
-    val repr               = name
-    def map(f: AST => AST) = this
+  final case class _Cons(name: String, id: Option[ID] = None) extends Ident {
+    val repr                             = name
+    def setID(newID: ID)                 = copy(id = Some(newID))
+    def map(f: AST => AST)               = this
+    def mapWithOff(f: (Int, AST) => AST) = this
   }
   object Cons {
     def apply(name: String): Cons           = _Cons(name)
@@ -166,11 +193,12 @@ object AST {
   //////////////////////////////////////////////////////////////////////////////
 
   type Opr = _Opr
-  final case class _Opr(name: String, id: Option[UUID] = None)
-      extends Opr.Class {
-    val (prec, assoc)      = Opr.Info.of(name)
-    val repr               = name
-    def map(f: AST => AST) = this
+  final case class _Opr(name: String, id: Option[ID] = None) extends Opr.Class {
+    val (prec, assoc)                    = Opr.Info.of(name)
+    val repr                             = name
+    def setID(newID: ID)                 = copy(id = Some(newID))
+    def map(f: AST => AST)               = this
+    def mapWithOff(f: (Int, AST) => AST) = this
   }
   object Opr {
     def apply(name: String): Opr            = _Opr(name)
@@ -178,10 +206,12 @@ object AST {
 
     sealed trait Class extends Ident
 
-    final case class Mod(name: String, id: Option[UUID] = None)
+    final case class Mod(name: String, id: Option[ID] = None)
         extends Opr.Class {
-      override val repr      = name + '='
-      def map(f: AST => AST) = this
+      override val repr                    = name + '='
+      def setID(newID: ID)                 = copy(id = Some(newID))
+      def map(f: AST => AST)               = this
+      def mapWithOff(f: (Int, AST) => AST) = this
     }
 
     val app: Opr = Opr(" ")
@@ -206,10 +236,13 @@ object AST {
     func: AST,
     off: Int = 1,
     arg: AST,
-    id: Option[UUID] = None
+    id: Option[ID] = None
   ) extends AST {
     val repr               = R + func + off + arg
+    def setID(newID: ID)   = copy(id = Some(newID))
     def map(f: AST => AST) = copy(func = f(func), arg = f(arg))
+    def mapWithOff(f: (Int, AST) => AST) =
+      copy(func = f(0, func), arg = f(func.span + off, arg))
   }
   object App {
     def apply(func: AST, off: Int = 1, arg: AST): App = _App(func, off, arg)
@@ -236,10 +269,12 @@ object AST {
       arg: AST,
       off: Int = 0,
       op: Opr,
-      id: Option[UUID] = None
+      id: Option[ID] = None
     ) extends AST {
-      val repr               = R + arg + off + op
-      def map(f: AST => AST) = copy(arg = f(arg))
+      val repr                             = R + arg + off + op
+      def setID(newID: ID)                 = copy(id = Some(newID))
+      def map(f: AST => AST)               = copy(arg = f(arg))
+      def mapWithOff(f: (Int, AST) => AST) = copy(arg = f(0, arg)) // x
     }
     object Left {
       def apply(arg: AST, off: Int, op: Opr): Left = _Left(arg, off, op)
@@ -252,10 +287,12 @@ object AST {
       opr: Opr,
       off: Int = 0,
       arg: AST,
-      id: Option[UUID] = None
+      id: Option[ID] = None
     ) extends AST {
-      val repr               = R + opr + off + arg
-      def map(f: AST => AST) = copy(arg = f(arg))
+      val repr                             = R + opr + off + arg
+      def setID(newID: ID)                 = copy(id = Some(newID))
+      def map(f: AST => AST)               = copy(arg = f(arg))
+      def mapWithOff(f: (Int, AST) => AST) = copy(arg = f(opr.span + off, arg))
     }
     object Right {
       def apply(opr: Opr, off: Int, arg: AST): Right = _Right(opr, off, arg)
@@ -263,9 +300,11 @@ object AST {
       def unapply(t: Right) = Some((t.opr, t.arg))
     }
 
-    final case class Sides(opr: Opr, id: Option[UUID] = None) extends AST {
-      val repr               = R + opr
-      def map(f: AST => AST) = this
+    final case class Sides(opr: Opr, id: Option[ID] = None) extends AST {
+      val repr                             = R + opr
+      def setID(newID: ID)                 = copy(id = Some(newID))
+      def map(f: AST => AST)               = this
+      def mapWithOff(f: (Int, AST) => AST) = this
     }
 
     type Infix = _Infix
@@ -275,10 +314,16 @@ object AST {
       opr: Opr,
       roff: Int = 1,
       rarg: AST,
-      id: Option[UUID] = None
+      id: Option[ID] = None
     ) extends AST {
       val repr               = R + larg + loff + opr + roff + rarg
+      def setID(newID: ID)   = copy(id = Some(newID))
       def map(f: AST => AST) = copy(larg = f(larg), rarg = f(rarg))
+      def mapWithOff(f: (Int, AST) => AST) = copy(
+        larg = f(0, larg),
+        rarg = f(larg.span + loff + opr.span + roff, rarg)
+      )
+
     }
     object Infix {
       def apply(larg: AST, loff: Int, opr: Opr, roff: Int, rarg: AST): Infix =
@@ -300,10 +345,12 @@ object AST {
   final case class Number(
     base: Option[String],
     int: String,
-    id: Option[UUID] = None
+    id: Option[ID] = None
   ) extends AST {
-    val repr               = base.map(_ + "_").getOrElse("") + int
-    def map(f: AST => AST) = this
+    val repr                             = base.map(_ + "_").getOrElse("") + int
+    def setID(newID: ID)                 = copy(id = Some(newID))
+    def map(f: AST => AST)               = this
+    def mapWithOff(f: (Int, AST) => AST) = this
   }
 
   object Number {
@@ -340,7 +387,8 @@ object AST {
       lazy val bodyRepr  = R + segments
       lazy val repr      = R + quoteRepr + bodyRepr + quoteRepr
 
-      def map(f: AST => AST) = this
+      def map(f: AST => AST)               = this
+      def mapWithOff(f: (Int, AST) => AST) = this
 
       def _dup(quote: Quote, segments: List[Segment]): This
       def dup(quote: Quote = quote, segments: List[Segment] = segments) =
@@ -377,10 +425,11 @@ object AST {
     final case class Interpolated(
       quote: Text.Quote,
       segments: List[Interpolated.Segment],
-      id: Option[UUID] = None
+      id: Option[ID] = None
     ) extends Class[Interpolated] {
       type Segment = Interpolated.Segment
-      val quoteChar = '\''
+      val quoteChar        = '\''
+      def setID(newID: ID) = copy(id = Some(newID))
       def _dup(quote: Quote, segments: List[Segment]): Interpolated =
         copy(quote, segments)
 
@@ -391,10 +440,11 @@ object AST {
     final case class Raw(
       quote: Text.Quote,
       segments: List[Raw.Segment],
-      id: Option[UUID] = None
+      id: Option[ID] = None
     ) extends Class[Raw] {
       type Segment = Raw.Segment
-      val quoteChar = '"'
+      val quoteChar        = '"'
+      def setID(newID: ID) = copy(id = Some(newID))
       def _dup(quote: Quote, segments: List[Segment]) =
         copy(quote, segments)
     }
@@ -406,9 +456,10 @@ object AST {
       quoteChar: Char,
       quote: Text.Quote,
       segments: List[Segment],
-      id: Option[UUID] = None
+      id: Option[ID] = None
     ) extends Class[MultiLine] {
       type Segment = Text.Segment
+      def setID(newID: ID) = copy(id = Some(newID))
       override lazy val bodyRepr = R + segments.flatMap {
           case EOL(true) => List(EOL(), Plain(" " * indent))
           case s         => List(s)
@@ -538,11 +589,24 @@ object AST {
     override val emptyLines: List[Int],
     override val firstLine: Block.Line.NonEmpty,
     override val lines: List[Block.Line],
-    override val id: Option[UUID] = None
+    override val id: Option[ID] = None
   ) extends Block(typ, indent, emptyLines, firstLine, lines) {
     def replaceType(typ: Block.Type) = copy(typ = typ)
+    def setID(newID: ID)             = copy(id  = Some(newID))
     def map(f: AST => AST) =
       copy(firstLine = firstLine.map(f), lines = lines.map(_.map(f)))
+    def mapWithOff(f: (Int, AST) => AST) = {
+      var off        = headRepr.span + indent
+      val firstLine2 = firstLine.map(f(off, _))
+      off += firstLine.span
+      val lines2 = lines.map { line =>
+        off += 1 + indent
+        val line2 = line.map(f(off, _))
+        off += line.span
+        line2
+      }
+      copy(firstLine = firstLine2, lines = lines2)
+    }
   }
 
   case class OrphanBlock(
@@ -551,11 +615,24 @@ object AST {
     override val emptyLines: List[Int],
     override val firstLine: Block.Line.NonEmpty,
     override val lines: List[Block.Line],
-    override val id: Option[UUID] = None
+    override val id: Option[ID] = None
   ) extends Block(typ, indent, emptyLines, firstLine, lines) {
     def replaceType(typ: Block.Type) = copy(typ = typ)
+    def setID(newID: ID)             = copy(id  = Some(newID))
     def map(f: AST => AST) =
       copy(firstLine = firstLine.map(f), lines = lines.map(_.map(f)))
+    def mapWithOff(f: (Int, AST) => AST) = {
+      var off        = headRepr.span + indent
+      val firstLine2 = firstLine.map(f(off, _))
+      off += firstLine.span
+      val lines2 = lines.map { line =>
+        off += 1 + indent
+        val line2 = line.map(f(off, _))
+        off += line.span
+        line2
+      }
+      copy(firstLine = firstLine2, lines = lines2)
+    }
     override lazy val headRepr = R
   }
 
@@ -657,12 +734,22 @@ object AST {
 
   import Block.Line
 
-  final case class Module(lines: List1[Line], id: Option[UUID] = None)
+  final case class Module(lines: List1[Line], id: Option[ID] = None)
       extends AST {
-    val repr = R + lines.head + lines.tail.map(newline + _)
+    val repr             = R + lines.head + lines.tail.map(newline + _)
+    def setID(newID: ID) = copy(id = Some(newID))
 
-    def map(f: AST => AST)        = copy(lines = lines.map(_.map(f)))
     def mapLines(f: Line => Line) = Module(lines.map(f))
+    def map(f: AST => AST)        = copy(lines = lines.map(_.map(f)))
+    def mapWithOff(f: (Int, AST) => AST) = {
+      var off = 0
+      val lines2 = lines.map { line =>
+        val line2 = line.map(f(off, _))
+        off += 1 + line.span
+        line2
+      }
+      copy(lines = lines2)
+    }
   }
 
   object Module {
@@ -694,7 +781,7 @@ object AST {
       pfx: Option[Pattern.Match],
       segs: Shifted.List1[Match.Segment],
       resolved: AST,
-      id: Option[UUID] = None
+      id: Option[ID] = None
     ) extends Macro {
       val repr = {
         val pfxStream = pfx.map(_.toStream.reverse).getOrElse(List())
@@ -702,7 +789,9 @@ object AST {
         val segsRepr  = segs.map(_.repr)
         R + pfxRepr + segsRepr
       }
-      def map(f: AST => AST) = this
+      def setID(newID: ID)                 = copy(id = Some(newID))
+      def map(f: AST => AST)               = this
+      def mapWithOff(f: (Int, AST) => AST) = this
       def path(): List1[AST] = segs.toList1().map(_.el.head)
     }
     object Match {
@@ -723,10 +812,12 @@ object AST {
     final case class Ambiguous(
       segs: Shifted.List1[Ambiguous.Segment],
       paths: Tree[AST, Unit],
-      id: Option[UUID] = None
+      id: Option[ID] = None
     ) extends Macro {
-      val repr               = R + segs.map(_.repr)
-      def map(f: AST => AST) = this
+      val repr                             = R + segs.map(_.repr)
+      def setID(newID: ID)                 = copy(id = Some(newID))
+      def map(f: AST => AST)               = this
+      def mapWithOff(f: (Int, AST) => AST) = this
     }
     object Ambiguous {
       final case class Segment(head: AST, body: Option[SAST]) extends Symbol {
@@ -861,18 +952,21 @@ object AST {
   object Comment {
     val symbol = "#"
 
-    final case class SingleLine(text: String, id: Option[UUID] = None)
+    final case class SingleLine(text: String, id: Option[ID] = None)
         extends Comment {
-      val repr               = R + symbol + symbol + text
-      def map(f: AST => AST) = this
+      val repr                             = R + symbol + symbol + text
+      def setID(newID: ID)                 = copy(id = Some(newID))
+      def map(f: AST => AST)               = this
+      def mapWithOff(f: (Int, AST) => AST) = this
     }
 
     final case class MultiLine(
       offset: Int,
       lines: List[String],
-      id: Option[UUID] = None
+      id: Option[ID] = None
     ) extends Comment {
-      def map(f: AST => AST) = this
+      def map(f: AST => AST)               = this
+      def mapWithOff(f: (Int, AST) => AST) = this
       val repr = {
         val commentBlock = lines match {
           case Nil => Nil
@@ -885,11 +979,14 @@ object AST {
         }
         R + symbol + symbol + commentBlock
       }
+      def setID(newID: ID) = copy(id = Some(newID))
     }
 
-    final case class Disable(ast: AST, id: Option[UUID] = None) extends AST {
-      val repr               = R + symbol + " " + ast
-      def map(f: AST => AST) = copy(ast = f(ast))
+    final case class Disable(ast: AST, id: Option[ID] = None) extends AST {
+      val repr                             = R + symbol + " " + ast
+      def setID(newID: ID)                 = copy(id = Some(newID))
+      def map(f: AST => AST)               = copy(ast = f(ast))
+      def mapWithOff(f: (Int, AST) => AST) = copy(ast = f(0, ast)) // x
     }
 
   }
@@ -898,10 +995,12 @@ object AST {
   //// Import //////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  final case class Import(path: List1[Cons], id: Option[UUID] = None)
+  final case class Import(path: List1[Cons], id: Option[ID] = None)
       extends AST {
-    val repr               = R
-    def map(f: AST => AST) = this
+    val repr                             = R
+    def setID(newID: ID)                 = copy(id = Some(newID))
+    def map(f: AST => AST)               = this
+    def mapWithOff(f: (Int, AST) => AST) = this
   }
   object Import {
     def apply(head: Cons):                   Import = Import(head, List())
@@ -916,7 +1015,7 @@ object AST {
   final case class Mixfix(
     name: List1[Ident],
     args: List1[AST],
-    id: Option[UUID] = None
+    id: Option[ID] = None
   ) extends AST {
     val repr = {
       val lastRepr = if (name.length - args.length > 0) List(R) else List()
@@ -924,17 +1023,21 @@ object AST {
       val nameRepr = name.toList.map(Repr.of(_))
       R + (nameRepr, argsRepr).zipped.map(_ + _)
     }
-    def map(f: AST => AST) = copy(args = args.map(f))
+    def setID(newID: ID)                 = copy(id = Some(newID))
+    def map(f: AST => AST)               = copy(args = args.map(f))
+    def mapWithOff(f: (Int, AST) => AST) = map(f(0, _))
   }
 
   //////////////////////////////////////////////////////////////////////////////
   //// Group ///////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  final case class Group(body: Option[AST] = None, id: Option[UUID] = None)
+  final case class Group(body: Option[AST] = None, id: Option[ID] = None)
       extends AST {
-    val repr               = R + body
-    def map(f: AST => AST) = copy(body = body.map(f))
+    val repr                             = R + body
+    def setID(newID: ID)                 = copy(id = Some(newID))
+    def map(f: AST => AST)               = copy(body = body.map(f))
+    def mapWithOff(f: (Int, AST) => AST) = map(f(0, _))
   }
   object Group {
     def apply(body: AST):  Group = Group(Some(body))
@@ -950,11 +1053,14 @@ object AST {
     name: Cons,
     args: List[AST],
     body: Option[AST],
-    id: Option[UUID] = None
+    id: Option[ID] = None
   ) extends AST {
     import Def._
     val repr               = R + symbol ++ name + args.map(R ++ _) + body
+    def setID(newID: ID)   = copy(id = Some(newID))
     def map(f: AST => AST) = copy(args = args.map(f), body = body.map(f))
+
+    def mapWithOff(f: (Int, AST) => AST) = map(f(0, _))
   }
   object Def {
     def apply(name: Cons, args: List[AST]): Def = Def(name, args, None)
@@ -970,13 +1076,15 @@ object AST {
     indent: Int,
     lang: String,
     code: List[String],
-    id: Option[UUID] = None
+    id: Option[ID] = None
   ) extends AST {
     val repr = {
       val code2 = code.map(R + indent + _).mkString("\n")
       R + "foreign " + lang + "\n" + code2
     }
-    def map(f: AST => AST) = this
+    def setID(newID: ID)                 = copy(id = Some(newID))
+    def map(f: AST => AST)               = this
+    def mapWithOff(f: (Int, AST) => AST) = this
   }
 
   //////////////////////////////////////////////////////////////////////////////

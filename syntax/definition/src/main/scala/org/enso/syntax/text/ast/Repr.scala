@@ -17,7 +17,7 @@ sealed trait Repr extends Repr.Provider {
 
   val repr = this
   val byteSpan: Int
-  val span: Int
+  val span:     Int
 
   def +[T: Repr.Of](that: T): Repr =
     Seq(this, implicitly[Repr.Of[T]].of(that))
@@ -53,7 +53,7 @@ object Repr {
 
   //// Apply ////
 
-  def apply():                 Repr = Empty()
+  def apply(): Repr = Empty()
   def apply[T: Repr.Of](t: T): Repr = implicitly[Repr.Of[T]].of(t)
 
   //// Constructors ////
@@ -88,14 +88,14 @@ object Repr {
   //// Implicits ////
 
   implicit def fromString(a: String): Repr = Repr(a)
-  implicit def fromChar(a: Char):     Repr = Repr(a)
+  implicit def fromChar(a:   Char):   Repr = Repr(a)
 
-  implicit def _Provider_[T: Repr.Of](t: T): Provider = of(t)
+//  implicit def _Provider_[T: Repr.Of](t: T): Provider = of(t)
 
   //// Instances ////
 
   implicit val monoid: Monoid[Repr] = new Monoid[Repr] {
-    def empty:                     Repr = R
+    def empty: Repr = R
     def combine(l: Repr, r: Repr): Repr = l + r
   }
 
@@ -106,7 +106,16 @@ object Repr {
   trait Of[-T] {
     def of(a: T): Repr
   }
-  def of[T](t: T)(implicit ev: Repr.Of[T]) = ev.of(t)
+  object Of {
+    def apply[T: Of]: Of[T] = implicitly[Of[T]]
+  }
+  def of[T](t:   T)(implicit ev: Repr.Of[T]) = ev.of(t)
+  def span[T](t: T)(implicit ev: Repr.Of[T]) = ev.of(t).span
+
+  implicit class ToReprOps[T: Repr.Of](t: T) {
+    def repr: Repr = Repr.of(t)
+    def span: Int  = repr.span
+  }
 
   ///// Instances ////
 
