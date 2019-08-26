@@ -5,6 +5,7 @@ import org.enso.data.List1._
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.data.Tree
+import org.enso.syntax.text.ast.{Repr => RRR}
 import org.enso.syntax.text.ast.Repr.R
 import org.enso.syntax.text.ast.Repr
 import org.enso.syntax.text.ast.opr
@@ -18,6 +19,8 @@ import cats.implicits._
 import cats.derived._
 
 object AST {
+
+  type Repr[T] = Repr.Of[T]
 
   def map[F[_]: Functor, A, B](t: F[A])(f: A => B): F[B] = Functor[F].map(t)(f)
 
@@ -36,52 +39,52 @@ object AST {
 
   //// Structure ////
 
-  type AST      = ASTOf[FixedAST]
-  type Shape    = ShapeOf[FixedAST]
-  type ASTOf[T] = Tagged[ShapeOf[T]]
-  type FixedAST = Fix[ASTOf]
+  type AST            = ASTOf[FAST]
+  type FAST           = Fix[TaggedASTOf]
+  type TaggedAST      = TaggedASTOf[FAST]
+  type TaggedASTOf[T] = Tagged[ASTOf[T]]
 
   //// Aliases ////
 
   type SAST        = Shifted[AST]
   type _Stream[T]  = List[Shifted[T]]
   type _Stream1[T] = List1[Shifted[T]]
-  type Stream      = _Stream[Shape]
-  type Stream1     = _Stream1[Shape]
+  type Stream      = _Stream[AST]
+  type Stream1     = _Stream1[AST]
   type ID          = UUID
 
   //// API ////
 
-  implicit class ASTOps[T[_]](ast: T[FixedAST]) {
+  implicit class ASTOps[T[_]](ast: T[FAST]) {
     import AST.Scheme.implicits._
 
-    def repr:     Repr = ast.repr
-    def span:     Int  = repr.span
-    def byteSpan: Int  = repr.byteSpan
+    def repr:     RRR = ast.repr
+    def span:     Int = repr.span
+    def byteSpan: Int = repr.byteSpan
 
-    def map(f: AST => AST)(
+    def map(f: TaggedAST => TaggedAST)(
       implicit
-      functorForT: Functor[T],
-      reprForT: Repr.Of[T[FixedAST]]
-    ): T[FixedAST] = Functor[T].map(ast)(_.map(f))
+      ftorT: Functor[T],
+      reprT: Repr[T[FAST]]
+    ): T[FAST] = Functor[T].map(ast)(_.map(f))
 
-    def mapWithOff(f: (Int, AST) => AST)(
+    def mapWithOff(f: (Int, TaggedAST) => TaggedAST)(
       implicit
-      functorForT: Functor[T],
-      offsetZipForT: OffsetZip[T, FixedAST],
-      reprForT: Repr.Of[T[FixedAST]]
-    ): T[FixedAST] = {
+      ftorT: Functor[T],
+      offZipT: OffsetZip[T, FAST],
+      reprT: Repr[T[FAST]]
+    ): T[FAST] = {
       val zipped = OffsetZip(ast)
       Functor[T].map(zipped) { case (i, fx) => fx.map(f(i, _)) }
     }
 
-    def traverseWithOff(f: (Int, AST) => AST)(
+    def traverseWithOff(f: (Int, TaggedAST) => TaggedAST)(
       implicit
-      functorForT: Functor[T],
-      offsetZipForT: OffsetZip[T, FixedAST],
-      reprForT: Repr.Of[T[FixedAST]]
-    ): T[FixedAST] = {
-      def go(i: Int, t: AST): AST = {
+      ftorT: Functor[T],
+      offZipT: OffsetZip[T, FAST],
+      reprT: Repr[T[FAST]]
+    ): T[FAST] = {
+      def go(i: Int, t: TaggedAST): TaggedAST = {
         val newStruct = t.struct.mapWithOff { (j, ast) =>
           val off = i + j
           go(off, f(off, ast))
@@ -94,9 +97,9 @@ object AST {
     }
   }
 
-  def tokenize(ast: Shape): Shifted.List1[Shape] = {
+  def tokenize(ast: AST): Shifted.List1[AST] = {
     @tailrec
-    def go(ast: Shape, out: AST.Stream): Shifted.List1[Shape] =
+    def go(ast: AST, out: AST.Stream): Shifted.List1[AST] =
       ast match {
         case t: App.Prefix => go(t.fn, Shifted(t.off, t.arg.struct) :: out)
         case anyAst        => Shifted.List1(anyAst, out)
@@ -105,7 +108,7 @@ object AST {
   }
 
   object implicits extends Ident.implicits with Literal.implicits {
-    implicit def stringToAST(str: String): Shape = {
+    implicit def stringToAST(str: String): AST = {
       if (str == "") throw new Error("Empty literal")
       if (str == "_") Blank()
       else if (str.head.isLower) Var(str)
@@ -116,7 +119,7 @@ object AST {
 
   //// Instances ////
 
-  implicit def offsetZipForStream[T: Repr.Of]: OffsetZip[_Stream, T] =
+  implicit def offZipStream[T: Repr]: OffsetZip[_Stream, T] =
     stream => {
       var off = 0
       stream.map { t =>
@@ -145,22 +148,22 @@ object AST {
   //////////////////////////////////////////////////////////////////////////////
 
   case class Fix[F[_]](unFix: Fix.Body[F]) {
-    def map(f: Fix.Body[F] => Fix.Body[F]): Fix[F] =
-      copy(unFix = f(unFix))
+    def map(f: Fix.Body[F] => Fix.Body[F]): Fix[F] = copy(unFix = f(unFix))
   }
   object Fix {
     type Body[F[_]] = F[Fix[F]]
-    implicit def reprForFix[F[_]](
-      implicit ev: Repr.Of[Fix.Body[F]]
-    ): Repr.Of[Fix[F]] = t => Repr.of(t.unFix)
+    implicit def reprFix[F[_]](
+      implicit ev: Repr[Fix.Body[F]]
+    ): Repr[Fix[F]] = t => Repr.of(t.unFix)
   }
 
-  implicit def fix(t: Fix.Body[ASTOf]): Fix[ASTOf] = Fix(t)
-  implicit def fix2[T[_] <: ShapeOf[_]](
-    t: T[FixedAST]
-  )(implicit ev: Repr.Of[T[FixedAST]]): Fix[ASTOf] = {
+  implicit def fix(t: Fix.Body[TaggedASTOf]): Fix[TaggedASTOf] = Fix(t)
+  implicit def fixDeep[T[_] <: ASTOf[_]](t: T[FAST])(
+    implicit
+    ev: Repr[T[FAST]]
+  ): Fix[TaggedASTOf] = {
     val t1 = Tagged(t)
-    val t2 = t1.asInstanceOf[Fix.Body[ASTOf]] // FIXME
+    val t2 = t1.asInstanceOf[Fix.Body[TaggedASTOf]] // FIXME
     Fix(t2)
   }
 
@@ -172,38 +175,39 @@ object AST {
     * caches the repr of the node.
     *
     * @param struct Is the structure of the AST node. In most cases, it is a
-    *               subtype of [[Shape]].
+    *               subtype of [[AST]].
     * @param id     Is the unique AST Node ID assigned by parser from the marker
     *               map.
     */
-  case class Tagged[+F: Repr.Of](struct: F, id: Option[ID] = None) {
-    val repr: Repr = Repr.of(struct)
+  case class Tagged[+F: Repr](struct: F, id: Option[ID] = None) {
+    val repr: RRR = Repr.of(struct)
   }
 
-  implicit class TaggedOps[T: Repr.Of](t: Tagged[T]) {
+  implicit class TaggedOps[T: Repr](t: Tagged[T]) {
     def withNewID() = t.copy(id = Some(UUID.randomUUID()))
   }
 
   //// Conversions ////
 
-  implicit def toTagged[T: Repr.Of](t: T):  Tagged[T]          = Tagged(t, None)
-  implicit def fromTagged[T](t: Tagged[T]): T                  = t.struct
-  implicit def reprForWithData:             Repr.Of[Tagged[_]] = _.repr
-  implicit def taggedToASTOps[T[_]](v: Tagged[T[FixedAST]]): ASTOps[T] =
+  implicit def toTagged[T: Repr](t: T):     Tagged[T]       = Tagged(t, None)
+  implicit def fromTagged[T](t: Tagged[T]): T               = t.struct
+  implicit def reprWithData:                Repr[Tagged[_]] = _.repr
+  implicit def taggedToASTOps[T[_]](v: Tagged[T[FAST]]): ASTOps[T] =
     v.struct
 
   //////////////////////////////////////////////////////////////////////////////
   //// Scheme //////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  /** [[Shape]] defines the shape of an AST node. It contains information about
+  /** [[AST]] defines the shape of an AST node. It contains information about
     * the layout of elements and spacing between them.
+    *
     * @tparam T The type of elements.
     */
-  sealed trait ShapeOf[T]
+  sealed trait ASTOf[T]
 
 //  type Shape = _Shape[FixedAST]
-  implicit def functorForScheme: Functor[ShapeOf] = semi.functor
+  implicit def ftorScheme: Functor[ASTOf] = semi.functor
 
   object Scheme {
     object implicits extends implicits
@@ -212,18 +216,18 @@ object AST {
 //      import App.implicits._
 
       // TODO: Should be auto-generated with Shapeless
-      implicit def reprForScheme: Repr.Of[ShapeOf[FixedAST]] = {
-        case t: Blank => Ident.implicits.reprForBlank.of(t)
-        case t: Var   => Ident.implicits.reprForVar.of(t)
-        case t: Cons  => Ident.implicits.reprForCons.of(t)
+      implicit def reprScheme: Repr[ASTOf[FAST]] = {
+        case t: Blank => Ident.implicits.reprBlank.of(t)
+        case t: Var   => Ident.implicits.reprVar.of(t)
+        case t: Cons  => Ident.implicits.reprCons.of(t)
 //        case t: App._Prefix[_AST] =>
-//          App.implicits.reprForPrefix[_AST].of(t)
+//          App.implicits.reprPrefix[_AST].of(t)
       }
 
       // TODO: Should be auto-generated with Shapeless
-      implicit def offsetZipForScheme[T: Repr.Of]: OffsetZip[ShapeOf, T] = {
-        case t: Ident._Var[T]  => OffsetZip(t)
-        case t: Ident._Cons[T] => OffsetZip(t)
+      implicit def offZipScheme[T: Repr]: OffsetZip[ASTOf, T] = {
+        case t: Ident.VarOf[T]  => OffsetZip(t)
+        case t: Ident.ConsOf[T] => OffsetZip(t)
 //        case t: App._Prefix[T] => OffsetZip(t)
       }
     }
@@ -246,31 +250,32 @@ object AST {
   //// Invalid /////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Invalid      = _Invalid[FixedAST]
-  type Unrecognized = _Unrecognized[FixedAST]
-  type Unexpected   = _Unexpected[FixedAST]
+  type Invalid      = InvalidOf[FAST]
+  type Unrecognized = _Unrecognized[FAST]
+  type Unexpected   = _Unexpected[FAST]
 
-  sealed trait _Invalid[T]                                   extends ShapeOf[T]
-  case class _Unrecognized[T](str: String)                   extends _Invalid[T] with Phantom
-  case class _Unexpected[T](msg: String, stream: _Stream[T]) extends _Invalid[T]
+  sealed trait InvalidOf[T]                extends ASTOf[T]
+  case class _Unrecognized[T](str: String) extends InvalidOf[T] with Phantom
+  case class _Unexpected[T](msg: String, stream: _Stream[T])
+      extends InvalidOf[T]
 
-  implicit def functorForInvalid:      Functor[_Invalid]         = semi.functor
-  implicit def functorForUnexpected:   Functor[_Unexpected]      = semi.functor
-  implicit def functorForUnrecognized: Functor[_Unrecognized]    = semi.functor
-  implicit def reprForUnrecognized:    Repr.Of[_Unrecognized[_]] = _.str
-  implicit def reprForUnexpected[T: Repr.Of]: Repr.Of[_Unexpected[T]] =
+  implicit def ftorInvalid:      Functor[InvalidOf]     = semi.functor
+  implicit def ftorUnexpected:   Functor[_Unexpected]   = semi.functor
+  implicit def ftorUnrecognized: Functor[_Unrecognized] = semi.functor
+  implicit def reprUnrecognized: Repr[_Unrecognized[_]] = _.str
+  implicit def reprUnexpected[T: Repr]: Repr[_Unexpected[T]] =
     t => Repr.of(t.stream)
-  implicit def offsetZipForUnrecognized[T]: OffsetZip[_Unrecognized, T] =
+  implicit def offZipUnrecognized[T]: OffsetZip[_Unrecognized, T] =
     t => t.coerce
-  implicit def offsetZipForUnexpected[T: Repr.Of]: OffsetZip[_Unexpected, T] =
+  implicit def offZipUnexpected[T: Repr]: OffsetZip[_Unexpected, T] =
     t => t.copy(stream = OffsetZip(t.stream))
 
   //////////////////////////////////////////////////////////////////////////////
   //// Ident ///////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Ident = _Ident[FixedAST]
-  sealed trait _Ident[T] extends ShapeOf[T] with Phantom { val name: String }
+  type Ident = IdentOf[FAST]
+  sealed trait IdentOf[T] extends ASTOf[T] with Phantom { val name: String }
 
   implicit class IdentOps(t: Tagged[Ident]) {
     def name: String = t.struct.name
@@ -290,33 +295,33 @@ object AST {
 
   object Ident {
     case class InvalidSuffix[T](elem: Tagged[Ident], suffix: String)
-        extends _Invalid[T]
+        extends InvalidOf[T]
 
     //// Definition ////
 
-    type Blank = _Blank[FixedAST]
-    type Var   = _Var[FixedAST]
-    type Cons  = _Cons[FixedAST]
-    type Opr   = _Opr[FixedAST]
-    type Mod   = _Mod[FixedAST]
+    type Blank = BlankOf[FAST]
+    type Var   = VarOf[FAST]
+    type Cons  = ConsOf[FAST]
+    type Opr   = OprOf[FAST]
+    type Mod   = ModOf[FAST]
 
-    case class _Blank[T]()            extends _Ident[T] { val name = "_" }
-    case class _Var[T](name: String)  extends _Ident[T]
-    case class _Cons[T](name: String) extends _Ident[T]
-    case class _Mod[T](name: String)  extends _Ident[T]
-    case class _Opr[T](name: String) extends _Ident[T] {
+    case class BlankOf[T]()            extends IdentOf[T] { val name = "_" }
+    case class VarOf[T](name: String)  extends IdentOf[T]
+    case class ConsOf[T](name: String) extends IdentOf[T]
+    case class ModOf[T](name: String)  extends IdentOf[T]
+    case class OprOf[T](name: String) extends IdentOf[T] {
       val (prec, assoc) = opr.Info.of(name)
     }
 
     //// Companions ////
 
     object Blank {
-      def apply():           Blank   = _Blank()
+      def apply():           Blank   = BlankOf()
       def unapply(t: Blank): Boolean = true
     }
 
     object Var {
-      def apply(name: String): Var            = _Var(name)
+      def apply(name: String): Var            = VarOf(name)
       def unapply(t: Var):     Option[String] = Some(t.name)
       trait implicits {
         implicit def stringToVar(str: String): Var = Var(str)
@@ -324,7 +329,7 @@ object AST {
     }
 
     object Cons {
-      def apply(name: String): Cons           = _Cons(name)
+      def apply(name: String): Cons           = ConsOf(name)
       def unapply(t: Cons):    Option[String] = Some(t.name)
       trait implicits {
         implicit def stringToCons(str: String): Cons = Cons(str)
@@ -332,7 +337,7 @@ object AST {
     }
 
     object Opr {
-      def apply(name: String): Opr            = _Opr(name)
+      def apply(name: String): Opr            = OprOf(name)
       def unapply(t: Opr):     Option[String] = Some(t.name)
       trait implicits {
         implicit def stringToOpr(str: String): Opr = Opr(str)
@@ -341,7 +346,7 @@ object AST {
     }
 
     object Mod {
-      def apply(name: String): Mod            = _Mod(name)
+      def apply(name: String): Mod            = ModOf(name)
       def unapply(t: Mod):     Option[String] = Some(t.name)
       trait implicits {
         implicit def stringToMod(str: String): Mod = Mod(str)
@@ -357,21 +362,21 @@ object AST {
         with Cons.implicits
         with Opr.implicits
         with Mod.implicits {
-      implicit def reprForBlank:         Repr.Of[_Blank[_]]   = _.name
-      implicit def reprForVar:           Repr.Of[_Var[_]]     = _.name
-      implicit def reprForCons:          Repr.Of[_Cons[_]]    = _.name
-      implicit def reprForOpr:           Repr.Of[_Opr[_]]     = _.name
-      implicit def reprForMod:           Repr.Of[_Mod[_]]     = _.name
-      implicit def functorForIdent:      Functor[_Ident]      = semi.functor
-      implicit def functorForBlank:      Functor[_Blank]      = semi.functor
-      implicit def functorForVar:        Functor[_Var]        = semi.functor
-      implicit def functorForOpr:        Functor[_Opr]        = semi.functor
-      implicit def functorForMod:        Functor[_Mod]        = semi.functor
-      implicit def offsetZipForBlank[T]: OffsetZip[_Blank, T] = t => t.coerce
-      implicit def offsetZipForVar[T]:   OffsetZip[_Var, T]   = t => t.coerce
-      implicit def offsetZipForCons[T]:  OffsetZip[_Cons, T]  = t => t.coerce
-      implicit def offsetZipForOpr[T]:   OffsetZip[_Opr, T]   = t => t.coerce
-      implicit def offsetZipForMod[T]:   OffsetZip[_Mod, T]   = t => t.coerce
+      implicit def reprBlank:      Repr[BlankOf[_]]      = _.name
+      implicit def reprVar:        Repr[VarOf[_]]        = _.name
+      implicit def reprCons:       Repr[ConsOf[_]]       = _.name
+      implicit def reprOpr:        Repr[OprOf[_]]        = _.name
+      implicit def reprMod:        Repr[ModOf[_]]        = _.name
+      implicit def ftorIdent:      Functor[IdentOf]      = semi.functor
+      implicit def ftorBlank:      Functor[BlankOf]      = semi.functor
+      implicit def ftorVar:        Functor[VarOf]        = semi.functor
+      implicit def ftorOpr:        Functor[OprOf]        = semi.functor
+      implicit def ftorMod:        Functor[ModOf]        = semi.functor
+      implicit def offZipBlank[T]: OffsetZip[BlankOf, T] = t => t.coerce
+      implicit def offZipVar[T]:   OffsetZip[VarOf, T]   = t => t.coerce
+      implicit def offZipCons[T]:  OffsetZip[ConsOf, T]  = t => t.coerce
+      implicit def offZipOpr[T]:   OffsetZip[OprOf, T]   = t => t.coerce
+      implicit def offZipMod[T]:   OffsetZip[ModOf, T]   = t => t.coerce
 
       implicit def stringToIdent(str: String): Ident = {
         if (str == "") throw new Error("Empty literal")
@@ -388,10 +393,10 @@ object AST {
   //// Literal /////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Literal = _Literal[FixedAST]
-  sealed trait _Literal[T] extends ShapeOf[T]
+  type Literal = _Literal[FAST]
+  sealed trait _Literal[T] extends ASTOf[T]
 
-//  implicit def functorForLiteral:    Functor[_Literal]    = semi.functor
+//  implicit def ftorLiteral:    Functor[_Literal]    = semi.functor
 
   object Literal {
 
@@ -402,7 +407,7 @@ object AST {
     //// Number ////
     ////////////////
 
-    type Number = _Number[FixedAST]
+    type Number = _Number[FAST]
     case class _Number[T](base: Option[String], int: String)
         extends _Literal[T]
         with Phantom
@@ -417,10 +422,10 @@ object AST {
 
       object implicits extends implicits
       trait implicits {
-        implicit def reprForNumber: Repr.Of[_Number[_]] =
+        implicit def reprNumber: Repr[_Number[_]] =
           t => t.base.map(_ + "_").getOrElse("") + t.int
-        implicit def functorForNumber: Functor[_Number] = semi.functor
-        implicit def offsetZipForNumber[T]: OffsetZip[_Number, T] =
+        implicit def ftorNumber: Functor[_Number] = semi.functor
+        implicit def offZipNumber[T]: OffsetZip[_Number, T] =
           t => t.coerce
       }
 
@@ -436,8 +441,8 @@ object AST {
     //// Text ////
     //////////////
 
-    type Text = _Text[FixedAST]
-    sealed trait _Text[T] extends ShapeOf[T]
+    type Text = _Text[FAST]
+    sealed trait _Text[T] extends ASTOf[T]
     object Text {
 
       //// Definition ////
@@ -445,9 +450,9 @@ object AST {
       type Line[T]  = List[T]
       type Block[T] = List1[Line[T]]
 
-      type Raw          = _Raw[FixedAST]
-      type Interpolated = _Interpolated[FixedAST]
-      type Unclosed     = _Unclosed[FixedAST]
+      type Raw          = _Raw[FAST]
+      type Interpolated = _Interpolated[FAST]
+      type Unclosed     = _Unclosed[FAST]
 
       case class _Raw[T](quote: Quote, lines: Raw.Block[T]) extends _Text[T] {
         val quoteChar: Char = '"'
@@ -456,7 +461,7 @@ object AST {
           extends _Text[T] {
         val quoteChar: Char = '\''
       }
-      case class _Unclosed[T](text: _Text[T]) extends AST._Invalid[T]
+      case class _Unclosed[T](text: _Text[T]) extends AST.InvalidOf[T]
 
       object Raw {
         type Segment[T] = Text.Segment._Raw[T]
@@ -474,23 +479,23 @@ object AST {
 
       object implicits extends implicits
       trait implicits extends Segment.implicits {
-        implicit def reprForTextRaw[T]:      Repr.Of[_Raw[T]]          = _ => ???
-        implicit def reprForTextInt[T]:      Repr.Of[_Interpolated[T]] = _ => ???
-        implicit def reprForTextUnclosed[T]: Repr.Of[_Unclosed[T]]     = _ => ???
+        implicit def reprTextRaw[T]:      Repr[_Raw[T]]          = _ => ???
+        implicit def reprTextInt[T]:      Repr[_Interpolated[T]] = _ => ???
+        implicit def reprTextUnclosed[T]: Repr[_Unclosed[T]]     = _ => ???
 
-        implicit def functorForTextRaw[T]: Functor[_Raw] =
+        implicit def ftorTextRaw[T]: Functor[_Raw] =
           semi.functor
-        implicit def functorForTextInterpolated[T]: Functor[_Interpolated] =
+        implicit def ftorTextInterpolated[T]: Functor[_Interpolated] =
           semi.functor
-        implicit def functorForTextUnclosed[T]: Functor[_Unclosed] =
+        implicit def ftorTextUnclosed[T]: Functor[_Unclosed] =
           semi.functor
-        implicit def offsetZipForTextRaw[T]: OffsetZip[_Raw, T] =
+        implicit def offZipTextRaw[T]: OffsetZip[_Raw, T] =
           t => t.copy(lines = t.lines.map(_.map(OffsetZip(_))))
-        implicit def offsetZipForTextInt[T]: OffsetZip[_Interpolated, T] =
+        implicit def offZipTextInt[T]: OffsetZip[_Interpolated, T] =
           t => t.copy(lines = t.lines.map(_.map(OffsetZip(_))))
-        implicit def offsetZipForUnclosed[T]: OffsetZip[_Unclosed, T] =
+        implicit def offZipUnclosed[T]: OffsetZip[_Unclosed, T] =
           t => t.copy(text = OffsetZip(t.text))
-        implicit def offsetZipForText[T]: OffsetZip[_Text, T] = {
+        implicit def offZipText[T]: OffsetZip[_Text, T] = {
           case t: _Raw[T]          => OffsetZip(t)
           case t: _Interpolated[T] => OffsetZip(t)
         }
@@ -517,13 +522,13 @@ object AST {
 
         //// Definition ////
 
-        type Interpolated = _Interpolated[FixedAST]
-        type Raw          = _Raw[FixedAST]
+        type Interpolated = _Interpolated[FAST]
+        type Raw          = _Raw[FAST]
         sealed trait _Interpolated[T] extends Segment[T]
         sealed trait _Raw[T]          extends _Interpolated[T]
 
-        type Plain = _Plain[FixedAST]
-        type Expr  = _Expr[FixedAST]
+        type Plain = _Plain[FAST]
+        type Expr  = _Expr[FAST]
         case class _Plain[T](value: String)   extends _Raw[T] with Phantom
         case class _Expr[T](value: Option[T]) extends _Interpolated[T]
 
@@ -531,35 +536,26 @@ object AST {
 
         object implicits extends implicits
         trait implicits {
-          implicit def reprForTextSegPlain[T]: Repr.Of[_Plain[T]] =
-            _.value
-          implicit def reprForTextSegExpr[T: Repr.Of]: Repr.Of[_Expr[T]] =
+          implicit def reprTxtSPlain[T]: Repr[_Plain[T]] = _.value
+          implicit def reprTxtSExpr[T: Repr]: Repr[_Expr[T]] =
             R + '`' + _.value + '`'
-          implicit def functorForTextSegPlain[T]: Functor[_Plain] =
-            semi.functor
-          implicit def functorForTextSegExpr[T]: Functor[_Expr] =
-            semi.functor
-          implicit def offsetZipForTextSegExpr[T]: OffsetZip[_Expr, T] =
-            _.map((0, _))
-          implicit def offsetZipForTextSegPlain[T]: OffsetZip[_Plain, T] =
-            t => t.coerce
-          implicit def reprForTextSegRaw[T]: Repr.Of[_Raw[T]] = {
+          implicit def ftorTxtSPlain[T]:   Functor[_Plain]      = semi.functor
+          implicit def ftorTxtSExpr[T]:    Functor[_Expr]       = semi.functor
+          implicit def offZipTxtSExpr[T]:  OffsetZip[_Expr, T]  = _.map((0, _))
+          implicit def offZipTxtSPlain[T]: OffsetZip[_Plain, T] = t => t.coerce
+          implicit def reprTxtSRaw[T]: Repr[_Raw[T]] = {
             case t: _Plain[T] => t.repr
           }
-          implicit def reprForTextSegInt[T: Repr.Of]
-            : Repr.Of[_Interpolated[T]] = {
+          implicit def reprTxtSInt[T: Repr]: Repr[_Interpolated[T]] = {
             case t: _Plain[T] => t.repr
             case t: _Expr[T]  => t.repr
           }
-          implicit def functorForTextSegRaw[T]: Functor[_Raw] =
-            semi.functor
-          implicit def functorForTextSegInt[T]: Functor[_Interpolated] =
-            semi.functor
-          implicit def offsetZipForTextSegRaw[T]: OffsetZip[_Raw, T] = {
+          implicit def ftorTxtSRaw[T]: Functor[_Raw]          = semi.functor
+          implicit def ftorTxtSInt[T]: Functor[_Interpolated] = semi.functor
+          implicit def offZipTxtSRaw[T]: OffsetZip[_Raw, T] = {
             case t: _Plain[T] => OffsetZip(t)
           }
-          implicit def offsetZipForTextSegInt[T]
-            : OffsetZip[_Interpolated, T] = {
+          implicit def offZipTxtSInt[T]: OffsetZip[_Interpolated, T] = {
             case t: _Plain[T] => OffsetZip(t)
             case t: _Expr[T]  => OffsetZip(t)
           }
@@ -582,136 +578,115 @@ object AST {
 
   //// Definition ////
 
-  type App = _App[FixedAST]
-  sealed trait _App[T] extends ShapeOf[T]
+  type App = AppOf[FAST]
+  sealed trait AppOf[T] extends ASTOf[T]
   object App {
 
     //// Constructors ////
 
-    type Prefix = _Prefix[FixedAST]
-    type Infix  = _Infix[FixedAST]
-    case class _Prefix[T](_fn: T, off: Int, _arg: T) extends _App[T]
-    case class _Infix[T](_larg: T, loff: Int, opr: Opr, roff: Int, _rarg: T)
-        extends _App[T]
+    type Prefix = PrefixOf[FAST]
+    type Infix  = InfixOf[FAST]
+    case class PrefixOf[T](_fn: T, off: Int, _arg: T) extends AppOf[T]
+    case class InfixOf[T](_larg: T, loff: Int, opr: Opr, roff: Int, _rarg: T)
+        extends AppOf[T]
 
     object Prefix {
       def unapply(t: Prefix) = Some((t.fn, t.arg))
-      def apply(fn: AST, off: Int = 1, arg: AST): Prefix =
-        _Prefix(fn, off, arg)
-      def apply(fn: AST, arg: AST): Prefix =
-        Prefix(fn, 1, arg)
+      def apply(fn: FAST, off: Int, arg: FAST): Prefix = PrefixOf(fn, off, arg)
+      def apply(fn: FAST, arg: FAST):           Prefix = Prefix(fn, 1, arg)
     }
 
     implicit def taggedPrefixOps(t: Tagged[Prefix]): PrefixOps = t.struct
     implicit class PrefixOps(t: Prefix) {
-      def fn:            AST    = t._fn.unFix
-      def arg:           AST    = t._arg.unFix
-      def fn_=(v: AST):  Prefix = t.copy(_fn = fix(v))
-      def arg_=(v: AST): Prefix = t.copy(_arg = fix(v))
+      def fn:                  TaggedAST = t._fn.unFix
+      def arg:                 TaggedAST = t._arg.unFix
+      def fn_=(v: TaggedAST):  Prefix    = t.copy(_fn = fix(v))
+      def arg_=(v: TaggedAST): Prefix    = t.copy(_arg = fix(v))
     }
 
     object Infix {
       def unapply(t: Infix) = Some((t.larg, t.opr, t.rarg))
-      def apply(
-        larg: AST,
-        loff: Int,
-        opr: Opr,
-        roff: Int,
-        rarg: AST
-      ): Infix = _Infix(larg, loff, opr, roff, rarg)
-
-      def apply(
-        larg: AST,
-        loff: Int,
-        opr: Opr,
-        rarg: AST
-      ): Infix = Infix(larg, loff, opr, 1, rarg)
-
-      def apply(
-        larg: AST,
-        opr: Opr,
-        roff: Int,
-        rarg: AST
-      ): Infix = Infix(larg, 1, opr, roff, rarg)
-
-      def apply(larg: AST, opr: Opr, rarg: AST): Infix =
+      def apply(larg: FAST, loff: Int, opr: Opr, roff: Int, rarg: FAST): Infix =
+        InfixOf(larg, loff, opr, roff, rarg)
+      def apply(larg: FAST, loff: Int, opr: Opr, rarg: FAST): Infix =
+        Infix(larg, loff, opr, 1, rarg)
+      def apply(larg: FAST, opr: Opr, roff: Int, rarg: FAST): Infix =
+        Infix(larg, 1, opr, roff, rarg)
+      def apply(larg: FAST, opr: Opr, rarg: FAST): Infix =
         Infix(larg, 1, opr, 1, rarg)
     }
 
     implicit def taggedInfixOps(t: Tagged[Infix]): InfixOps = t.struct
     implicit class InfixOps(t: Infix) {
-      def larg:           AST   = t._larg.unFix
-      def rarg:           AST   = t._rarg.unFix
-      def opr:            AST   = t.opr
-      def larg_=(v: AST): Infix = t.copy(_larg = fix(v))
-      def rarg_=(v: AST): Infix = t.copy(_rarg = fix(v))
-      def opr_=(v: Opr):  Infix = t.copy(opr = v)
+      def larg:            FAST  = t._larg.unFix
+      def rarg:            FAST  = t._rarg.unFix
+      def opr:             FAST  = t.opr
+      def larg_=(v: FAST): Infix = t.copy(_larg = v)
+      def rarg_=(v: FAST): Infix = t.copy(_rarg = v)
+      def opr_=(v: Opr):   Infix = t.copy(opr = v)
     }
 
     //// Instances ////
 
     object implicits extends implicits
     trait implicits {
-      implicit def reprForPrefix[T: Repr.Of]: Repr.Of[_Prefix[T]] =
+      implicit def reprPrefix[T: Repr]: Repr[PrefixOf[T]] =
         t => R + t._fn + t.off + t._arg
-      implicit def reprForInfix[T: Repr.Of]: Repr.Of[_Infix[T]] =
+      implicit def reprInfix[T: Repr]: Repr[InfixOf[T]] =
         t => R + t._larg + t.loff + t.opr + t.roff + t._rarg
-      implicit def functorForPrefix: Functor[_Prefix] = semi.functor
-      implicit def functorForInfix:  Functor[_Infix]  = semi.functor
-      implicit def offsetZipForPrefix[T: Repr.Of]: OffsetZip[_Prefix, T] =
+      implicit def ftorPrefix: Functor[PrefixOf] = semi.functor
+      implicit def ftorInfix:  Functor[InfixOf]  = semi.functor
+      implicit def offZipPrefix[T: Repr]: OffsetZip[PrefixOf, T] =
         t => t.copy(_fn = (0, t._fn), _arg = (Repr.span(t._fn) + t.off, t._arg))
-      implicit def offsetZipForInfix[T: Repr.Of]: OffsetZip[_Infix, T] =
-        t => {
-          val rargSpan = (R + t._larg + t.loff + t.opr + t.roff).span
-          t.copy(_larg = (0, t._larg), _rarg = (rargSpan, t._rarg))
-        }
+      implicit def offZipInfix[T: Repr]: OffsetZip[InfixOf, T] = t => {
+        val rargSpan = (R + t._larg + t.loff + t.opr + t.roff).span
+        t.copy(_larg = (0, t._larg), _rarg = (rargSpan, t._rarg))
+      }
     }
 
     /////////////////
     //// Section ////
     /////////////////
 
-    type Section = _Section[FixedAST]
-    sealed trait _Section[T] extends _App[T]
+    type Section = SectionOf[FAST]
+    sealed trait SectionOf[T] extends AppOf[T]
     object Section {
 
       //// Constructors ////
 
-      type Left  = _Left[FixedAST]
-      type Right = _Right[FixedAST]
-      type Sides = _Sides[FixedAST]
+      type Left  = LeftOf[FAST]
+      type Right = RightOf[FAST]
+      type Sides = SidesOf[FAST]
 
-      case class _Left[T](_arg: T, off: Int, opr: Opr)  extends _Section[T]
-      case class _Right[T](opr: Opr, off: Int, _arg: T) extends _Section[T]
-      case class _Sides[T](opr: Opr)                    extends _Section[T] with Phantom
+      case class LeftOf[T](_arg: T, off: Int, opr: Opr)  extends SectionOf[T]
+      case class RightOf[T](opr: Opr, off: Int, _arg: T) extends SectionOf[T]
+      case class SidesOf[T](opr: Opr)                    extends SectionOf[T] with Phantom
 
       object Left {
         def unapply(t: Left) = Some((t.arg, t.opr))
-        def apply(arg: AST, off: Int, opr: Opr): Left =
-          _Left(arg, off, opr)
-        def apply(arg: AST, opr: Opr): Left = Left(arg, 1, opr)
+        def apply(arg: FAST, off: Int, opr: Opr): Left = LeftOf(arg, off, opr)
+        def apply(arg: FAST, opr: Opr):           Left = Left(arg, 1, opr)
       }
       implicit def taggedLeftOps(t: Tagged[Left]): LeftOps = t.struct
       implicit class LeftOps(t: Left) {
-        def arg           = t._arg.unFix
-        def arg_=(v: AST) = t.copy(_arg = v)
+        def arg            = t._arg.unFix
+        def arg_=(v: FAST) = t.copy(_arg = v)
       }
 
       object Right {
         def unapply(t: Right) = Some((t.opr, t.arg))
-        def apply(opr: Opr, off: Int, arg: AST): Right =
-          _Right(opr, off, arg)
-        def apply(opr: Opr, arg: AST): Right = Right(opr, 1, arg)
+        def apply(opr: Opr, off: Int, arg: FAST): Right = RightOf(opr, off, arg)
+        def apply(opr: Opr, arg: FAST):           Right = Right(opr, 1, arg)
       }
       implicit def taggedRightOps(t: Tagged[Right]): RightOps = t.struct
       implicit class RightOps(t: Right) {
-        def arg           = t._arg.unFix
-        def arg_=(v: AST) = t.copy(_arg = v)
+        def arg            = t._arg.unFix
+        def arg_=(v: FAST) = t.copy(_arg = v)
       }
 
       object Sides {
         def unapply(t: Sides) = Some(t.opr)
-        def apply(opr: Opr): Sides = _Sides(opr)
+        def apply(opr: Opr): Sides = SidesOf(opr)
       }
       implicit def taggedSidesOps(t: Tagged[Sides]): SidesOps = t.struct
       implicit class SidesOps(t: Sides) {
@@ -723,20 +698,20 @@ object AST {
 
       object implicits extends implicits
       trait implicits {
-        implicit def reprForLeft[T: Repr.Of]: Repr.Of[_Left[T]] =
+        implicit def reprLeft[T: Repr]: Repr[LeftOf[T]] =
           t => R + t._arg + t.off + t.opr
-        implicit def reprForRight[T: Repr.Of]: Repr.Of[_Right[T]] =
+        implicit def reprRight[T: Repr]: Repr[RightOf[T]] =
           t => R + t.opr + t.off + t._arg
-        implicit def reprForSides[T: Repr.Of]: Repr.Of[_Sides[T]] =
+        implicit def reprSides[T: Repr]: Repr[SidesOf[T]] =
           t => R + t.opr
-        implicit def functorForLeft:  Functor[_Left]  = semi.functor
-        implicit def functorForRight: Functor[_Right] = semi.functor
-        implicit def functorForSides: Functor[_Sides] = semi.functor
-        implicit def offsetZipForLeft[T]: OffsetZip[_Left, T] =
+        implicit def ftorLeft:  Functor[LeftOf]  = semi.functor
+        implicit def ftorRight: Functor[RightOf] = semi.functor
+        implicit def ftorSides: Functor[SidesOf] = semi.functor
+        implicit def offZipLeft[T]: OffsetZip[LeftOf, T] =
           t => t.copy(_arg = (0, t._arg))
-        implicit def offsetZipForRight[T]: OffsetZip[_Right, T] =
+        implicit def offZipRight[T]: OffsetZip[RightOf, T] =
           t => t.copy(_arg = (Repr.span(t.opr) + t.off, t._arg))
-        implicit def offsetZipForSides[T]: OffsetZip[_Sides, T] =
+        implicit def offZipSides[T]: OffsetZip[SidesOf, T] =
           t => t.coerce
       }
     }
@@ -754,52 +729,47 @@ object AST {
 
   val newline = R + '\n'
 
-  type Block = _Block[FixedAST]
-  case class _Block[T](
+  type Block = BlockOf[FAST]
+  case class BlockOf[T](
     typ: Block.Type,
     indent: Int,
     emptyLines: List[Int],
-    firstLine: Block.Line[T],
-    lines: List[Block.Line[Option[T]]]
-  ) extends ShapeOf[T]
+    firstLine: Block.LineOf[T],
+    lines: List[Block.LineOf[Option[T]]]
+  ) extends ASTOf[T]
 
   object Block {
     sealed trait Type
     final case object Continuous    extends Type
     final case object Discontinuous extends Type
 
-    def apply[T](
+    def apply(
       typ: Type,
       indent: Int,
       emptyLines: List[Int],
-      firstLine: Line[T],
-      lines: List[Line[Option[T]]]
-    ): _Block[T] =
-      _Block(typ, indent, emptyLines, firstLine, lines)
+      firstLine: LineOf[FAST],
+      lines: List[LineOf[Option[FAST]]]
+    ): Block = BlockOf(typ, indent, emptyLines, firstLine, lines)
 
-    def apply[T](
+    def apply(
       typ: Type,
       indent: Int,
-      firstLine: Line[T],
-      lines: List[Line[Option[T]]]
-    ): _Block[T] =
-      Block(typ, indent, List(), firstLine, lines)
+      firstLine: LineOf[FAST],
+      lines: List[LineOf[Option[FAST]]]
+    ): Block = Block(typ, indent, List(), firstLine, lines)
 
     def unapply[T](
-      t: _Block[T]
-    ): Option[(Int, Line[T], List[Line[Option[T]]])] =
+      t: BlockOf[T]
+    ): Option[(Int, LineOf[T], List[LineOf[Option[T]]])] =
       Some((t.indent, t.firstLine, t.lines))
 
     //// Line ////
 
-    case class Line[+T](elem: T, off: Int)
+    type Line    = LineOf[FAST]
+    type OptLine = LineOf[Option[FAST]]
+    case class LineOf[+T](elem: T, off: Int)
     object Line {
-      type _Optional[T] = Line[Option[T]]
-      type _Required[T] = Line[T]
-      type Optional     = _Optional[FixedAST]
-      type Required     = _Required[FixedAST]
-
-      def apply[T](elem: T): Line[T] = Line(elem, 0)
+      def apply[T](elem: T): LineOf[T] = LineOf(elem, 0)
     }
 
   }
@@ -808,12 +778,11 @@ object AST {
   //// Module //////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Module = _Module[FixedAST]
-  case class _Module[T](lines: List1[Module._Line[T]]) extends ShapeOf[T]
+  type Module = _Module[FAST]
+  case class _Module[T](lines: List1[Block.LineOf[T]]) extends ASTOf[T]
 
   object Module {
-    type _Line[T] = Block.Line._Optional[T]
-    type Line     = _Line[FixedAST]
+    import Block._
     def apply(ls: List1[Line]):         Module = _Module(ls)
     def apply(l: Line):                 Module = Module(List1(l))
     def apply(l: Line, ls: Line*):      Module = Module(List1(l, ls.to[List]))
@@ -827,8 +796,8 @@ object AST {
     val foo    = Var("foo")
     val bar    = Var("foo")
     val plus   = Opr("+")
-    val ttt2   = foo: Shape
-    val fooAST = foo: Shape
+    val ttt2   = foo: AST
+    val fooAST = foo: AST
 
     val foox = foo: AST
 
@@ -837,10 +806,10 @@ object AST {
 
 //    println(foox.withNewID())
     val tfoo  = Var("foo")
-    val tfoo2 = fix2(tfoo): FixedAST
-    val tfoo3 = tfoo: FixedAST
+    val tfoo2 = fixDeep(tfoo): FAST
+    val tfoo3 = tfoo: FAST
 
-    val l1 = Block.Line(tfoo3): Block.Line.Required
+    val l1 = Block.Line(tfoo3): Block.Line
 
     println("..........")
     println(tfoo2)
@@ -1037,24 +1006,22 @@ object AST {
   //////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  sealed trait SpaceUnawareShapeOf[T] extends ShapeOf[T]
+  sealed trait SpacelessASTOf[T] extends ASTOf[T]
 
-  implicit def functorForSpaceUnawareShape[T]: Functor[SpaceUnawareShapeOf] =
-    semi.functor
-  implicit def offsetZipForSpaceUnawareShape[T]
-    : OffsetZip[SpaceUnawareShapeOf, T] = t => t.map((0, _))
+  implicit def ftorSlessAST[T]:   Functor[SpacelessASTOf]      = semi.functor
+  implicit def offZipSlessAST[T]: OffsetZip[SpacelessASTOf, T] = _.map((0, _))
 
   //////////////////////////////////////////////////////////////////////////////
   /// Comment //////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  sealed trait _Comment[T] extends SpaceUnawareShapeOf[T] with Phantom
+  sealed trait _Comment[T] extends SpacelessASTOf[T] with Phantom
   object Comment {
     val symbol = "#"
 
-    type Disable    = _Disable[FixedAST]
-    type SingleLine = _SingleLine[FixedAST]
-    type MultiLine  = _MultiLine[FixedAST]
+    type Disable    = _Disable[FAST]
+    type SingleLine = _SingleLine[FAST]
+    type MultiLine  = _MultiLine[FAST]
 
     case class _Disable[T](ast: T)                          extends _Comment[T]
     case class _SingleLine[T](text: String)                 extends _Comment[T]
@@ -1062,40 +1029,34 @@ object AST {
 
     //// Instances ////
 
-    // Functor
-    implicit def functorForDisableComment[T]: Functor[_Disable] =
-      semi.functor
-    implicit def functorForSingleLineComment[T]: Functor[_SingleLine] =
-      semi.functor
-    implicit def functorForMultiLineComment[T]: Functor[_MultiLine] =
-      semi.functor
+    implicit def ftorCmmDis[T]: Functor[_Disable]    = semi.functor
+    implicit def ftorCmmSL[T]:  Functor[_SingleLine] = semi.functor
+    implicit def ftorCmmML[T]:  Functor[_MultiLine]  = semi.functor
 
-    // Repr
-    implicit def reprForDisableComment[T: Repr.Of]: Repr.Of[_Disable[T]] =
-      t => R + symbol + " " + t.ast
-    implicit def reprForSingleLineComment[T]: Repr.Of[_SingleLine[T]] =
-      t => R + symbol + symbol + t.text
-    implicit def reprForMultiLineComment[T]: Repr.Of[_MultiLine[T]] =
-      t => {
-        val commentBlock = t.lines match {
-          case Nil => Nil
-          case line +: lines =>
-            val indentedLines = lines.map { s =>
-              if (s.forall(_ == ' ')) newline + s
-              else newline + 1 + t.off + s
-            }
-            (R + line) +: indentedLines
-        }
-        R + symbol + symbol + commentBlock
+    implicit def reprCmmDis[T: Repr]: Repr[_Disable[T]] =
+      R + symbol + " " + _.ast
+    implicit def reprCmmSL[T]: Repr[_SingleLine[T]] =
+      R + symbol + symbol + _.text
+    implicit def reprCmmML[T]: Repr[_MultiLine[T]] = t => {
+      val commentBlock = t.lines match {
+        case Nil => Nil
+        case line +: lines =>
+          val indentedLines = lines.map { s =>
+            if (s.forall(_ == ' ')) newline + s
+            else newline + 1 + t.off + s
+          }
+          (R + line) +: indentedLines
       }
+      R + symbol + symbol + commentBlock
+    }
   }
 
   //////////////////////////////////////////////////////////////////////////////
   //// Import //////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Import = _Import[FixedAST]
-  case class _Import[T](path: List1[Cons]) extends SpaceUnawareShapeOf[T]
+  type Import = _Import[FAST]
+  case class _Import[T](path: List1[Cons]) extends SpacelessASTOf[T]
 
   object Import {
     def apply(path: List1[Cons]):            Import = _Import(path)
@@ -1105,8 +1066,8 @@ object AST {
 
     object implicits extends implicits
     trait implicits {
-      implicit def functorForImport[T]: Functor[_Import] = semi.functor
-      implicit def reprForImport[T]: Repr.Of[_Import[T]] =
+      implicit def ftorImport[T]: Functor[_Import] = semi.functor
+      implicit def reprImport[T]: Repr[_Import[T]] =
         t => R + ("import " + t.path.map(_.repr.show()).toList.mkString("."))
     }
   }
@@ -1115,22 +1076,20 @@ object AST {
   //// Mixfix //////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Mixfix = MixfixOf[FixedAST]
+  type Mixfix = MixfixOf[FAST]
   case class MixfixOf[T](name: List1[Ident], args: List1[T])
-      extends SpaceUnawareShapeOf[T]
+      extends SpacelessASTOf[T]
 
   object Mixfix {
     object implicits extends implicits
     trait implicits {
-      implicit def functorForMixfix[T]: Functor[MixfixOf] = semi.functor
-      implicit def reprForMixfix[T: Repr.Of]: Repr.Of[MixfixOf[T]] =
-        t => {
-          val lastRepr =
-            if (t.name.length - t.args.length > 0) List(R) else List()
-          val argsRepr = t.args.toList.map(R + " " + _) ++ lastRepr
-          val nameRepr = t.name.toList.map(Repr.of(_))
-          R + (nameRepr, argsRepr).zipped.map(_ + _)
-        }
+      implicit def ftorMixfix[T]: Functor[MixfixOf] = semi.functor
+      implicit def reprMixfix[T: Repr]: Repr[MixfixOf[T]] = t => {
+        val lastRepr = if (t.name.length == t.args.length) List() else List(R)
+        val argsRepr = t.args.toList.map(R + " " + _) ++ lastRepr
+        val nameRepr = t.name.toList.map(Repr.of(_))
+        R + (nameRepr, argsRepr).zipped.map(_ + _)
+      }
     }
   }
 
@@ -1138,19 +1097,20 @@ object AST {
   //// Group ///////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Group = GroupOf[FixedAST]
-  case class GroupOf[T](body: Option[T]) extends SpaceUnawareShapeOf[T]
+  type Group = GroupOf[FAST]
+  case class GroupOf[T](body: Option[T]) extends SpacelessASTOf[T]
 
   object Group {
-    def apply(body: Option[AST]): Group = Group(body)
-    def apply(body: AST):         Group = Group(Some(body))
-    def apply(body: SAST):        Group = Group(body.el)
-    def apply():                  Group = Group(None)
+    def apply(body: Option[TaggedAST]): Group = Group(body)
+    def apply(body: TaggedAST):         Group = Group(Some(body))
+    def apply(body: SAST):              Group = Group(body.el)
+    def apply():                        Group = Group(None)
 
     object implicits extends implicits
     trait implicits {
-      implicit def functorForGroup[T]:       Functor[GroupOf]    = semi.functor
-      implicit def reprForGroup[T: Repr.Of]: Repr.Of[GroupOf[T]] = R + _.body
+      implicit def ftorGrp[T]: Functor[GroupOf] = semi.functor
+      implicit def reprGrp[T: Repr]: Repr[GroupOf[T]] =
+        R + "(" + _.body + ")"
     }
   }
 
@@ -1158,22 +1118,22 @@ object AST {
   //// Def /////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Def = DefOf[FixedAST]
+  type Def = DefOf[FAST]
   case class DefOf[T](name: Cons, args: List[T], body: Option[T])
-      extends SpaceUnawareShapeOf[T]
+      extends SpacelessASTOf[T]
 
   object Def {
     val symbol = "def"
 
-    def apply(name: Cons):                  Def = Def(name, List())
-    def apply(name: Cons, args: List[AST]): Def = Def(name, args, None)
-    def apply(name: Cons, args: List[AST], body: Option[AST]): Def =
+    def apply(name: Cons):                   Def = Def(name, List())
+    def apply(name: Cons, args: List[FAST]): Def = Def(name, args, None)
+    def apply(name: Cons, args: List[FAST], body: Option[FAST]): Def =
       DefOf(name, args, body)
 
     object implicits extends implicits
     trait implicits {
-      implicit def functorForDef[T]: Functor[DefOf] = semi.functor
-      implicit def reprForDef[T: Repr.Of]: Repr.Of[DefOf[T]] =
+      implicit def ftorDef[T]: Functor[DefOf] = semi.functor
+      implicit def reprDef[T: Repr]: Repr[DefOf[T]] =
         t => R + symbol ++ t.name + t.args.map(R ++ _) + t.body
     }
   }
@@ -1182,111 +1142,18 @@ object AST {
   //// Foreign /////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Foreign = ForeignOf[FixedAST]
+  type Foreign = ForeignOf[FAST]
   case class ForeignOf[T](indent: Int, lang: String, code: List[String])
-      extends SpaceUnawareShapeOf[T]
+      extends SpacelessASTOf[T]
 
-  object Foreign
-//     {
-//      val repr = {
-//        val code2 = code.map(R + indent + _).mkString("\n")
-//        R + "foreign " + lang + "\n" + code2
-//      }
-//      def setID(newID: ID)                 = copy(id = Some(newID))
-//      def map(f: AST => AST)               = this
-//      def mapWithOff(f: (Int, AST) => AST) = this
-//    }
-  //
-  //  //////////////////////////////////////////////////////////////////////////////
-  //  //// Zipper //////////////////////////////////////////////////////////////////
-  //  //////////////////////////////////////////////////////////////////////////////
-  //
-  //  /**
-  //    * This is just a stub implementation. It shows how zippers could be
-  //    * implemented for AST.
-  //    */
-  //  sealed trait Zipper[Begin, End]
-  //  object Zipper {
-  //
-  //    sealed trait Path[Begin, End] {
-  //      val path: monocle.Optional[Begin, End]
-  //    }
-  //
-  //    sealed trait Has { type Zipper[_] }
-  //
-  //    sealed trait Provider[Begin, End] {
-  //      type Zipper
-  //      def focus: Path[Begin, End] => Zipper
-  //    }
-  //    object Provider {
-  //      sealed trait Inferred[Begin, End <: Has] extends Provider[Begin, End] {
-  //        type Zipper = End#Zipper[Begin]
-  //
-  //      }
-  //      sealed trait Terminated[Begin, End] extends Provider[Begin, End] {
-  //        type Zipper = Terminator[Begin, End]
-  //      }
-  //
-  //      implicit def default[S, T]: Terminated[S, T] =
-  //        new Terminated[S, T] {
-  //          val focus = Terminator(_)
-  //        }
-  //    }
-  //  }
-  //
-  //  implicit def inferredZipperProvider[S, T <: Zipper.Has](
-  //    implicit ev: Zipper.Path[S, T] => T#Zipper[S]
-  //  ): Zipper.Provider.Inferred[S, T] = new Zipper.Provider.Inferred[S, T] {
-  //    val focus = ev(_)
-  //  }
-  //
-  //  def zipper[S, T](
-  //    lens: Zipper.Path[S, T]
-  //  )(implicit ev: Zipper.Provider[S, T]): ev.Zipper =
-  //    ev.focus(lens)
-  //
-  //   case class Terminator[S, T](zipper: Zipper.Path[S, T])
-  //      extends AST.Zipper[S, T]
-  //
-  //  implicit def ZipperTarget_List1[S, T]
-  //    : Zipper.Provider[S, List1[T]] { type Zipper = List1Target[S, T] } =
-  //    new Zipper.Provider[S, List1[T]] {
-  //      type Zipper = List1Target[S, T]
-  //      def focus = List1Target(_)
-  //    }
-  //
-  //   case class List1Target[S, T](lens: AST.Zipper.Path[S, List1[T]])
-  //      extends AST.Zipper[S, List1[T]] {
-  //    def index(
-  //      idx: Int
-  //    )(implicit ev: Zipper.Provider[List1[T], T]): ev.Zipper =
-  //      zipper(List1Zipper[S, T](lens, idx))
-  //  }
-  //
-  //   case class List1Zipper[S, T](
-  //    zipper: AST.Zipper.Path[S, List1[T]],
-  //    idx: Int
-  //  ) extends AST.Zipper.Path[List1[T], T] {
-  //    val getOpt = (t: List1[T]) =>
-  //      idx match {
-  //        case 0 => Some(t.head)
-  //        case i => t.tail.lift(i - 1)
-  //      }
-  //    val setOpt = (s: T) =>
-  //      (t: List1[T]) =>
-  //        idx match {
-  //          case 0 => t.copy(head = s)
-  //          case _ =>
-  //            val i = idx - 1
-  //            if ((i >= t.tail.length) || (i < 0)) t
-  //            else {
-  //              val (front, back) = t.tail.splitAt(i)
-  //              val tail2         = front ++ (s :: back.tail)
-  //              List1(t.head, tail2)
-  //            }
-  //        }
-  //    val path = monocle.Optional[List1[T], T](getOpt)(setOpt)
-  //  }
-  //
-  //  val z1 = Module.Zipper.lines.index(5).offset.zipper
+  object Foreign {
+    object implicits extends implicits
+    trait implicits {
+      implicit def ftorForeign[T]: Functor[ForeignOf] = semi.functor
+      implicit def reprForeign[T: Repr]: Repr[ForeignOf[T]] = t => {
+        val code2 = t.code.map(R + t.indent + _).mkString("\n")
+        R + "foreign " + t.lang + "\n" + code2
+      }
+    }
+  }
 }
