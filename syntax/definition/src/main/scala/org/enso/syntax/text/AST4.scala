@@ -428,194 +428,143 @@ object AST {
     //// Text ////
     //////////////
 
-//    sealed trait _Text[T] extends _Literal[T]
-//    object Text {
-//
-//      //// Abstraction ////
-//
-//      sealed trait Class[This, T] extends _Text[T] {
-//        type Segment <: Text.Segment
-//
-////        val quoteChar: Char
-////        val quote: Quote
-////        val segments: List[Segment]
-//
-////        lazy val quoteRepr = R + (quoteChar.toString * quote.asInt)
-////        lazy val bodyRepr  = R + segments
-////        lazy val repr      = R + quoteRepr + bodyRepr + quoteRepr
-//
-////        def map(f: AST => AST)               = this
-////        def mapWithOff(f: (Int, AST) => AST) = this
-//
-////        def _dup(quote: Quote, segments: List[Segment]): This
-////        def dup(quote: Quote = quote, segments: List[Segment] = segments) =
-////          _dup(quote, segments)
-////
-////        def prepend(segment: Segment): This =
-////          this.dup(segments = segment :: segments)
-////
-////        def prependMergeReversed(
-////          segment: Segment
-////        )(implicit p: Text.Segment.Raw <:< Segment): This =
-////          (segment, segments) match {
-////            case (Text.Segment.Plain(n), Text.Segment.Plain(t) :: ss) =>
-////              this.dup(segments = Text.Segment.Plain(t + n) :: ss)
-////            case _ => this.dup(segments = segment :: segments)
-////          }
-//      }
-//
-//      //// Smart Constructors ////
-//
-//      def apply(): Interpolated =
-//        Interpolated()
-//      def apply(q: Quote): Interpolated =
-//        Interpolated(q)
-//      def apply(q: Quote, s: Interpolated.Segment*): Interpolated =
-//        Interpolated(q, s: _*)
-//      def apply(s: List[Interpolated.Segment]): Interpolated =
-//        Interpolated(s)
-//      def apply(s: Interpolated.Segment*): Interpolated =
-//        Interpolated(s: _*)
-//
-//      //// Definition ////
-//
-//      import Segment._
-//
-//      case class Interpolated(
-//        quote: Text.Quote,
-//        segments: List[Interpolated.Segment]
-//      ) extends Class[Interpolated] {
-//        type Segment = Interpolated.Segment
-//        val quoteChar        = '\''
-//        def setID(newID: ID) = copy(id = Some(newID))
-//        def _dup(quote: Quote, segments: List[Segment]): Interpolated =
-//          copy(quote, segments)
-//
-//        def raw: Text.Raw =
-//          Raw(quote, segments.map(s => Segment.Plain(s.repr.show())))
-//      }
-//
-//      case class Raw(
-//        quote: Text.Quote,
-//        segments: List[Raw.Segment],
-//        id: Option[ID] = None
-//      ) extends Class[Raw] {
-//        type Segment = Raw.Segment
-//        val quoteChar        = '"'
-//        def setID(newID: ID) = copy(id = Some(newID))
-//        def _dup(quote: Quote, segments: List[Segment]) =
-//          copy(quote, segments)
-//      }
-//
-//      // FIXME: Rethink if we should divide text to single line and multiline.
-//      //        One of segments is EOL, which makes no sense with this division
-//      case class MultiLine(
-//        indent: Int,
-//        quoteChar: Char,
-//        quote: Text.Quote,
-//        segments: List[Segment],
-//        id: Option[ID] = None
-//      ) extends Class[MultiLine] {
-//        type Segment = Text.Segment
-//        def setID(newID: ID) = copy(id = Some(newID))
-//        override lazy val bodyRepr = R + segments.flatMap {
-//            case EOL(true) => List(EOL(), Plain(" " * indent))
-//            case s         => List(s)
-//          }
-//
-//        def _dup(quote: Quote, segments: List[Segment]) =
-//          copy(indent, quoteChar, quote, segments)
-//      }
-//
-//      object MultiLine {
-//        def stripOffset(offset: Int, rawSegs: List[Segment]): List[Segment] = {
-//          if (rawSegs.isEmpty) return rawSegs
-//          var last = rawSegs.head
-//          for (s <- rawSegs.tail :+ EOL()) yield (last, s) match {
-//            case (EOL(_), segment) if offset == 0 =>
-//              last = segment
-//              EOL()
-//            case (EOL(_), Plain(txt))
-//                if txt.takeWhile(_ == ' ').length >= offset =>
-//              last = Plain(txt.drop(offset))
-//              EOL()
-//            case (EOL(_), segment) =>
-//              last = segment
-//              EOL(validIndent = false)
-//            case (_, segment) =>
-//              val prev = last
-//              last = segment
-//              prev
-//          }
-//        }
-//      }
-//
-//      object Raw {
-//        def apply():                      Raw = Raw(Quote.Single, Nil)
-//        def apply(q: Quote):              Raw = Raw(q, Nil)
-//        def apply(q: Quote, s: Segment*): Raw = Raw(q, s.to[List])
-//        def apply(s: List[Segment]):      Raw = Raw(Quote.Single, s)
-//        def apply(s: Segment*):           Raw = Raw(s.to[List])
-//      }
-//
-//      object Interpolated {
-//        //sealed trait Segment extends Text.Segment
-//        def apply(): Interpolated =
-//          Interpolated(Quote.Single, Nil)
-//        def apply(q: Quote): Interpolated =
-//          Interpolated(q, Nil)
-//        def apply(q: Quote, s: Segment*): Interpolated =
-//          Interpolated(q, s.to[List])
-//        def apply(s: List[Segment]): Interpolated =
-//          Interpolated(Quote.Single, s)
-//        def apply(s: Segment*): Interpolated = Interpolated(s.to[List])
-//      }
-//
-//      //// Quote ////
-//
-//      sealed trait Quote {
-//        val asInt: Int
-//      }
-//      object Quote {
-//        final case object Single extends Quote { val asInt = 1 }
-//        final case object Triple extends Quote { val asInt = 3 }
-//      }
-//
-//      //// Segment ////
-//
-//      sealed trait Segment
-//      object Segment {
-//        sealed trait Interpolated extends Segment
-//        sealed trait Raw          extends Interpolated
-//
-//        //type Raw          = Text.Raw.Segment
-//        //type Interpolated = Text.Interpolated.Segment
-//
-//        case class Plain(value: String) extends Raw
-//        case class EOL(validIndent: Boolean = true) extends Raw
-//        case class Interpolation[T](value: Option[T]) extends Interpolated[T]
-//
-//        object implicits extends implicits
-//        trait implicits {
-//          implicit def reprForPlain: Repr.Of[Plain] = _.value
-//          implicit def reprForEOL:   Repr.Of[EOL]   = _ => "\n"
-//          implicit def reprForInterpolation: Repr.Of[Interpolation] =
-//            R + '`' + _.value + '`'
-//        }
-//
+    type Text = _Text[TaggedShape]
+    sealed trait _Text[T] extends _Shape[T]
+    object Text {
+
+      //// Definition ////
+
+      type Line[T]  = List[T]
+      type Block[T] = List1[Line[T]]
+
+      type Raw          = _Raw[TaggedShape]
+      type Interpolated = _Interpolated[TaggedShape]
+      type Unclosed     = _Unclosed[TaggedShape]
+
+      case class _Raw[T](quote: Quote, lines: Raw.Block[T]) extends _Text[T] {
+        val quoteChar: Char = '"'
+      }
+      case class _Interpolated[T](quote: Quote, lines: Interpolated.Block[T])
+          extends _Text[T] {
+        val quoteChar: Char = '\''
+      }
+      case class _Unclosed[T](text: _Text[T]) extends AST._Invalid[T]
+
+      object Raw {
+//        type Segment[T] = Text.Segment._Raw[T]
+        type Line[T]  = Text.Line[Text.Segment._Raw[T]]
+        type Block[T] = Text.Block[Text.Segment._Raw[T]]
+      }
+
+      object Interpolated {
+//        type Segment[T] = Text.Segment._Interpolated[T]
+        type Line[T]  = Text.Line[Text.Segment._Interpolated[T]]
+        type Block[T] = Text.Block[Text.Segment._Interpolated[T]]
+      }
+
+      // Instances ////
+
+      object implicits extends implicits
+      trait implicits extends Segment.implicits {
+        implicit def reprForTextRaw[T]:      Repr.Of[_Raw[T]]          = _ => ???
+        implicit def reprForTextInt[T]:      Repr.Of[_Interpolated[T]] = _ => ???
+        implicit def reprForTextUnclosed[T]: Repr.Of[_Unclosed[T]]     = _ => ???
+
+        implicit def functorForTextRaw[T]: Functor[_Raw] =
+          semi.functor
+        implicit def functorForTextInterpolated[T]: Functor[_Interpolated] =
+          semi.functor
+        implicit def functorForTextUnclosed[T]: Functor[_Unclosed] =
+          semi.functor
+        implicit def offsetZipForTextRaw[T]: OffsetZip[_Raw, T] =
+          t => t.copy(lines = t.lines.map(_.map(OffsetZip(_))))
+        implicit def offsetZipForTextInt[T]: OffsetZip[_Interpolated, T] =
+          t => t.copy(lines = t.lines.map(_.map(OffsetZip(_))))
+        implicit def offsetZipForUnclosed[T]: OffsetZip[_Unclosed, T] =
+          t => t.copy(text = OffsetZip(t.text))
+        implicit def offsetZipForText[T]: OffsetZip[_Text, T] = {
+          case t: _Raw[T]          => OffsetZip(t)
+          case t: _Interpolated[T] => OffsetZip(t)
+        }
+      }
+
+      ///////////////
+      //// Quote ////
+      ///////////////
+
+      sealed trait Quote {
+        val asInt: Int
+      }
+      object Quote {
+        final case object Single extends Quote { val asInt = 1 }
+        final case object Triple extends Quote { val asInt = 3 }
+      }
+
+      /////////////////
+      //// Segment ////
+      /////////////////
+
+      sealed trait Segment[T]
+      object Segment {
+
+        //// Definition ////
+
+        type Interpolated = _Interpolated[TaggedShape]
+        type Raw          = _Raw[TaggedShape]
+        sealed trait _Interpolated[T] extends Segment[T]
+        sealed trait _Raw[T]          extends _Interpolated[T]
+
+        type Plain = _Plain[TaggedShape]
+        type Expr  = _Expr[TaggedShape]
+        case class _Plain[T](value: String)   extends _Raw[T] with Phantom
+        case class _Expr[T](value: Option[T]) extends _Interpolated[T]
+
+        //// Instances ////
+
+        object implicits extends implicits
+        trait implicits {
+          implicit def reprForTextSegPlain[T]: Repr.Of[_Plain[T]] =
+            _.value
+          implicit def reprForTextSegExpr[T: Repr.Of]: Repr.Of[_Expr[T]] =
+            R + '`' + _.value + '`'
+          implicit def functorForTextSegPlain[T]: Functor[_Plain] =
+            semi.functor
+          implicit def functorForTextSegExpr[T]: Functor[_Expr] =
+            semi.functor
+          implicit def offsetZipForTextSegExpr[T]: OffsetZip[_Expr, T] =
+            _.map((0, _))
+          implicit def offsetZipForTextSegPlain[T]: OffsetZip[_Plain, T] =
+            t => t.coerce
+          implicit def reprForTextSegRaw[T]: Repr.Of[_Raw[T]] = {
+            case t: _Plain[T] => t.repr
+          }
+          implicit def reprForTextSegInt[T: Repr.Of]
+            : Repr.Of[_Interpolated[T]] = {
+            case t: _Plain[T] => t.repr
+            case t: _Expr[T]  => t.repr
+          }
+          implicit def functorForTextSegRaw[T]: Functor[_Raw] =
+            semi.functor
+          implicit def functorForTextSegInt[T]: Functor[_Interpolated] =
+            semi.functor
+          implicit def offsetZipForTextSegRaw[T]: OffsetZip[_Raw, T] = {
+            case t: _Plain[T] => OffsetZip(t)
+          }
+          implicit def offsetZipForTextSegInt[T]
+            : OffsetZip[_Interpolated, T] = {
+            case t: _Plain[T] => OffsetZip(t)
+            case t: _Expr[T]  => OffsetZip(t)
+          }
+
+          implicit def fromString[T](str: String): _Plain[T] = _Plain(str)
+        }
+
 //        trait Escape extends Interpolated
 //        val Escape = text.Escape
-//
-//        implicit def fromString(str: String): Plain = Plain(str)
-//      }
-//
-//      //// Unclosed ////
-//
-//      case class Unclosed(text: Class[_]) extends AST.Invalid {
-//        val repr               = R + text.quoteRepr + text.bodyRepr
-//        def map(f: AST => AST) = this
-//      }
-//    }
+
+      }
+
+    }
 
   }
 

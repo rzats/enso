@@ -13,7 +13,7 @@ import org.enso.syntax.text.ast.opr.Prec
 
 import scala.annotation.tailrec
 
-import org.enso.syntax.text.test2
+//import org.enso.syntax.text.test2
 import org.enso.syntax.text.test4
 
 ////////////////
@@ -142,9 +142,11 @@ class Parser {
   import Parser._
   private val engine = newEngine()
 
-  def run(input: Reader, idMap: Map[(Int, Int), AST.ID]): Result[AST.Module] = {
+  def run(input: Reader): Result[AST.Module] =
+    run(input, Map())
+
+  def run(input: Reader, idMap: Map[(Int, Int), AST.ID]): Result[AST.Module] =
     engine.run(input).map(Macro.run)
-  }
 
   /** Although this function does not use any Parser-specific API now, it will
     * use such in the future when the interpreter will provide information about
