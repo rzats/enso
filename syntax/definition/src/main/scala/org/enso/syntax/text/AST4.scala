@@ -451,15 +451,15 @@ object AST {
       case class _Unclosed[T](text: _Text[T]) extends AST._Invalid[T]
 
       object Raw {
-//        type Segment[T] = Text.Segment._Raw[T]
-        type Line[T]  = Text.Line[Text.Segment._Raw[T]]
-        type Block[T] = Text.Block[Text.Segment._Raw[T]]
+        type Segment[T] = Text.Segment._Raw[T]
+        type Line[T]    = Text.Line[Segment[T]]
+        type Block[T]   = Text.Block[Segment[T]]
       }
 
       object Interpolated {
-//        type Segment[T] = Text.Segment._Interpolated[T]
-        type Line[T]  = Text.Line[Text.Segment._Interpolated[T]]
-        type Block[T] = Text.Block[Text.Segment._Interpolated[T]]
+        type Segment[T] = Text.Segment._Interpolated[T]
+        type Line[T]    = Text.Line[Segment[T]]
+        type Block[T]   = Text.Block[Segment[T]]
       }
 
       // Instances ////
@@ -790,216 +790,85 @@ object AST {
 
   //
 
-  //
-  //  //////////////////////////////////////////////////////////////////////////////
-  //  //// Block ///////////////////////////////////////////////////////////////////
-  //  //////////////////////////////////////////////////////////////////////////////
-  //
-  //  val newline = R + '\n'
-  //
-  //  abstract class Block(
-  //    val typ: Block.Type,
-  //    val indent: Int,
-  //    val emptyLines: List[Int],
-  //    val firstLine: Block.Line.NonEmpty,
-  //    val lines: List[Block.Line]
-  //  ) extends AST {
-  //    lazy val headRepr = newline
-  //    val repr = {
-  //      val emptyLinesRepr = emptyLines.map(R + _ + newline)
-  //      val firstLineRepr  = R + indent + firstLine
-  //      val linesRepr = lines.map { line =>
-  //        newline + line.elem.map(_ => indent) + line
-  //      }
-  //      R + headRepr + emptyLinesRepr + firstLineRepr + linesRepr
-  //    }
-  //
-  //    def replaceType(typ: Block.Type): Block
-  //    def map(f: AST => AST): Block
-  //  }
-  //
-  //  case class _Block(
-  //    override val typ: Block.Type,
-  //    override val indent: Int,
-  //    override val emptyLines: List[Int],
-  //    override val firstLine: Block.Line.NonEmpty,
-  //    override val lines: List[Block.Line],
-  //    override val id: Option[ID] = None
-  //  ) extends Block(typ, indent, emptyLines, firstLine, lines) {
-  //    def replaceType(typ: Block.Type) = copy(typ = typ)
-  //    def setID(newID: ID)             = copy(id  = Some(newID))
-  //    def map(f: AST => AST) =
-  //      copy(firstLine = firstLine.map(f), lines = lines.map(_.map(f)))
-  //    def mapWithOff(f: (Int, AST) => AST) = {
-  //      var off        = headRepr.span + indent
-  //      val firstLine2 = firstLine.map(f(off, _))
-  //      off += firstLine.span
-  //      val lines2 = lines.map { line =>
-  //        off += 1 + indent
-  //        val line2 = line.map(f(off, _))
-  //        off += line.span
-  //        line2
-  //      }
-  //      copy(firstLine = firstLine2, lines = lines2)
-  //    }
-  //  }
-  //
-  //  case class OrphanBlock(
-  //    override val typ: Block.Type,
-  //    override val indent: Int,
-  //    override val emptyLines: List[Int],
-  //    override val firstLine: Block.Line.NonEmpty,
-  //    override val lines: List[Block.Line],
-  //    override val id: Option[ID] = None
-  //  ) extends Block(typ, indent, emptyLines, firstLine, lines) {
-  //    def replaceType(typ: Block.Type) = copy(typ = typ)
-  //    def setID(newID: ID)             = copy(id  = Some(newID))
-  //    def map(f: AST => AST) =
-  //      copy(firstLine = firstLine.map(f), lines = lines.map(_.map(f)))
-  //    def mapWithOff(f: (Int, AST) => AST) = {
-  //      var off        = headRepr.span + indent
-  //      val firstLine2 = firstLine.map(f(off, _))
-  //      off += firstLine.span
-  //      val lines2 = lines.map { line =>
-  //        off += 1 + indent
-  //        val line2 = line.map(f(off, _))
-  //        off += line.span
-  //        line2
-  //      }
-  //      copy(firstLine = firstLine2, lines = lines2)
-  //    }
-  //    override lazy val headRepr = R
-  //  }
-  //
-  //  object Block {
-  //    sealed trait Type
-  //    final case object Continuous    extends Type
-  //    final case object Discontinuous extends Type
-  //
-  //    def apply(
-  //      isOrphan: Boolean,
-  //      typ: Type,
-  //      indent: Int,
-  //      emptyLines: List[Int],
-  //      firstLine: Line.NonEmpty,
-  //      lines: List[Line]
-  //    ): Block =
-  //      if (isOrphan) OrphanBlock(typ, indent, emptyLines, firstLine, lines)
-  //      else _Block(typ, indent, emptyLines, firstLine, lines)
-  //
-  //    def apply(
-  //      typ: Type,
-  //      indent: Int,
-  //      firstLine: Line.NonEmpty,
-  //      lines: List[Line]
-  //    ): Block =
-  //      Block(isOrphan = false, typ, indent, List(), firstLine, lines)
-  //
-  //    def apply(
-  //      typ: Type,
-  //      indent: Int,
-  //      firstLine: AST,
-  //      lines: Option[AST]*
-  //    ): Block =
-  //      Block(typ, indent, Line.Required(firstLine), lines.toList.map(Line(_)))
-  //
-  //    def unapply(t: Block): Option[(Int, Line.NonEmpty, List[Line])] =
-  //      Some((t.indent, t.firstLine, t.lines))
-  //
-  //     case class InvalidIndentation(block: Block) extends AST.Invalid {
-  //      val repr               = R + block
-  //      def map(f: AST => AST) = copy(block = block.map(f))
-  //    }
-  //
-  //    //// Line ////
-  //
-  //    type Line = _Line
-  //     case class _Line(elem: Option[AST], off: Int)
-  //        extends Symbol
-  //        with Zipper.Has {
-  //      type Zipper[T] = Line.Zipper.Class[T]
-  //      val repr = R + elem + off
-  //      def map(f: AST => AST): Line = _Line(elem.map(f), off)
-  //      def toNonEmpty(): Option[Line.NonEmpty] =
-  //        elem.map(Line.Required(_, off))
-  //    }
-  //    object Line {
-  //      def apply(elem: Option[AST], off: Int): Line = _Line(elem, off)
-  //      def apply(elem: Option[AST]):           Line = Line(elem, 0)
-  //      def apply(elem: AST):                   Line = Line(Some(elem))
-  //      def apply(off: Int):                    Line = Line(None, off)
-  //      def apply():                            Line = Line(None, 0)
-  //
-  //      type NonEmpty = _NonEmpty
-  //       case class _NonEmpty(elem: AST, off: Int) extends Symbol {
-  //        val repr = R + elem + off
-  //        def toOptional:         Line      = Line(Some(elem), off)
-  //        def map(f: AST => AST): _NonEmpty = copy(elem = f(elem))
-  //      }
-  //      object Required {
-  //        def apply(elem: AST, off: Int): NonEmpty    = _NonEmpty(elem, off)
-  //        def apply(elem: AST):           NonEmpty    = Required(elem, 0)
-  //        def unapply(t: NonEmpty):       Option[AST] = Some(t.elem)
-  //      }
-  //
-  //      //// Zipper ////
-  //
-  //      // TODO: Class below should not define `lens` explicitly, it should be
-  //      //       provided under the hood.
-  //
-  //      object Zipper {
-  //        implicit class Class[S](val lens: AST.Zipper.Path[S, Line])
-  //            extends AST.Zipper[S, Line] {
-  //          val offset = zipper(Offset(lens))
-  //        }
-  //
-  //         case class Offset[S](lens: AST.Zipper.Path[S, Line])
-  //            extends AST.Zipper.Path[Line, Int] {
-  //          val path = GenLens[Line](_.off).asOptional
-  //        }
-  //
-  //      }
-  //
-  //    }
-  //  }
-  //
-  //  //////////////////////////////////////////////////////////////////////////////
-  //  //// Module //////////////////////////////////////////////////////////////////
-  //  //////////////////////////////////////////////////////////////////////////////
-  //
-  //  import Block.Line
-  //
-  //   case class Module(lines: List1[Line], id: Option[ID] = None)
-  //      extends AST {
-  //    val repr             = R + lines.head + lines.tail.map(newline + _)
-  //    def setID(newID: ID) = copy(id = Some(newID))
-  //
-  //    def mapLines(f: Line => Line) = Module(lines.map(f))
-  //    def map(f: AST => AST)        = copy(lines = lines.map(_.map(f)))
-  //    def mapWithOff(f: (Int, AST) => AST) = {
-  //      var off = 0
-  //      val lines2 = lines.map { line =>
-  //        val line2 = line.map(f(off, _))
-  //        off += 1 + line.span
-  //        line2
-  //      }
-  //      copy(lines = lines2)
-  //    }
-  //  }
-  //
-  //  object Module {
-  //    def apply(l: Line):                 Module = Module(List1(l))
-  //    def apply(l: Line, ls: Line*):      Module = Module(List1(l, ls.to[List]))
-  //    def apply(l: Line, ls: List[Line]): Module = Module(List1(l, ls))
-  //
-  //    object Zipper {
-  //      case class Lines() extends AST.Zipper.Path[Module, List1[Line]] {
-  //        val path = GenLens[Module](_.lines).asOptional
-  //      }
-  //      val lines          = zipper(Lines())
-  //      def line(idx: Int) = lines.index(idx)
-  //    }
-  //  }
+  //////////////////////////////////////////////////////////////////////////////
+  //// Block ///////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  val newline = R + '\n'
+
+  type Block = _Block[TaggedShape]
+  case class _Block[T](
+    typ: Block.Type,
+    indent: Int,
+    emptyLines: List[Int],
+    firstLine: Block.Line._Required[T],
+    lines: List[Block.Line._Optional[T]]
+  ) extends _Shape[T]
+
+  object Block {
+    sealed trait Type
+    final case object Continuous    extends Type
+    final case object Discontinuous extends Type
+
+    def apply[T](
+      typ: Type,
+      indent: Int,
+      emptyLines: List[Int],
+      firstLine: Line._Required[T],
+      lines: List[Line._Optional[T]]
+    ): _Block[T] =
+      _Block(typ, indent, emptyLines, firstLine, lines)
+
+    def apply[T](
+      typ: Type,
+      indent: Int,
+      firstLine: Line._Required[T],
+      lines: List[Line._Optional[T]]
+    ): _Block[T] =
+      Block(typ, indent, List(), firstLine, lines)
+
+    def unapply[T](
+      t: _Block[T]
+    ): Option[(Int, Line._Required[T], List[Line._Optional[T]])] =
+      Some((t.indent, t.firstLine, t.lines))
+
+    //// Line ////
+
+    sealed trait Line
+    object Line {
+      case class Struct[+T](elem: T, off: Int) extends Line
+      type Optional      = _Optional[TaggedShape]
+      type Required      = _Optional[TaggedShape]
+      type _Optional[+T] = Struct[Option[T]]
+      type _Required[+T] = Struct[T]
+    }
+
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  //// Module //////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  import Block.Line
+
+  type Module = _Module[TaggedShape]
+  case class _Module[T](lines: List1[Line._Optional[T]]) extends _Shape[T]
+
+  object Module {
+    def apply[T](lines: List1[Line._Optional[T]]): _Module[T] =
+      _Module(lines)
+    def apply[T](firstLine: Line._Optional[T]): _Module[T] =
+      Module(List1(firstLine))
+    def apply[T](
+      firstLine: Line._Optional[T],
+      lines: Line._Optional[T]*
+    ): _Module[T] =
+      Module(List1(firstLine, lines.to[List]))
+    def apply[T](
+      firstLine: Line._Optional[T],
+      lines: List[Line._Optional[T]]
+    ): _Module[T] = Module(List1(firstLine, lines))
+  }
   //
   //  //////////////////////////////////////////////////////////////////////////////
   //  //// Macro ///////////////////////////////////////////////////////////////////
