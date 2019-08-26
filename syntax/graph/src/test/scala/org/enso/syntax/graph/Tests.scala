@@ -211,6 +211,17 @@ class Tests extends FunSuite with org.scalatest.Matchers {
       }
     )
   }
+//  test("node literal in parens") {
+//    checkModuleSingleNodeGraph(
+//      "(15)",
+//      node => {
+//        node.expr.text should equal("(15)")
+//        node.inputs should have size 0
+//        node.output.name should equal(None)
+//        node.flags shouldBe empty
+//      }
+//    )
+//  }
   test("node trivial var") {
     checkModuleSingleNodeGraph(
       "foo",
@@ -244,13 +255,63 @@ class Tests extends FunSuite with org.scalatest.Matchers {
       }
     )
   }
+  test("node single paren arg app") {
+    checkModuleSingleNodeGraph(
+      "foo (4)",
+      node => {
+        node.expr.text should equal("foo (4)")
+        node.inputs should have size 1
+        node.inputs should equal(Seq(Port.Empty))
+        node.flags shouldBe empty
+      }
+    )
+  }
+  test("node unary minus number") {
+    checkModuleSingleNodeGraph(
+      "-5",
+      node => {
+        node.expr.text should equal("-5")
+        node.inputs should equal(Port.Empty(1))
+        node.flags shouldBe empty
+      }
+    )
+  }
+  test("node number plus") {
+    checkModuleSingleNodeGraph(
+      "+5",
+      node => {
+        node.expr.text should equal("+5")
+        node.inputs should equal(Port.Empty(2))
+        node.flags shouldBe empty
+      }
+    )
+  }
+  test("node plus number") {
+    checkModuleSingleNodeGraph(
+      "5+",
+      node => {
+        node.expr.text should equal("5+")
+        node.inputs should equal(Port.Empty(2))
+        node.flags shouldBe empty
+      }
+    )
+  }
   test("node two arg app") {
     checkModuleSingleNodeGraph(
       "foo a _",
       node => {
         node.expr.text should equal("foo a _")
-        node.inputs should have size 2
-        node.inputs should equal(Seq(Port.Empty, Port.Empty))
+        node.inputs should equal(Port.Empty(2))
+        node.flags shouldBe empty
+      }
+    )
+  }
+  test("node two arg app with paren") {
+    checkModuleSingleNodeGraph(
+      "(foo a) _",
+      node => {
+        node.expr.text should equal("(foo a) _")
+        node.inputs should equal(Port.Empty(2))
         node.flags shouldBe empty
       }
     )
@@ -272,7 +333,7 @@ class Tests extends FunSuite with org.scalatest.Matchers {
       node => {
         node.expr.text should equal("a+2")
         node.inputs should have size 2
-        node.inputs should equal(Seq(Port.Empty, Port.Empty))
+        node.inputs should equal(Port.Empty(2))
         node.flags shouldBe empty
       }
     )

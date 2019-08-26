@@ -280,7 +280,8 @@ object API {
     }
 
     /**  port that we don't really know anything about */
-    val Empty = Info(None, None, Seq())
+    def Empty = Info(None, None, Seq())
+    def Empty(n: Int): Seq[Info] = Seq.fill(n)(Port.Empty)
   }
 
   /** A port that produces values ("output", "source"). */

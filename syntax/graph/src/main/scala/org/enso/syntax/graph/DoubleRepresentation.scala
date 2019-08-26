@@ -3,25 +3,31 @@ package org.enso.syntax.graph
 import java.util.UUID
 
 import org.enso.data.List1
+import org.enso.data.Shifted
 import org.enso.syntax.graph.API._
 import org.enso.data.List1._
 import org.enso.flexer.Parser.Result
 import org.enso.flexer.Reader
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Import
+import org.enso.syntax.text.AST.SAST
 import org.enso.syntax.text.Parser
 import org.enso.syntax.text.AST.App.Infix
 import org.enso.syntax.text.AST.Block.Line
+import org.enso.syntax.text.AST.Macro.Match.Segment
+import org.enso.syntax.text.ast.meta
+import org.enso.syntax.text.ast.meta.Pattern
 
 import scala.reflect.ClassTag
 
 object KnownOperators {
-  val assignment = AST.Opr("=")
+  val Assignment = AST.Opr("=")
+  val Minus      = AST.Opr("-")
 }
 
 object Extensions {
   implicit class Opr_ops(opr: AST.Opr) {
-    def isAssignment: Boolean = opr == KnownOperators.assignment
+    def isAssignment: Boolean = opr == KnownOperators.Assignment
   }
 
   implicit class Ast_ops(ast: AST) {
@@ -92,14 +98,51 @@ object Extensions {
     }
 
     def flattenApps: List1[AST] = ast match {
+      // TODO: provisionally deal with macros resolving to Group, like parens,
+      //       as if code was directly grouped
+      case AST.Macro.Match(_, _, _, group @ AST.Group(body)) =>
+        body match {
+          case Some(groupedAst) => groupedAst.flattenApps
+          case _                => List1(group)
+        }
+//      case AST.Macro.Match(
+//          marker,
+//          None,
+//          Shifted.List1(
+//            AST.Macro.Match
+//              .Segment(AST.Opr("("), mmm),
+//            Shifted(
+//              _,
+//              AST.Macro.Match
+//                .Segment(
+//                  AST.Opr(")"),
+//                  Pattern.Match.Of(aa, ee)
+//                )
+//            ) :: Nil
+//          ),
+//          res
+//          ) => {
+//        mmm match {
+//          case Pattern.Match.Of(Pattern.Build(ppp), el) => {
+//            println(ppp.toString + el.toString)
+//            null
+//          }
+//        }
+//        null
+//      }
+      // lhs rhs
       case AST.App(lhs, rhs) => lhs.flattenApps :+ rhs
       case nonAppAst         => List1(nonAppAst)
     }
 
     def groupTopInputs: Seq[AST] = ast match {
-      case _: AST.App                 => ast.flattenApps.tail
-      case _: AST.App.Sides           => Seq(AST.Blank, AST.Blank)
-      case AST.App.Infix(lhs, _, rhs) => Seq(lhs, rhs)
+      case _: AST.App       => ast.flattenApps.tail
+      case _: AST.App.Sides => Seq(AST.Blank, AST.Blank)
+      // TODO special case below for unary minus, until parser handles it
+      case AST.App.Right(KnownOperators.Minus, rhs) => Seq(rhs)
+      case AST.App.Right(_, rhs)                    => Seq(AST.Blank, rhs)
+      case AST.App.Left(lhs, _)                     => Seq(lhs, AST.Blank)
+      case AST.App.Infix(lhs, _, rhs)               => Seq(lhs, rhs)
 //      case _: AST.Var                 => Seq()
 //      case _: AST.Literal             => Seq()
 //      case _: AST.Number              => Seq()
