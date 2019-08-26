@@ -200,18 +200,22 @@ object AST {
   object Scheme {
     object implicits extends implicits
     trait implicits {
+      import Ident.implicits._
+      import App.implicits._
+
       // TODO: Should be auto-generated with Shapeless
       implicit def reprForScheme: Repr.Of[_Shape[TaggedShape]] = {
-        case t: Blank                    => Ident.implicits.reprForBlank.of(t)
-        case t: Var                      => Ident.implicits.reprForVar.of(t)
-        case t: Cons                     => Ident.implicits.reprForCons.of(t)
-        case t: App._Prefix[TaggedShape] => App.reprForPrefix[TaggedShape].of(t)
+        case t: Blank => Ident.implicits.reprForBlank.of(t)
+        case t: Var   => Ident.implicits.reprForVar.of(t)
+        case t: Cons  => Ident.implicits.reprForCons.of(t)
+        case t: App._Prefix[TaggedShape] =>
+          App.implicits.reprForPrefix[TaggedShape].of(t)
       }
 
       // TODO: Should be auto-generated with Shapeless
       implicit def offsetZipForScheme[T: Repr.Of]: OffsetZip[_Shape, T] = {
-//        case t: _Var[T]        => OffsetZip(t)
-//        case t: _Cons[T]       => OffsetZip(t)
+        case t: Ident._Var[T]  => OffsetZip(t)
+        case t: Ident._Cons[T] => OffsetZip(t)
         case t: App._Prefix[T] => OffsetZip(t)
       }
     }
@@ -340,10 +344,13 @@ object AST {
 
     //// Instances ////
 
+    object implicits extends implicits
     trait implicits
         extends Scheme.implicits
         with Var.implicits
-        with Cons.implicits {
+        with Cons.implicits
+        with Opr.implicits
+        with Mod.implicits {
       implicit def reprForBlank:         Repr.Of[_Blank[_]]   = _.name
       implicit def reprForVar:           Repr.Of[_Var[_]]     = _.name
       implicit def reprForCons:          Repr.Of[_Cons[_]]    = _.name
@@ -369,8 +376,6 @@ object AST {
         else Opr(str)
       }
     }
-    object implicits extends implicits
-
   }
   import Ident.implicits._
 
@@ -448,19 +453,22 @@ object AST {
 
     //// Instances ////
 
-    implicit def reprForPrefix[T: Repr.Of]: Repr.Of[_Prefix[T]] =
-      t => R + t._fn + t.off + t._arg
-    implicit def reprForInfix[T: Repr.Of]: Repr.Of[_Infix[T]] =
-      t => R + t._larg + t.loff + t.opr + t.roff + t._rarg
-    implicit def functorForPrefix: Functor[_Prefix] = semi.functor
-    implicit def functorForInfix:  Functor[_Infix]  = semi.functor
-    implicit def offsetZipForPrefix[T: Repr.Of]: OffsetZip[_Prefix, T] =
-      t => t.copy(_fn = (0, t._fn), _arg = (Repr.span(t._fn) + t.off, t._arg))
-    implicit def offsetZipForInfix[T: Repr.Of]: OffsetZip[_Infix, T] =
-      t => {
-        val rargSpan = (R + t._larg + t.loff + t.opr + t.roff).span
-        t.copy(_larg = (0, t._larg), _rarg = (rargSpan, t._rarg))
-      }
+    object implicits extends implicits
+    trait implicits {
+      implicit def reprForPrefix[T: Repr.Of]: Repr.Of[_Prefix[T]] =
+        t => R + t._fn + t.off + t._arg
+      implicit def reprForInfix[T: Repr.Of]: Repr.Of[_Infix[T]] =
+        t => R + t._larg + t.loff + t.opr + t.roff + t._rarg
+      implicit def functorForPrefix: Functor[_Prefix] = semi.functor
+      implicit def functorForInfix:  Functor[_Infix]  = semi.functor
+      implicit def offsetZipForPrefix[T: Repr.Of]: OffsetZip[_Prefix, T] =
+        t => t.copy(_fn = (0, t._fn), _arg = (Repr.span(t._fn) + t.off, t._arg))
+      implicit def offsetZipForInfix[T: Repr.Of]: OffsetZip[_Infix, T] =
+        t => {
+          val rargSpan = (R + t._larg + t.loff + t.opr + t.roff).span
+          t.copy(_larg = (0, t._larg), _rarg = (rargSpan, t._rarg))
+        }
+    }
 
     /////////////////
     //// Section ////
@@ -516,21 +524,24 @@ object AST {
 
       //// Instances ////
 
-      implicit def reprForLeft[T: Repr.Of]: Repr.Of[_Left[T]] =
-        t => R + t._arg + t.off + t.opr
-      implicit def reprForRight[T: Repr.Of]: Repr.Of[_Right[T]] =
-        t => R + t.opr + t.off + t._arg
-      implicit def reprForSides[T: Repr.Of]: Repr.Of[_Sides[T]] =
-        t => R + t.opr
-      implicit def functorForLeft:  Functor[_Left]  = semi.functor
-      implicit def functorForRight: Functor[_Right] = semi.functor
-      implicit def functorForSides: Functor[_Sides] = semi.functor
-      implicit def offsetZipForLeft[T]: OffsetZip[_Left, T] =
-        t => t.copy(_arg = (0, t._arg))
-      implicit def offsetZipForRight[T]: OffsetZip[_Right, T] =
-        t => t.copy(_arg = (Repr.span(t.opr) + t.off, t._arg))
-      implicit def offsetZipForSides[T]: OffsetZip[_Sides, T] =
-        t => t.coerce
+      object implicits extends implicits
+      trait implicits {
+        implicit def reprForLeft[T: Repr.Of]: Repr.Of[_Left[T]] =
+          t => R + t._arg + t.off + t.opr
+        implicit def reprForRight[T: Repr.Of]: Repr.Of[_Right[T]] =
+          t => R + t.opr + t.off + t._arg
+        implicit def reprForSides[T: Repr.Of]: Repr.Of[_Sides[T]] =
+          t => R + t.opr
+        implicit def functorForLeft:  Functor[_Left]  = semi.functor
+        implicit def functorForRight: Functor[_Right] = semi.functor
+        implicit def functorForSides: Functor[_Sides] = semi.functor
+        implicit def offsetZipForLeft[T]: OffsetZip[_Left, T] =
+          t => t.copy(_arg = (0, t._arg))
+        implicit def offsetZipForRight[T]: OffsetZip[_Right, T] =
+          t => t.copy(_arg = (Repr.span(t.opr) + t.off, t._arg))
+        implicit def offsetZipForSides[T]: OffsetZip[_Sides, T] =
+          t => t.coerce
+      }
     }
   }
 
