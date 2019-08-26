@@ -198,20 +198,20 @@ object AST {
   implicit def functorForScheme: Functor[_Shape] = semi.functor
 
   object Scheme {
-    object implicits {
-
+    object implicits extends implicits
+    trait implicits {
       // TODO: Should be auto-generated with Shapeless
       implicit def reprForScheme: Repr.Of[_Shape[TaggedShape]] = {
-        case t: _Blank[TaggedShape]      => reprForBlank.of(t)
-        case t: _Var[TaggedShape]        => reprForVar.of(t)
-        case t: _Cons[TaggedShape]       => reprForCons.of(t)
+        case t: Blank                    => Ident.implicits.reprForBlank.of(t)
+        case t: Var                      => Ident.implicits.reprForVar.of(t)
+        case t: Cons                     => Ident.implicits.reprForCons.of(t)
         case t: App._Prefix[TaggedShape] => App.reprForPrefix[TaggedShape].of(t)
       }
 
       // TODO: Should be auto-generated with Shapeless
       implicit def offsetZipForScheme[T: Repr.Of]: OffsetZip[_Shape, T] = {
-        case t: _Var[T]        => OffsetZip(t)
-        case t: _Cons[T]       => OffsetZip(t)
+//        case t: _Var[T]        => OffsetZip(t)
+//        case t: _Cons[T]       => OffsetZip(t)
         case t: App._Prefix[T] => OffsetZip(t)
       }
     }
@@ -262,11 +262,105 @@ object AST {
   sealed trait _Literal[T] extends _Shape[T]
   sealed trait _Ident[T]   extends _Literal[T] with Phantom { val name: String }
 
+  implicit class IdentOps(t: Tagged[Ident]) {
+    def name: String = t.struct.name
+  }
+
+  type Blank = Ident.Blank
+  type Var   = Ident.Var
+  type Cons  = Ident.Cons
+  type Opr   = Ident.Opr
+  type Mod   = Ident.Mod
+
+  val Blank = Ident.Blank
+  val Var   = Ident.Var
+  val Cons  = Ident.Cons
+  val Opr   = Ident.Opr
+  val Mod   = Ident.Mod
+
   object Ident {
     case class InvalidSuffix[T](elem: Tagged[Ident], suffix: String)
         extends _Invalid[T]
 
-    trait implicits extends Var.implicits with Cons.implicits {
+    //// Definition ////
+
+    type Blank = _Blank[TaggedShape]
+    type Var   = _Var[TaggedShape]
+    type Cons  = _Cons[TaggedShape]
+    type Opr   = _Opr[TaggedShape]
+    type Mod   = _Mod[TaggedShape]
+
+    case class _Blank[T]()            extends _Ident[T] { val name = "_" }
+    case class _Var[T](name: String)  extends _Ident[T]
+    case class _Cons[T](name: String) extends _Ident[T]
+    case class _Mod[T](name: String)  extends _Ident[T]
+    case class _Opr[T](name: String) extends _Ident[T] {
+      val (prec, assoc) = opr.Info.of(name)
+    }
+
+    //// Companions ////
+
+    object Blank {
+      def apply():           Blank   = _Blank()
+      def unapply(t: Blank): Boolean = true
+    }
+
+    object Var {
+      def apply(name: String): Var            = _Var(name)
+      def unapply(t: Var):     Option[String] = Some(t.name)
+      trait implicits {
+        implicit def stringToVar(str: String): Var = Var(str)
+      }
+    }
+
+    object Cons {
+      def apply(name: String): Cons           = _Cons(name)
+      def unapply(t: Cons):    Option[String] = Some(t.name)
+      trait implicits {
+        implicit def stringToCons(str: String): Cons = Cons(str)
+      }
+    }
+
+    object Opr {
+      def apply(name: String): Opr            = _Opr(name)
+      def unapply(t: Opr):     Option[String] = Some(t.name)
+      trait implicits {
+        implicit def stringToOpr(str: String): Opr = Opr(str)
+      }
+      val app: Opr = Opr(" ")
+    }
+
+    object Mod {
+      def apply(name: String): Mod            = _Mod(name)
+      def unapply(t: Mod):     Option[String] = Some(t.name)
+      trait implicits {
+        implicit def stringToMod(str: String): Mod = Mod(str)
+      }
+    }
+
+    //// Instances ////
+
+    trait implicits
+        extends Scheme.implicits
+        with Var.implicits
+        with Cons.implicits {
+      implicit def reprForBlank:         Repr.Of[_Blank[_]]   = _.name
+      implicit def reprForVar:           Repr.Of[_Var[_]]     = _.name
+      implicit def reprForCons:          Repr.Of[_Cons[_]]    = _.name
+      implicit def reprForOpr:           Repr.Of[_Opr[_]]     = _.name
+      implicit def reprForMod:           Repr.Of[_Mod[_]]     = _.name
+      implicit def functorForLiteral:    Functor[_Literal]    = semi.functor
+      implicit def functorForIdent:      Functor[_Ident]      = semi.functor
+      implicit def functorForBlank:      Functor[_Blank]      = semi.functor
+      implicit def functorForVar:        Functor[_Var]        = semi.functor
+      implicit def functorForOpr:        Functor[_Opr]        = semi.functor
+      implicit def functorForMod:        Functor[_Mod]        = semi.functor
+      implicit def offsetZipForBlank[T]: OffsetZip[_Blank, T] = t => t.coerce
+      implicit def offsetZipForVar[T]:   OffsetZip[_Var, T]   = t => t.coerce
+      implicit def offsetZipForCons[T]:  OffsetZip[_Cons, T]  = t => t.coerce
+      implicit def offsetZipForOpr[T]:   OffsetZip[_Opr, T]   = t => t.coerce
+      implicit def offsetZipForMod[T]:   OffsetZip[_Mod, T]   = t => t.coerce
+
       implicit def stringToIdent(str: String): Ident = {
         if (str == "") throw new Error("Empty literal")
         if (str == "_") Blank()
@@ -275,90 +369,10 @@ object AST {
         else Opr(str)
       }
     }
+    object implicits extends implicits
+
   }
-
-  implicit class IdentOps(t: Tagged[Ident]) {
-    def name: String = t.struct.name
-  }
-
-  //////////////////////////////////////////////////////////////////////////////
-  //// Ident ///////////////////////////////////////////////////////////////////
-  //////////////////////////////////////////////////////////////////////////////
-
-  //// Definition ////
-
-  type Blank = _Blank[TaggedShape]
-  type Var   = _Var[TaggedShape]
-  type Cons  = _Cons[TaggedShape]
-  type Opr   = _Opr[TaggedShape]
-  type Mod   = _Mod[TaggedShape]
-
-  case class _Blank[T]()            extends _Ident[T] { val name = "_" }
-  case class _Var[T](name: String)  extends _Ident[T]
-  case class _Cons[T](name: String) extends _Ident[T]
-  case class _Mod[T](name: String)  extends _Ident[T]
-  case class _Opr[T](name: String) extends _Ident[T] {
-    val (prec, assoc) = opr.Info.of(name)
-  }
-
-  //// Companions ////
-
-  object Blank {
-    def apply():           Blank   = _Blank()
-    def unapply(t: Blank): Boolean = true
-  }
-
-  object Var {
-    def apply(name: String): Var            = _Var(name)
-    def unapply(t: Var):     Option[String] = Some(t.name)
-    trait implicits {
-      implicit def stringToVar(str: String): Var = Var(str)
-    }
-  }
-
-  object Cons {
-    def apply(name: String): Cons           = _Cons(name)
-    def unapply(t: Cons):    Option[String] = Some(t.name)
-    trait implicits {
-      implicit def stringToCons(str: String): Cons = Cons(str)
-    }
-  }
-
-  object Opr {
-    def apply(name: String): Opr            = _Opr(name)
-    def unapply(t: Opr):     Option[String] = Some(t.name)
-    trait implicits {
-      implicit def stringToOpr(str: String): Opr = Opr(str)
-    }
-    val app: Opr = Opr(" ")
-  }
-
-  object Mod {
-    def apply(name: String): Mod            = _Mod(name)
-    def unapply(t: Mod):     Option[String] = Some(t.name)
-    trait implicits {
-      implicit def stringToMod(str: String): Mod = Mod(str)
-    }
-  }
-
-  //// Instances ////
-
-  implicit def reprForBlank:         Repr.Of[_Blank[_]]   = _.name
-  implicit def reprForVar:           Repr.Of[_Var[_]]     = _.name
-  implicit def reprForCons:          Repr.Of[_Cons[_]]    = _.name
-  implicit def reprForOpr:           Repr.Of[_Opr[_]]     = _.name
-  implicit def reprForMod:           Repr.Of[_Mod[_]]     = _.name
-  implicit def functorForLiteral:    Functor[_Literal]    = semi.functor
-  implicit def functorForIdent:      Functor[_Ident]      = semi.functor
-  implicit def functorForBlank:      Functor[_Blank]      = semi.functor
-  implicit def functorForVar:        Functor[_Var]        = semi.functor
-  implicit def functorForOpr:        Functor[_Opr]        = semi.functor
-  implicit def functorForMod:        Functor[_Mod]        = semi.functor
-  implicit def offsetZipForBlank[T]: OffsetZip[_Blank, T] = t => t.coerce
-  implicit def offsetZipForVar[T]:   OffsetZip[_Var, T]   = t => t.coerce
-  implicit def offsetZipForCons[T]:  OffsetZip[_Cons, T]  = t => t.coerce
-  implicit def offsetZipForOpr[T]:   OffsetZip[_Opr, T]   = t => t.coerce
-  implicit def offsetZipForMod[T]:   OffsetZip[_Mod, T]   = t => t.coerce
+  import Ident.implicits._
 
   //////////////////////////////////////////////////////////////////////////////
   //// App /////////////////////////////////////////////////////////////////////
@@ -469,25 +483,25 @@ object AST {
       object Left {
         def unapply(t: Left) = Some((t.arg, t.opr))
         def apply(arg: Tagged[AST], off: Int, opr: Opr): Left =
-          _Left(fix(arg), off, opr)
+          _Left(arg, off, opr)
         def apply(arg: Tagged[AST], opr: Opr): Left = Left(arg, 1, opr)
       }
       implicit def taggedLeftOps(t: Tagged[Left]): LeftOps = t.struct
       implicit class LeftOps(t: Left) {
         def arg                   = t._arg.unFix
-        def arg_=(v: Tagged[AST]) = t.copy(_arg = fix(v))
+        def arg_=(v: Tagged[AST]) = t.copy(_arg = v)
       }
 
       object Right {
         def unapply(t: Right) = Some((t.opr, t.arg))
         def apply(opr: Opr, off: Int, arg: Tagged[AST]): Right =
-          _Right(opr, off, fix(arg))
+          _Right(opr, off, arg)
         def apply(opr: Opr, arg: Tagged[AST]): Right = Right(opr, 1, arg)
       }
       implicit def taggedRightOps(t: Tagged[Right]): RightOps = t.struct
       implicit class RightOps(t: Right) {
         def arg                   = t._arg.unFix
-        def arg_=(v: Tagged[AST]) = t.copy(_arg = fix(v))
+        def arg_=(v: Tagged[AST]) = t.copy(_arg = v)
       }
 
       object Sides {
@@ -524,6 +538,8 @@ object AST {
 
   def main() {
 
+    import Ident.implicits._
+
     val foo    = Var("foo")
     val bar    = Var("foo")
     val plus   = Opr("+")
@@ -534,11 +550,11 @@ object AST {
 
     println(foox.withNewID())
 
-    val x1    = toTagged(foo)
-    var app1  = App.Prefix(foo, 0, bar)
-    var tapp1 = Tagged(app1)
+    val x1   = toTagged(foo)
+    var app1 = App.Prefix(fooAST, 0, bar)
+//    var tapp1 = Tagged(app1)
 
-    println(tapp1.arg)
+//    println(tapp1.arg)
     //    var xapp2 = xapp1: AST
 //    var xapp3 = Tagged(xapp2)
 //
