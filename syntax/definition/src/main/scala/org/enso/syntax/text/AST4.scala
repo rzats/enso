@@ -68,6 +68,10 @@ object AST {
     object implicits extends implicits
     trait implicits {
 
+      // FIXME: Makes IntelliJ happy, but probably lowers performance
+      implicit def shapeToAST(shape: Shape): AST =
+        Fix.implicits.fixDeep(shape)
+
       implicit def stringToAST(str: String): Shape = {
         if (str == "") throw new Error("Empty literal")
         if (str == "_") Blank()
@@ -181,7 +185,8 @@ object AST {
         ev: Repr[T[AST]]
       ): Fix[TaggedShapeOf] = {
         val t1 = Tagged(t)
-        val t2 = t1.asInstanceOf[Fix.Body[TaggedShapeOf]] // FIXME
+        // FIXME How to avoid the `asInstanceOf` below?
+        val t2 = t1.asInstanceOf[Fix.Body[TaggedShapeOf]]
         Fix(t2)
       }
     }
@@ -224,28 +229,23 @@ object AST {
     */
   sealed trait ShapeOf[T]
 
-  implicit def ftorShapeOf: Functor[ShapeOf] = semi.functor
-
-  object Scheme {
+  object Shape {
     object implicits extends implicits
     trait implicits {
-      import Ident.implicits._
-//      import App.implicits._
+
+      implicit def ftorShapeOf: Functor[ShapeOf] = semi.functor
 
       // TODO: Should be auto-generated with Shapeless
       implicit def reprScheme: Repr[ShapeOf[AST]] = {
-        case t: Blank => Ident.implicits.reprBlank.of(t)
-        case t: Var   => Ident.implicits.reprVar.of(t)
-        case t: Cons  => Ident.implicits.reprCons.of(t)
-//        case t: App._Prefix[_AST] =>
-//          App.implicits.reprPrefix[_AST].of(t)
+        case t: Blank => Repr.of(t)
+        case t: Var   => Repr.of(t)
+        case t: Cons  => Repr.of(t)
       }
 
       // TODO: Should be auto-generated with Shapeless
       implicit def offZipScheme[T: Repr]: OffsetZip[ShapeOf, T] = {
         case t: Ident.VarOf[T]  => OffsetZip(t)
         case t: Ident.ConsOf[T] => OffsetZip(t)
-//        case t: App._Prefix[T] => OffsetZip(t)
       }
     }
   }
@@ -374,7 +374,7 @@ object AST {
 
     object implicits extends implicits
     trait implicits
-        extends Scheme.implicits
+        extends Shape.implicits
         with Var.implicits
         with Cons.implicits
         with Opr.implicits
@@ -409,48 +409,58 @@ object AST {
   //// Literal /////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Literal = _Literal[AST]
-  sealed trait _Literal[T] extends ShapeOf[T]
-
-//  implicit def ftorLiteral:    Functor[_Literal]    = semi.functor
-
+  type Literal = LiteralOf[AST]
+  sealed trait LiteralOf[T] extends ShapeOf[T]
   object Literal {
 
     object implicits extends implicits
-    trait implicits  extends Number.implicits
+    trait implicits extends Number.implicits {
+      implicit def ftorLiteral: Functor[LiteralOf] = semi.functor
+    }
 
     ////////////////
     //// Number ////
     ////////////////
 
-    type Number = _Number[AST]
-    case class _Number[T](base: Option[String], int: String)
-        extends _Literal[T]
+    type Number = NumberOf[AST]
+    case class NumberOf[T](base: Option[String], int: String)
+        extends LiteralOf[T]
         with Phantom
 
     object Number {
-      def apply(i: String):            Number = _Number(None, i)
-      def apply(b: String, i: String): Number = _Number(Some(b), i)
+      def apply(i: String):            Number = Number(None, i)
+      def apply(b: String, i: String): Number = Number(Some(b), i)
       def apply(i: Int):               Number = Number(i.toString)
       def apply(b: Int, i: String):    Number = Number(b.toString, i)
       def apply(b: String, i: Int):    Number = Number(b, i.toString)
       def apply(b: Int, i: Int):       Number = Number(b.toString, i.toString)
-
-      object implicits extends implicits
-      trait implicits {
-        implicit def reprNumber: Repr[_Number[_]] =
-          t => t.base.map(_ + "_").getOrElse("") + t.int
-        implicit def ftorNumber: Functor[_Number] = semi.functor
-        implicit def offZipNumber[T]: OffsetZip[_Number, T] =
-          t => t.coerce
-      }
+      def apply(b: Option[String], i: String): Number =
+        NumberOf(b, i)
 
       //// DanglingBase ////
 
-//      case class DanglingBase(base: String) extends AST.Invalid {
-//        val repr               = base + '_'
-//        def map(f: AST => AST) = this
-//      }
+      type DanglingBase = DanglingBaseOf[AST]
+      case class DanglingBaseOf[T](base: String)
+          extends AST.InvalidOf[T]
+          with Phantom
+
+      object DanglingBase {
+        def apply(base: String): DanglingBase = DanglingBaseOf(base)
+      }
+
+      //// Instances ////
+
+      object implicits extends implicits
+      trait implicits {
+        implicit def ftorNum:      Functor[NumberOf]       = semi.functor
+        implicit def ftorNumDang:  Functor[DanglingBaseOf] = semi.functor
+        implicit def offZipNum[T]: OffsetZip[NumberOf, T]  = t => t.coerce
+        implicit def offZipNumDang[T]: OffsetZip[DanglingBaseOf, T] =
+          t => t.coerce
+        implicit def reprNum: Repr[NumberOf[_]] =
+          t => t.base.map(_ + "_").getOrElse("") + t.int
+        implicit def reprNumDang: Repr[NumberOf[_]] = R + _.base + '_'
+      }
     }
 
     //////////////
@@ -776,40 +786,41 @@ object AST {
 
   def main() {
 
-//    import implicits._
-//
+    import implicits._
+
+    val foo    = Var("foo")
+    val bar    = Var("foo")
+    val plus   = Opr("+")
+    val ttt2   = foo: Shape
+    val ttt3   = ttt2: AST
+    val fooAST = foo: Shape
+
+    val foox = foo: Shape
+
 //    val foo    = Var("foo")
-//    val bar    = Var("foo")
-//    val plus   = Opr("+")
-//    val ttt2   = foo: Shape
-//    val ttt3   = ttt2: AST
-//    val fooAST = foo: Shape
-//
-//    val foox = foo: Shape
-//
-////    val foo    = Var("foo")
-////    val foo2 = fix2(foo): FixedAST
-//
-////    println(foox.withNewID())
-//    val tfoo  = Var("foo")
-//    val tfoo2 = Fix.implicits.fixDeep(tfoo): AST
-//    val tfoo3 = tfoo: AST
-//
-//    val l1 = Block.Line(tfoo3): Block.Line
-//
-//    println("..........")
-//    println(tfoo2)
-//    println(tfoo3)
-//
-//    val x1   = toTagged(foo)
-//    var app1 = App.Prefix(fooAST, 0, bar)
-//
-//    fooAST match {
-//      case t: App        => println("It was APP 1")
-//      case t: App.Prefix => println("It was APP 2")
-//      case t: Ident      => println("It was Ident")
-//      case t: Var        => println("It was VAR")
-//    }
+//    val foo2 = fix2(foo): FixedAST
+
+//    println(foox.withNewID())
+    val tfoo  = Var("foo")
+    val tfoo2 = Fix.implicits.fixDeep(tfoo): AST
+    val tfoo3 = tfoo: AST
+
+    val l1 = Block.Line(tfoo3): Block.Line
+
+    println("..........")
+    println(tfoo2)
+    println(tfoo3)
+    println(ttt3.repr)
+
+    val x1   = toTagged(foo)
+    var app1 = App.Prefix(fooAST, 0, bar)
+
+    fooAST match {
+      case t: App        => println("It was APP 1")
+      case t: App.Prefix => println("It was APP 2")
+      case t: Ident      => println("It was Ident")
+      case t: Var        => println("It was VAR")
+    }
   }
 
   //////////////////////////////////////////////////////////////////////////////
