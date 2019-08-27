@@ -92,11 +92,11 @@ object AST {
 
       implicit class ASTOps(ast: AST) {
         def shape: ShapeOf[AST] =
-          ast.unFix.struct
+          ast.unFix.shape
 
         def map(f: AST => AST): AST = {
           val tshape  = ast.unFix
-          val tshape2 = tshape.copy(struct = ftorShapeOf.map(tshape.struct)(f))
+          val tshape2 = tshape.copy(shape = ftorShapeOf.map(tshape.shape)(f))
           fix(tshape2)
         }
       }
@@ -199,21 +199,20 @@ object AST {
   /** [[Tagged]] is a AST nodes wrapper which adds [[ID]] information and
     * caches the repr of the node.
     *
-    * @param struct Is the structure of the AST node. In most cases, it is a
+    * @param shape Is the structure of the AST node. In most cases, it is a
     *               subtype of [[Shape]].
     * @param id     Is the unique AST Node ID assigned by parser from the marker
     *               map.
     */
-  case class Tagged[+F: Repr](struct: F, id: Option[ID] = None) {
-    val repr: RRR = Repr.of(struct)
+  case class Tagged[+T: Repr](shape: T, id: Option[ID]) {
+    val repr: RRR   = Repr.of(shape)
+    def withNewID() = copy(id = Some(UUID.randomUUID()))
   }
 
   object Tagged {
+    def apply[T: Repr](shape: T): Tagged[T] = Tagged(shape, None)
     trait implicits {
-      implicit class TaggedOps[T: Repr](t: Tagged[T]) {
-        def withNewID() = t.copy(id = Some(UUID.randomUUID()))
-      }
-      implicit def toTagged[T: Repr](t: T): Tagged[T]       = Tagged(t, None)
+      implicit def toTagged[T: Repr](t: T): Tagged[T]       = Tagged(t)
       implicit def reprWithData:            Repr[Tagged[_]] = _.repr
     }
   }
@@ -295,7 +294,7 @@ object AST {
   sealed trait IdentOf[T] extends ShapeOf[T] with Phantom { val name: String }
 
   implicit class IdentOps(t: Tagged[Ident]) {
-    def name: String = t.struct.name
+    def name: String = t.shape.name
   }
 
   type Blank = Ident.Blank
