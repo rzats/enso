@@ -14,7 +14,7 @@ import org.enso.syntax.text.ast.opr.Prec
 import scala.annotation.tailrec
 
 //import org.enso.syntax.text.test2
-import org.enso.syntax.text.test4
+import org.enso.syntax.text.test
 
 ////////////////
 //// Parser ////
@@ -279,7 +279,7 @@ object Main extends App {
   println()
 
 //  test2.AST.main()
-  test4.AST.main()
+  test.AST.main()
 
 }
 

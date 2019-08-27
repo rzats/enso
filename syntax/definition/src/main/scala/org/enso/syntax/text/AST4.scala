@@ -1,4 +1,4 @@
-package org.enso.syntax.text.test4
+package org.enso.syntax.text.test
 
 import monocle.macros.GenLens
 import org.enso.data.List1._
@@ -333,28 +333,37 @@ object AST {
 
     object Blank {
       def apply():           Blank   = BlankOf()
-      def unapply(t: Blank): Boolean = true
+      def unapply(t: Blank): Boolean = t.shape.isInstanceOf[BlankOf[_]]
     }
 
     object Var {
-      def apply(name: String): Var            = VarOf(name)
-      def unapply(t: Var):     Option[String] = Some(t.name)
+      def apply(name: String): Var = VarOf(name)
+      def unapply(t: AST): Option[String] = t.shape match {
+        case VarOf(name) => Some(name)
+        case _           => None
+      }
       trait implicits {
         implicit def stringToVar(str: String): Var = Var(str)
       }
     }
 
     object Cons {
-      def apply(name: String): Cons           = ConsOf(name)
-      def unapply(t: Cons):    Option[String] = Some(t.name)
+      def apply(name: String): Cons = ConsOf(name)
+      def unapply(t: AST): Option[String] = t.shape match {
+        case ConsOf(name) => Some(name)
+        case _            => None
+      }
       trait implicits {
         implicit def stringToCons(str: String): Cons = Cons(str)
       }
     }
 
     object Opr {
-      def apply(name: String): Opr            = OprOf(name)
-      def unapply(t: Opr):     Option[String] = Some(t.name)
+      def apply(name: String): Opr = OprOf(name)
+      def unapply(t: AST): Option[String] = t.shape match {
+        case OprOf(name) => Some(name)
+        case _           => None
+      }
       trait implicits {
         implicit def stringToOpr(str: String): Opr = Opr(str)
       }
@@ -362,8 +371,11 @@ object AST {
     }
 
     object Mod {
-      def apply(name: String): Mod            = ModOf(name)
-      def unapply(t: Mod):     Option[String] = Some(t.name)
+      def apply(name: String): Mod = ModOf(name)
+      def unapply(t: AST): Option[String] = t.shape match {
+        case ModOf(name) => Some(name)
+        case _           => None
+      }
       trait implicits {
         implicit def stringToMod(str: String): Mod = Mod(str)
       }
@@ -618,13 +630,19 @@ object AST {
         extends AppOf[T]
 
     object Prefix {
-      def unapply(t: Prefix) = Some((t.fn, t.arg))
+      def unapply(t: AST) = t.shape match {
+        case t: PrefixOf[_] => Some((t.fn, t.arg))
+        case _              => None
+      }
       def apply(fn: AST, off: Int, arg: AST): Prefix = PrefixOf(fn, off, arg)
       def apply(fn: AST, arg: AST):           Prefix = Prefix(fn, 1, arg)
     }
 
     object Infix {
-      def unapply(t: Infix) = Some((t.larg, t.opr, t.rarg))
+      def unapply(t: AST) = t.shape match {
+        case t: InfixOf[_] => Some((t.larg, t.opr, t.rarg))
+        case _             => None
+      }
       def apply(larg: AST, loff: Int, opr: Opr, roff: Int, rarg: AST): Infix =
         InfixOf(larg, loff, opr, roff, rarg)
       def apply(larg: AST, loff: Int, opr: Opr, rarg: AST): Infix =
@@ -672,19 +690,28 @@ object AST {
       case class SidesOf[T](opr: Opr)                   extends SectionOf[T] with Phantom
 
       object Left {
-        def unapply(t: Left) = Some((t.arg, t.opr))
+        def unapply(t: AST) = t.shape match {
+          case t: LeftOf[_] => Some((t.arg, t.opr))
+          case _            => None
+        }
         def apply(arg: AST, off: Int, opr: Opr): Left = LeftOf(arg, off, opr)
         def apply(arg: AST, opr: Opr):           Left = Left(arg, 1, opr)
       }
 
       object Right {
-        def unapply(t: Right) = Some((t.opr, t.arg))
+        def unapply(t: AST) = t.shape match {
+          case t: RightOf[_] => Some((t.opr, t.arg))
+          case _             => None
+        }
         def apply(opr: Opr, off: Int, arg: AST): Right = RightOf(opr, off, arg)
         def apply(opr: Opr, arg: AST):           Right = Right(opr, 1, arg)
       }
 
       object Sides {
-        def unapply(t: Sides) = Some(t.opr)
+        def unapply(t: AST) = t.shape match {
+          case t: SidesOf[_] => Some(t.opr)
+          case _             => None
+        }
         def apply(opr: Opr): Sides = SidesOf(opr)
       }
 
@@ -752,10 +779,10 @@ object AST {
       lines: List[LineOf[Option[AST]]]
     ): Block = Block(typ, indent, List(), firstLine, lines)
 
-    def unapply[T](
-      t: BlockOf[T]
-    ): Option[(Int, LineOf[T], List[LineOf[Option[T]]])] =
-      Some((t.indent, t.firstLine, t.lines))
+    def unapply(t: AST) = t.shape match {
+      case t: BlockOf[_] => Some((t.indent, t.firstLine, t.lines))
+      case _             => None
+    }
 
     //// Line ////
 
@@ -803,6 +830,10 @@ object AST {
     val tfoo  = Var("foo")
     val tfoo2 = Fix.implicits.fixDeep(tfoo): AST
     val tfoo3 = tfoo: AST
+
+    tfoo3 match {
+      case Var(_) => println("!!!!")
+    }
 
     val l1 = Block.Line(tfoo3): Block.Line
 

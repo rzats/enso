@@ -35,6 +35,7 @@ sealed trait AST_Type2 extends AST.Symbol {
 
 object AST {
 
+  type AST      = AST_Type
   type AST_Type = AST_Type2
   type ID       = UUID
 
