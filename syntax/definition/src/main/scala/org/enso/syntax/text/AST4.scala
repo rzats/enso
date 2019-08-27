@@ -1,4 +1,4 @@
-package org.enso.syntax.text.test
+package org.enso.syntax.text.test4
 
 import monocle.macros.GenLens
 import org.enso.data.List1._
@@ -234,9 +234,10 @@ object AST {
 
       // TODO: Should be auto-generated with Shapeless
       implicit def reprScheme: Repr[ShapeOf[AST]] = {
-        case t: Blank => Repr.of(t)
-        case t: Var   => Repr.of(t)
-        case t: Cons  => Repr.of(t)
+        case t: Blank      => Repr.of(t)
+        case t: Var        => Repr.of(t)
+        case t: Cons       => Repr.of(t)
+        case t: App.Prefix => Repr.of(t)(App.implicits.reprPrefix)
       }
 
       // TODO: Should be auto-generated with Shapeless

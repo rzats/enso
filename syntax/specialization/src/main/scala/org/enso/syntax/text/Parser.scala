@@ -15,7 +15,7 @@ import org.enso.syntax.text.test5
 import scala.annotation.tailrec
 
 //import org.enso.syntax.text.test2
-import org.enso.syntax.text.test
+import org.enso.syntax.text.test4
 
 ////////////////
 //// Parser ////
