@@ -13,7 +13,7 @@ import java.util.UUID
 
 import scala.annotation.tailrec
 
-sealed trait AST extends AST.Symbol {
+sealed trait AST_Type2 extends AST.Symbol {
   import AST._
 
   val id: Option[ID]
@@ -35,7 +35,8 @@ sealed trait AST extends AST.Symbol {
 
 object AST {
 
-  type ID = UUID
+  type AST_Type = AST_Type2
+  type ID       = UUID
 
   object implicits extends Ident.implicits {
     implicit def stringToAST(str: String): AST = {
@@ -264,14 +265,24 @@ object AST {
     def apply(larg: AST, opr: Opr, rarg: AST): Infix =
       Infix(larg, opr, rarg)
 
+    object Section {
+      type Left  = App.Left
+      type Right = App.Right
+
+      val Left  = App.Left
+      val Right = App.Right
+    }
+
+    val Prefix = App
+
     type Left = _Left
     final case class _Left(
       arg: AST,
       off: Int = 0,
-      op: Opr,
+      opr: Opr,
       id: Option[ID] = None
     ) extends AST {
-      val repr                             = R + arg + off + op
+      val repr                             = R + arg + off + opr
       def setID(newID: ID)                 = copy(id = Some(newID))
       def map(f: AST => AST)               = copy(arg = f(arg))
       def mapWithOff(f: (Int, AST) => AST) = copy(arg = f(0, arg)) // x
@@ -279,7 +290,7 @@ object AST {
     object Left {
       def apply(arg: AST, off: Int, op: Opr): Left = _Left(arg, off, op)
       def apply(arg: AST, op: Opr):           Left = Left(arg, 1, op)
-      def unapply(t: Left) = Some((t.arg, t.op))
+      def unapply(t: Left) = Some((t.arg, t.opr))
     }
 
     type Right = _Right
@@ -351,6 +362,11 @@ object AST {
     def setID(newID: ID)                 = copy(id = Some(newID))
     def map(f: AST => AST)               = this
     def mapWithOff(f: (Int, AST) => AST) = this
+  }
+
+  object Literal {
+    type Number = AST.Number
+    val Number = AST.Number
   }
 
   object Number {

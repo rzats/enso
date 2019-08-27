@@ -176,7 +176,7 @@ object Pattern {
   }
 
   object OprExpr {
-    def apply(opr:String) = {
+    def apply(opr: String) = {
       val base = Except(ClsOpr(Some(AST.Opr(opr).prec)), Any())
       base.many1.build
     }

@@ -39,12 +39,14 @@ object AST {
 
   //// Structure ////
 
-  type AST            = ASTOf[FAST]
+  type AST_Type       = ASTOf[FAST]
   type FAST           = Fix[TaggedASTOf]
   type TaggedAST      = TaggedASTOf[FAST]
   type TaggedASTOf[T] = Tagged[ASTOf[T]]
 
   //// Aliases ////
+
+  type AST = AST_Type
 
   type SAST        = Shifted[AST]
   type _Stream[T]  = List[Shifted[T]]
@@ -101,13 +103,20 @@ object AST {
     @tailrec
     def go(ast: AST, out: AST.Stream): Shifted.List1[AST] =
       ast match {
-        case t: App.Prefix => go(t.fn, Shifted(t.off, t.arg.struct) :: out)
+        case t: App.Prefix => go(t.fn, Shifted(t.off, t.arg) :: out)
         case anyAst        => Shifted.List1(anyAst, out)
       }
     go(ast, List())
   }
 
-  object implicits extends Ident.implicits with Literal.implicits {
+  object implicits
+      extends Ident.implicits
+      with Literal.implicits
+      with Fix.implicits {
+    // FIXME: Fixes IntelliJ but provides low performance :(
+    implicit def fixAST(t: AST): FAST = fixDeep(t)
+
+    implicit def listLift(t: List[AST]): List[FAST] = t.map(fixDeep(_))
     implicit def stringToAST(str: String): AST = {
       if (str == "") throw new Error("Empty literal")
       if (str == "_") Blank()
@@ -155,16 +164,19 @@ object AST {
     implicit def reprFix[F[_]](
       implicit ev: Repr[Fix.Body[F]]
     ): Repr[Fix[F]] = t => Repr.of(t.unFix)
-  }
 
-  implicit def fix(t: Fix.Body[TaggedASTOf]): Fix[TaggedASTOf] = Fix(t)
-  implicit def fixDeep[T[_] <: ASTOf[_]](t: T[FAST])(
-    implicit
-    ev: Repr[T[FAST]]
-  ): Fix[TaggedASTOf] = {
-    val t1 = Tagged(t)
-    val t2 = t1.asInstanceOf[Fix.Body[TaggedASTOf]] // FIXME
-    Fix(t2)
+    object implicits extends implicits
+    trait implicits {
+      implicit def fix(t: Fix.Body[TaggedASTOf]): Fix[TaggedASTOf] = Fix(t)
+      implicit def fixDeep[T[_] <: ASTOf[_]](t: T[FAST])(
+        implicit
+        ev: Repr[T[FAST]]
+      ): Fix[TaggedASTOf] = {
+        val t1 = Tagged(t)
+        val t2 = t1.asInstanceOf[Fix.Body[TaggedASTOf]] // FIXME
+        Fix(t2)
+      }
+    }
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -598,10 +610,10 @@ object AST {
 
     implicit def taggedPrefixOps(t: Tagged[Prefix]): PrefixOps = t.struct
     implicit class PrefixOps(t: Prefix) {
-      def fn:                  TaggedAST = t._fn.unFix
-      def arg:                 TaggedAST = t._arg.unFix
-      def fn_=(v: TaggedAST):  Prefix    = t.copy(_fn = fix(v))
-      def arg_=(v: TaggedAST): Prefix    = t.copy(_arg = fix(v))
+      def fn:             AST    = t._fn.unFix
+      def arg:            AST    = t._arg.unFix
+      def fn_=(v: FAST):  Prefix = t.copy(_fn = v)
+      def arg_=(v: FAST): Prefix = t.copy(_arg = v)
     }
 
     object Infix {
@@ -618,9 +630,9 @@ object AST {
 
     implicit def taggedInfixOps(t: Tagged[Infix]): InfixOps = t.struct
     implicit class InfixOps(t: Infix) {
-      def larg:            FAST  = t._larg.unFix
-      def rarg:            FAST  = t._rarg.unFix
-      def opr:             FAST  = t.opr
+      def larg:            AST   = t._larg.unFix
+      def rarg:            AST   = t._rarg.unFix
+      def opr:             AST   = t.opr
       def larg_=(v: FAST): Infix = t.copy(_larg = v)
       def rarg_=(v: FAST): Infix = t.copy(_rarg = v)
       def opr_=(v: Opr):   Infix = t.copy(opr = v)
@@ -791,12 +803,13 @@ object AST {
 
   def main() {
 
-    import Ident.implicits._
+    import implicits._
 
     val foo    = Var("foo")
     val bar    = Var("foo")
     val plus   = Opr("+")
     val ttt2   = foo: AST
+    val ttt3   = ttt2: FAST
     val fooAST = foo: AST
 
     val foox = foo: AST
@@ -806,7 +819,7 @@ object AST {
 
 //    println(foox.withNewID())
     val tfoo  = Var("foo")
-    val tfoo2 = fixDeep(tfoo): FAST
+    val tfoo2 = Fix.implicits.fixDeep(tfoo): FAST
     val tfoo3 = tfoo: FAST
 
     val l1 = Block.Line(tfoo3): Block.Line
