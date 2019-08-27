@@ -826,180 +826,180 @@ object AST {
     }
   }
 
-  //
-  //  //////////////////////////////////////////////////////////////////////////////
-  //  //// Macro ///////////////////////////////////////////////////////////////////
-  //  //////////////////////////////////////////////////////////////////////////////
-  //
-  //  sealed trait Macro extends AST
-  //  object Macro {
-  //
-  //    import org.enso.syntax.text.ast.meta.Pattern
-  //
-  //    //// Matched ////
-  //
-  //     case class Match(
-  //      pfx: Option[Pattern.Match],
-  //      segs: Shifted.List1[Match.Segment],
-  //      resolved: AST,
-  //      id: Option[ID] = None
-  //    ) extends Macro {
-  //      val repr = {
-  //        val pfxStream = pfx.map(_.toStream.reverse).getOrElse(List())
-  //        val pfxRepr   = pfxStream.map(t => R + t.el + t.off)
-  //        val segsRepr  = segs.map(_.repr)
-  //        R + pfxRepr + segsRepr
-  //      }
-  //      def setID(newID: ID)                 = copy(id = Some(newID))
-  //      def map(f: AST => AST)               = this
-  //      def mapWithOff(f: (Int, AST) => AST) = this
-  //      def path(): List1[AST] = segs.toList1().map(_.el.head)
-  //    }
-  //    object Match {
-  //       case class Segment(head: Ident, body: Pattern.Match) {
-  //        val repr = R + head + body
-  //        def toStream: AST.Stream = ??? // Shifted(head) :: body.toStream
-  //        def isValid:  Boolean    = body.isValid
-  //        def map(f: Pattern.Match => Pattern.Match): Segment =
-  //          copy(body = f(body))
-  //      }
-  //      object Segment {
-  //        def apply(head: Ident): Segment = Segment(head, Pattern.Match.Nothing())
-  //      }
-  //    }
-  //
-  //    //// Ambiguous ////
-  //
-  //     case class Ambiguous(
-  //      segs: Shifted.List1[Ambiguous.Segment],
-  //      paths: Tree[AST, Unit],
-  //      id: Option[ID] = None
-  //    ) extends Macro {
-  //      val repr                             = R + segs.map(_.repr)
-  //      def setID(newID: ID)                 = copy(id = Some(newID))
-  //      def map(f: AST => AST)               = this
-  //      def mapWithOff(f: (Int, AST) => AST) = this
-  //    }
-  //    object Ambiguous {
-  //       case class Segment(head: AST, body: Option[SAST]) extends Symbol {
-  //        val repr = R + head + body
-  //      }
-  //      object Segment {
-  //        def apply(head: AST): Segment = Segment(head, None)
-  //      }
-  //    }
-  //
-  //    //// Definition ////
-  //
-  //    type Definition = __Definition__
-  //     case class __Definition__(
-  //      back: Option[Pattern],
-  //      init: List[Definition.Segment],
-  //      last: Definition.LastSegment,
-  //      fin: Definition.Finalizer
-  //    ) {
-  //      def path: List1[AST] = init.map(_.head) +: List1(last.head)
-  //      def fwdPats: List1[Pattern] =
-  //        init.map(_.pattern) +: List1(last.pattern.getOrElse(Pattern.Nothing()))
-  //    }
-  //    object Definition {
-  //      import Pattern._
-  //      type Finalizer = (Option[Pattern.Match], List[Macro.Match.Segment]) => AST
-  //
-  //       case class Segment(head: AST, pattern: Pattern) {
-  //        def map(f: Pattern => Pattern): Segment = copy(pattern = f(pattern))
-  //      }
-  //      object Segment {
-  //        type Tup = (AST, Pattern)
-  //        def apply(t: Tup): Segment = Segment(t._1, t._2)
-  //      }
-  //
-  //       case class LastSegment(head: AST, pattern: Option[Pattern]) {
-  //        def map(f: Pattern => Pattern): LastSegment =
-  //          copy(pattern = pattern.map(f))
-  //      }
-  //      object LastSegment {
-  //        type Tup = (AST, Option[Pattern])
-  //        def apply(t: Tup): LastSegment = LastSegment(t._1, t._2)
-  //      }
-  //
-  //      def apply(back: Option[Pattern], t1: Segment.Tup, ts: List[Segment.Tup])(
-  //        fin: Finalizer
-  //      ): Definition = {
-  //        val segs    = List1(t1, ts)
-  //        val init    = segs.init
-  //        val lastTup = segs.last
-  //        val last    = (lastTup._1, Some(lastTup._2))
-  //        Definition(back, init, last, fin)
-  //      }
-  //
-  //      def apply(back: Option[Pattern], t1: Segment.Tup, ts: Segment.Tup*)(
-  //        fin: Finalizer
-  //      ): Definition = Definition(back, t1, ts.toList)(fin)
-  //
-  //      def apply(t1: Segment.Tup, t2_ : Segment.Tup*)(
-  //        fin: Finalizer
-  //      ): Definition = Definition(None, t1, t2_.toList)(fin)
-  //
-  //      def apply(initTups: List[Segment.Tup], lastHead: AST)(
-  //        fin: Finalizer
-  //      ): Definition =
-  //        Definition(None, initTups, (lastHead, None), fin)
-  //
-  //      def apply(t1: Segment.Tup, last: AST)(fin: Finalizer): Definition =
-  //        Definition(List(t1), last)(fin)
-  //      //
-  //      //      def apply(backPat: Option[Pattern], t1: Segment.Tup, ts: Segment.Tup*)(
-  //      //        fin: Finalizer
-  //      //      ): Definition =
-  //      //        Definition(backPat, List1(t1, ts: _*), fin)
-  //
-  //      def apply(
-  //        back: Option[Pattern],
-  //        initTups: List[Segment.Tup],
-  //        lastTup: LastSegment.Tup,
-  //        fin: Finalizer
-  //      ): Definition = {
-  //        type PP = Pattern => Pattern
-  //        val checkValid: PP = _ | ErrTillEnd("unmatched pattern")
-  //        val checkFull: PP  = TillEndMarkUnmatched(_, "unmatched tokens")
-  //
-  //        val addInitChecks: List[Segment] => List[Segment] =
-  //          _.map(_.map(checkValid).map(checkFull))
-  //
-  //        val addLastCheck: LastSegment => LastSegment =
-  //          _.map(checkValid)
-  //
-  //        val initSegs           = initTups.map(Segment(_))
-  //        val lastSeg            = LastSegment(lastTup)
-  //        val backPatWithCheck   = back.map(checkValid)
-  //        val initSegsWithChecks = addInitChecks(initSegs)
-  //        val lastSegWithChecks  = addLastCheck(lastSeg)
-  //        def finalizerWithChecks(
-  //          pfx: Option[Pattern.Match],
-  //          segs: List[Macro.Match.Segment]
-  //        ) = {
-  //          val pfxFail  = !pfx.forall(_.isValid)
-  //          val segsFail = !segs.forall(_.isValid)
-  //          if (pfxFail || segsFail) {
-  //            val pfxStream  = pfx.map(_.toStream).getOrElse(List())
-  //            val segsStream = segs.flatMap(_.toStream)
-  //            val stream     = pfxStream ++ segsStream
-  ////            AST.Unexpected("invalid statement", stream)
-  //            ???
-  //          } else fin(pfx, segs)
-  //        }
-  //        __Definition__(
-  //          backPatWithCheck,
-  //          initSegsWithChecks,
-  //          lastSegWithChecks,
-  //          finalizerWithChecks
-  //        )
-  //      }
-  //
-  //    }
-  //  }
-  //
+  //////////////////////////////////////////////////////////////////////////////
+  //// Macro ///////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  type Macro = MacroOf[FAST]
+  sealed trait MacroOf[T] extends ASTOf[T]
+  object Macro {
+
+    import org.enso.syntax.text.ast.meta.Pattern
+
+    //// Matched ////
+
+    final case class Match(
+      pfx: Option[Pattern.Match],
+      segs: Shifted.List1[Match.Segment],
+      resolved: AST,
+      id: Option[ID] = None
+    ) extends Macro {
+      val repr = {
+        val pfxStream = pfx.map(_.toStream.reverse).getOrElse(List())
+        val pfxRepr   = pfxStream.map(t => R + t.el + t.off)
+        val segsRepr  = segs.map(_.repr)
+        R + pfxRepr + segsRepr
+      }
+      def setID(newID: ID)                 = copy(id = Some(newID))
+      def map(f: AST => AST)               = this
+      def mapWithOff(f: (Int, AST) => AST) = this
+      def path(): List1[AST] = segs.toList1().map(_.el.head)
+    }
+    object Match {
+      case class Segment(head: Ident, body: Pattern.Match) {
+        val repr = R + head + body
+        def toStream: AST.Stream = ??? // Shifted(head) :: body.toStream
+        def isValid:  Boolean    = body.isValid
+        def map(f: Pattern.Match => Pattern.Match): Segment =
+          copy(body = f(body))
+      }
+      object Segment {
+        def apply(head: Ident): Segment = Segment(head, Pattern.Match.Nothing())
+      }
+    }
+
+    //// Ambiguous ////
+
+    case class Ambiguous(
+      segs: Shifted.List1[Ambiguous.Segment],
+      paths: Tree[AST, Unit],
+      id: Option[ID] = None
+    ) extends Macro {
+      val repr                             = R + segs.map(_.repr)
+      def setID(newID: ID)                 = copy(id = Some(newID))
+      def map(f: AST => AST)               = this
+      def mapWithOff(f: (Int, AST) => AST) = this
+    }
+    object Ambiguous {
+      case class Segment(head: AST, body: Option[SAST]) {
+        val repr = R + head + body
+      }
+      object Segment {
+        def apply(head: AST): Segment = Segment(head, None)
+      }
+    }
+
+    //// Definition ////
+
+    type Definition = __Definition__
+    case class __Definition__(
+      back: Option[Pattern],
+      init: List[Definition.Segment],
+      last: Definition.LastSegment,
+      fin: Definition.Finalizer
+    ) {
+      def path: List1[AST] = init.map(_.head) +: List1(last.head)
+      def fwdPats: List1[Pattern] =
+        init.map(_.pattern) +: List1(last.pattern.getOrElse(Pattern.Nothing()))
+    }
+    object Definition {
+      import Pattern._
+      type Finalizer = (Option[Pattern.Match], List[Macro.Match.Segment]) => AST
+
+      case class Segment(head: AST, pattern: Pattern) {
+        def map(f: Pattern => Pattern): Segment = copy(pattern = f(pattern))
+      }
+      object Segment {
+        type Tup = (AST, Pattern)
+        def apply(t: Tup): Segment = Segment(t._1, t._2)
+      }
+
+      case class LastSegment(head: AST, pattern: Option[Pattern]) {
+        def map(f: Pattern => Pattern): LastSegment =
+          copy(pattern = pattern.map(f))
+      }
+      object LastSegment {
+        type Tup = (AST, Option[Pattern])
+        def apply(t: Tup): LastSegment = LastSegment(t._1, t._2)
+      }
+
+      def apply(back: Option[Pattern], t1: Segment.Tup, ts: List[Segment.Tup])(
+        fin: Finalizer
+      ): Definition = {
+        val segs    = List1(t1, ts)
+        val init    = segs.init
+        val lastTup = segs.last
+        val last    = (lastTup._1, Some(lastTup._2))
+        Definition(back, init, last, fin)
+      }
+
+      def apply(back: Option[Pattern], t1: Segment.Tup, ts: Segment.Tup*)(
+        fin: Finalizer
+      ): Definition = Definition(back, t1, ts.toList)(fin)
+
+      def apply(t1: Segment.Tup, t2_ : Segment.Tup*)(
+        fin: Finalizer
+      ): Definition = Definition(None, t1, t2_.toList)(fin)
+
+      def apply(initTups: List[Segment.Tup], lastHead: AST)(
+        fin: Finalizer
+      ): Definition =
+        Definition(None, initTups, (lastHead, None), fin)
+
+      def apply(t1: Segment.Tup, last: AST)(fin: Finalizer): Definition =
+        Definition(List(t1), last)(fin)
+      //
+      //      def apply(backPat: Option[Pattern], t1: Segment.Tup, ts: Segment.Tup*)(
+      //        fin: Finalizer
+      //      ): Definition =
+      //        Definition(backPat, List1(t1, ts: _*), fin)
+
+      def apply(
+        back: Option[Pattern],
+        initTups: List[Segment.Tup],
+        lastTup: LastSegment.Tup,
+        fin: Finalizer
+      ): Definition = {
+        type PP = Pattern => Pattern
+        val checkValid: PP = _ | ErrTillEnd("unmatched pattern")
+        val checkFull: PP  = TillEndMarkUnmatched(_, "unmatched tokens")
+
+        val addInitChecks: List[Segment] => List[Segment] =
+          _.map(_.map(checkValid).map(checkFull))
+
+        val addLastCheck: LastSegment => LastSegment =
+          _.map(checkValid)
+
+        val initSegs           = initTups.map(Segment(_))
+        val lastSeg            = LastSegment(lastTup)
+        val backPatWithCheck   = back.map(checkValid)
+        val initSegsWithChecks = addInitChecks(initSegs)
+        val lastSegWithChecks  = addLastCheck(lastSeg)
+        def finalizerWithChecks(
+          pfx: Option[Pattern.Match],
+          segs: List[Macro.Match.Segment]
+        ) = {
+          val pfxFail  = !pfx.forall(_.isValid)
+          val segsFail = !segs.forall(_.isValid)
+          if (pfxFail || segsFail) {
+            val pfxStream  = pfx.map(_.toStream).getOrElse(List())
+            val segsStream = segs.flatMap(_.toStream)
+            val stream     = pfxStream ++ segsStream
+            //            AST.Unexpected("invalid statement", stream)
+            ???
+          } else fin(pfx, segs)
+        }
+        __Definition__(
+          backPatWithCheck,
+          initSegsWithChecks,
+          lastSegWithChecks,
+          finalizerWithChecks
+        )
+      }
+
+    }
+  }
+
   //////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
   //// Space - unaware AST /////////////////////////////////////////////////////
