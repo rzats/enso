@@ -279,17 +279,7 @@ object Main extends App {
   }
   println()
 
-//  test2.AST.main()
+  test5.AST.main()
 //  test.AST.main()
 
 }
-
-// 1. Parsing patterns in-place with segments
-// 2.
-// (
-// (_)
-// _<
-// ( < )
-// if x then (a)
-// ((a))
-// if x then a = v
