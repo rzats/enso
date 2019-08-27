@@ -15,9 +15,9 @@ object DSL {
     }
 
     private def smartAppRaw(off: Int, r: AST): AST = (self, r) match {
-      case (l, r: Opr) => App.Section.Left(l, off, r)
-      case (l: Opr, r) => App.Section.Right(l, off, r)
-      case (l, r)      => App.Prefix(l, off, r)
+      case (l, r @ Opr(_)) => App.Section.Left(l, off, r)
+      case (l @ Opr(_), r) => App.Section.Right(l, off, r)
+      case (l, r)          => App.Prefix(l, off, r)
     }
 
     def $(t: AST)    = smartApp(0, t)

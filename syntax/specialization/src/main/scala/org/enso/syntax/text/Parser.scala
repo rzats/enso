@@ -10,6 +10,7 @@ import org.enso.syntax.text.ast.meta.Pattern
 import org.enso.syntax.text.prec.Distance
 import org.enso.syntax.text.prec.Operator
 import org.enso.syntax.text.ast.opr.Prec
+import org.enso.syntax.text.test5
 
 import scala.annotation.tailrec
 
@@ -279,7 +280,7 @@ object Main extends App {
   println()
 
 //  test2.AST.main()
-  test.AST.main()
+//  test.AST.main()
 
 }
 

@@ -1,4 +1,4 @@
-package org.enso.syntax.text.test
+package org.enso.syntax.text.test5
 
 import monocle.macros.GenLens
 import org.enso.data.List1._
@@ -73,7 +73,7 @@ object AST {
       implicit def stringToAST(str: String): Shape = {
         if (str == "") throw new Error("Empty literal")
         if (str == "_") Blank()
-        else if (str.head.isLower) Var(str)
+//        else if (str.head.isLower) Var(str)
         else if (str.head.isUpper) Cons(str)
         else Opr(str)
       }
@@ -235,13 +235,13 @@ object AST {
       // TODO: Should be auto-generated with Shapeless
       implicit def reprScheme: Repr[ShapeOf[AST]] = {
         case t: Blank => Repr.of(t)
-        case t: Var   => Repr.of(t)
-        case t: Cons  => Repr.of(t)
+//        case t: Var   => Repr.of(t)
+        case t: Cons => Repr.of(t)
       }
 
       // TODO: Should be auto-generated with Shapeless
       implicit def offZipScheme[T: Repr]: OffsetZip[ShapeOf, T] = {
-        case t: Ident.VarOf[T]  => OffsetZip(t)
+//        case t: Ident.VarOf[T]  => OffsetZip(t)
         case t: Ident.ConsOf[T] => OffsetZip(t)
       }
     }
@@ -302,10 +302,10 @@ object AST {
   type Mod   = Ident.Mod
 
   val Blank = Ident.Blank
-  val Var   = Ident.Var
-  val Cons  = Ident.Cons
-  val Opr   = Ident.Opr
-  val Mod   = Ident.Mod
+//  val Var   = Ident.Var
+  val Cons = Ident.Cons
+  val Opr  = Ident.Opr
+  val Mod  = Ident.Mod
 
   object Ident {
     case class InvalidSuffix[T](elem: Tagged[Ident], suffix: String)
@@ -319,6 +319,16 @@ object AST {
     type Opr   = OprOf[AST]
     type Mod   = ModOf[AST]
 
+//    type Var = Int
+//    val Var = 0
+
+    trait Ixed[T] {
+      def ix(t: T): Int
+    }
+    implicit val ixedVar: Ixed[Var] = _ => 0
+
+    implicit def toIxed[T: Ixed](t: T): Int = implicitly[Ixed[T]].ix(t)
+
     case class BlankOf[T]()            extends IdentOf[T] { val name = "_" }
     case class VarOf[T](name: String)  extends IdentOf[T]
     case class ConsOf[T](name: String) extends IdentOf[T]
@@ -326,6 +336,8 @@ object AST {
     case class OprOf[T](name: String) extends IdentOf[T] {
       val (prec, assoc) = opr.Info.of(name)
     }
+
+    case class VarOf2[T](name: String, id: Option[ID]) extends IdentOf[T]
 
     //// Companions ////
 
@@ -336,13 +348,13 @@ object AST {
 
     object Var {
       def apply(name: String): Var = VarOf(name)
-      def unapply(t: AST): Option[String] = t.shape match {
-        case VarOf(name) => if (name.length > 5) Some(name) else None
-        case _           => None
-      }
-      trait implicits {
-        implicit def stringToVar(str: String): Var = Var(str)
-      }
+//      def unapply(t: AST): Option[String] = t.shape match {
+//        case VarOf(name) => if (name.length > 5) Some(name) else None
+//        case _           => None
+//      }
+//      trait implicits {
+//        implicit def stringToVar(str: String): Var = Var(str)
+//      }
     }
 
     object Cons {
@@ -384,7 +396,7 @@ object AST {
     object implicits extends implicits
     trait implicits
         extends Shape.implicits
-        with Var.implicits
+//        with Var.implicits
         with Cons.implicits
         with Opr.implicits
         with Mod.implicits {
@@ -407,7 +419,7 @@ object AST {
       implicit def stringToIdent(str: String): Ident = {
         if (str == "") throw new Error("Empty literal")
         if (str == "_") Blank()
-        else if (str.head.isLower) Var(str)
+//        else if (str.head.isLower) Var(str)
         else if (str.head.isUpper) Cons(str)
         else Opr(str)
       }
@@ -600,8 +612,8 @@ object AST {
           implicit def fromString[T](str: String): _Plain[T] = _Plain(str)
         }
 
-//        trait Escape extends Interpolated
-//        val Escape = text.Escape
+        //        trait Escape extends Interpolated
+        //        val Escape = text.Escape
 
       }
 
@@ -810,46 +822,46 @@ object AST {
 
   def main() {
 
-    import implicits._
-
-    val foo    = Var("foo")
-    val bar    = Var("foo")
-    val plus   = Opr("+")
-    val ttt2   = foo: Shape
-    val ttt3   = ttt2: AST
-    val fooAST = foo: Shape
-
-    val foox = foo: Shape
-
+//    import implicits._
+//
 //    val foo    = Var("foo")
-//    val foo2 = fix2(foo): FixedAST
-
-//    println(foox.withNewID())
-    val tfoo  = Var("foo")
-    val tfoo2 = Fix.implicits.fixDeep(tfoo): AST
-    val tfoo3 = tfoo: AST
-
-    tfoo3 match {
-      case Var(_)  => println("!!!!")
-      case Blank() => println("DD")
-    }
-
-    val l1 = Block.Line(tfoo3): Block.Line
-
-    println("..........")
-    println(tfoo2)
-    println(tfoo3)
-    println(ttt3.repr)
-
-    val x1   = toTagged(foo)
-    var app1 = App.Prefix(fooAST, 0, bar)
-
-    fooAST match {
-      case t: App        => println("It was APP 1")
-      case t: App.Prefix => println("It was APP 2")
-      case t: Ident      => println("It was Ident")
-      case t: Var        => println("It was VAR")
-    }
+//    val bar    = Var("foo")
+//    val plus   = Opr("+")
+//    val ttt2   = foo: Shape
+//    val ttt3   = ttt2: AST
+//    val fooAST = foo: Shape
+//
+//    val foox = foo: Shape
+//
+//    //    val foo    = Var("foo")
+//    //    val foo2 = fix2(foo): FixedAST
+//
+//    //    println(foox.withNewID())
+//    val tfoo  = Var("foo")
+//    val tfoo2 = Fix.implicits.fixDeep(tfoo): AST
+//    val tfoo3 = tfoo: AST
+//
+//    tfoo3 match {
+//      case Var(_)  => println("!!!!")
+//      case Blank() => println("DD")
+//    }
+//
+//    val l1 = Block.Line(tfoo3): Block.Line
+//
+//    println("..........")
+//    println(tfoo2)
+//    println(tfoo3)
+//    println(ttt3.repr)
+//
+//    val x1   = toTagged(foo)
+//    var app1 = App.Prefix(fooAST, 0, bar)
+//
+//    fooAST match {
+//      case t: App        => println("It was APP 1")
+//      case t: App.Prefix => println("It was APP 2")
+//      case t: Ident      => println("It was Ident")
+//      case t: Var        => println("It was VAR")
+//    }
   }
 
   //////////////////////////////////////////////////////////////////////////////
