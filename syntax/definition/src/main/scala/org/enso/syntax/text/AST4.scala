@@ -55,16 +55,7 @@ object AST {
 
   //// API ////
 
-  def tokenize(ast: Shape): Shifted.List1[Shape] = ??? // {
-//    @tailrec
-//    def go(ast: Shape, out: AST.Stream): Shifted.List1[Shape] =
-//      ast match {
-//        case t: App.Prefix => go(t.fn, Shifted(t.off, t._arg) :: out)
-//        case anyAst        => Shifted.List1(anyAst, out)
-//      }
-//    go(ast, List())
-//  }
-
+  import implicits._
   object implicits extends implicits
   trait implicits
       extends TopLevel.implicits
@@ -95,15 +86,15 @@ object AST {
         }
       }
 
-      implicit class ASTOps2(ast: AST) {
-        //    import AST.implicits._
-        //
-        //    def map(f: AST => AST): AST = {
-        //      val tshape  = ast.unFix
-        //      val tshape2 = tshape.copy(struct = ftorShapeOf.map(tshape.struct)(f))
-        //      fix(tshape2)
-        //    }
+      implicit class ASTOps(ast: AST) {
+        def shape: ShapeOf[AST] =
+          ast.unFix.struct
 
+        def map(f: AST => AST): AST = {
+          val tshape  = ast.unFix
+          val tshape2 = tshape.copy(struct = ftorShapeOf.map(tshape.struct)(f))
+          fix(tshape2)
+        }
       }
 
       implicit class ShapeOps[T[_]](ast: T[AST]) {
@@ -145,7 +136,15 @@ object AST {
     }
   }
 
-  import implicits._
+  def tokenize(ast: AST): Shifted.List1[AST] = {
+    @tailrec
+    def go(ast: AST, out: AST.Stream): Shifted.List1[AST] =
+      ast.shape match {
+        case t: App.Prefix => go(t.fn, Shifted(t.off, t.arg) :: out)
+        case _             => Shifted.List1(ast, out)
+      }
+    go(ast, List())
+  }
 
   //////////////////////////////////////////////////////////////////////////////
   //// OffsetZip ///////////////////////////////////////////////////////////////
@@ -175,6 +174,7 @@ object AST {
       implicit def reprFix[F[_]](implicit ev: Repr[Fix.Body[F]]): Repr[Fix[F]] =
         t => Repr.of(t.unFix)
 
+      implicit def unfix[F[_]](t: Fix[F]):          Fix.Body[F]        = t.unFix
       implicit def fix(t: Fix.Body[TaggedShapeOf]): Fix[TaggedShapeOf] = Fix(t)
       implicit def fixDeep[T[_] <: ShapeOf[_]](t: T[AST])(
         implicit
@@ -214,7 +214,7 @@ object AST {
   }
 
   //////////////////////////////////////////////////////////////////////////////
-  //// Scheme //////////////////////////////////////////////////////////////////
+  //// Shape ///////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
   /** [[Shape]] defines the shape of an AST node. It contains information about
@@ -224,7 +224,6 @@ object AST {
     */
   sealed trait ShapeOf[T]
 
-//  type Shape = _Shape[FixedAST]
   implicit def ftorShapeOf: Functor[ShapeOf] = semi.functor
 
   object Scheme {
