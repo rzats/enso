@@ -16,7 +16,7 @@ import scala.math.pow
 
 object ParserBenchmark extends Bench.LocalTime {
 
-  val range = 0
+  val range = 2
   def exp(i: Int) =
     Gen.exponential("size")(pow(2, i - range).toInt, pow(2, i).toInt, 2)
 
@@ -39,7 +39,7 @@ object ParserBenchmark extends Bench.LocalTime {
         }
       }
     }
-    println("x")
+//    println("x")
   }
 
   def testAST2(i: Int): Unit = {
@@ -58,7 +58,7 @@ object ParserBenchmark extends Bench.LocalTime {
         }
       }
     }
-    println("y")
+//    println("y")
   }
 
   val tests = List(
@@ -83,6 +83,12 @@ object ParserBenchmark extends Bench.LocalTime {
   def run(str: String) = Parser().run(new flexer.Reader(str))
 
   performance of "parser" in {
+    tests.foreach {
+      case (name, gen) => measure method name in (using(gen) in testAST1)
+    }
+  }
+
+  performance of "parser1" in {
     tests.foreach {
       case (name, gen) => measure method name in (using(gen) in testAST1)
     }
