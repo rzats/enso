@@ -62,6 +62,7 @@ object AST {
       extends TopLevel.implicits
       with Ident.implicits
       with Literal.implicits
+      with App.implicits
       with Fix.implicits
       with Tagged.implicits
 
@@ -89,7 +90,7 @@ object AST {
 
         def map(f: AST => AST): AST = {
           val tshape  = ast.unFix
-          val tshape2 = tshape.copy(shape = ftorShapeOf.map(tshape.shape)(f))
+          val tshape2 = tshape.copy(shape = ftorShape.map(tshape.shape)(f))
           fix(tshape2)
         }
       }
@@ -138,21 +139,10 @@ object AST {
     object implicits extends implicits
     trait implicits {
 
-      implicit def ftorShapeOf: Functor[ShapeOf] = semi.functor
-
-      // TODO: Should be auto-generated with Shapeless
-      implicit def reprScheme: Repr[ShapeOf[AST]] = {
-        //        case t: Blank => Repr.of(t)
-        //        case t: Var   => Repr.of(t)
-        //        case t: Cons              => Repr.of(t)
-        case t: App.PrefixOf[AST] => Repr.of(t)(App.implicits.reprPrefix)
-      }
-
-      // TODO: Should be auto-generated with Shapeless
-      implicit def offZipScheme[T: Repr]: OffsetZip[ShapeOf, T] = {
-        case t: Ident.VarOf[T]  => OffsetZip(t)
-        case t: Ident.ConsOf[T] => OffsetZip(t)
-      }
+      implicit def ftorShape: Functor[ShapeOf]   = semi.functor
+      implicit def reprShape: Repr[ShapeOf[AST]] = helpers.reprShape
+      implicit def offZipShape[T: Repr]: OffsetZip[ShapeOf, T] =
+        helpers.offZipShape
 
       implicit def stringToAST(str: String): AST = {
         if (str == "") throw new Error("Empty literal")
@@ -160,6 +150,28 @@ object AST {
         else if (str.head.isLower) Var(str)
         else if (str.head.isUpper) Cons(str)
         else Opr(str)
+      }
+    }
+
+    /** This object does not define generic implicits and thus, can use a well
+      * defined implicits hierarchy and redirect calls to more precise
+      * instances.
+      */
+    object helpers {
+      // TODO: Should be auto-generated
+      def reprShape: Repr[ShapeOf[AST]] = {
+        case t: Ident.BlankOf[AST] => Repr.of(t)
+        case t: Ident.VarOf[AST]   => Repr.of(t)
+        case t: Ident.ConsOf[AST]  => Repr.of(t)
+        case t: App.PrefixOf[AST]  => Repr.of(t)
+        // ...
+      }
+
+      // TODO: Should be auto-generated
+      def offZipShape[T: Repr]: OffsetZip[ShapeOf, T] = {
+        case t: Ident.VarOf[T]  => OffsetZip(t)
+        case t: Ident.ConsOf[T] => OffsetZip(t)
+        // ...
       }
     }
   }
@@ -173,6 +185,10 @@ object AST {
 //      }
 //    go(ast, List())
 //  }
+
+  ////////////////////////////////////
+  //// Apply / Unapply Generators ////
+  ////////////////////////////////////
 
   sealed trait Unapply[T] {
     type In
