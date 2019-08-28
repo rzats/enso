@@ -17,6 +17,9 @@ import scala.annotation.tailrec
 import cats.Functor
 import cats.implicits._
 import cats.derived._
+import org.enso.syntax.text.test5.AST.App.PrefixOf
+
+import scala.reflect.ClassTag
 
 object AST {
 
@@ -39,6 +42,7 @@ object AST {
 
   type Shape            = ShapeOf[AST]
   type AST              = Fix[TaggedShapeOf]
+  type ASTFrom[T[_]]    = Tagged[T[AST]]
   type TaggedShapeOf[T] = Tagged[ShapeOf[T]]
 
   //// Aliases ////
@@ -69,10 +73,10 @@ object AST {
       implicit def shapeToAST(shape: Shape): AST =
         Fix.implicits.fixDeep(shape)
 
-      implicit def stringToAST(str: String): Shape = {
+      implicit def stringToAST(str: String): AST = {
         if (str == "") throw new Error("Empty literal")
         if (str == "_") Blank()
-//        else if (str.head.isLower) Var(str)
+        else if (str.head.isLower) Var(str)
         else if (str.head.isUpper) Cons(str)
         else Opr(str)
       }
@@ -137,14 +141,40 @@ object AST {
     }
   }
 
-  def tokenize(ast: AST): Shifted.List1[AST] = {
-    @tailrec
-    def go(ast: AST, out: AST.Stream): Shifted.List1[AST] =
-      ast.shape match {
-        case t: App.Prefix => go(t.fn, Shifted(t.off, t.arg) :: out)
-        case _             => Shifted.List1(ast, out)
+//  def tokenize(ast: AST): Shifted.List1[AST] = {
+//    @tailrec
+//    def go(ast: AST, out: AST.Stream): Shifted.List1[AST] =
+//      ast.shape match {
+//        case t: App.Prefix => go(t.fn, Shifted(t.off, t.arg) :: out)
+//        case _             => Shifted.List1(ast, out)
+//      }
+//    go(ast, List())
+//  }
+
+  sealed trait Unapply[T] {
+    type In
+    def run[Out](f: In => Out)(t: AST): Option[Out]
+  }
+  object Unapply {
+    def apply[T](implicit t: Unapply[T]): Unapply[T] { type In = t.In } = t
+    implicit def inst[T: ClassTag]: Unapply[Tagged[T]] { type In = T } =
+      new Unapply[Tagged[T]] {
+        type In = T
+        val ct                              = implicitly[ClassTag[T]]
+        def run[Out](fn: In => Out)(t: AST) = ct.unapply(t.shape).map(fn)
       }
-    go(ast, List())
+  }
+
+  sealed trait UnapplyByType[T] {
+    def unapply(t: AST): Option[T]
+  }
+  object UnapplyByType {
+    def apply[T](implicit ev: UnapplyByType[T]) = ev
+    implicit def inst[T](implicit ct: ClassTag[T]): UnapplyByType[Tagged[T]] =
+      new UnapplyByType[Tagged[T]] {
+        def unapply(t: AST) =
+          ct.unapply(t.unFix.shape).map(_ => t.unFix.asInstanceOf[Tagged[T]])
+      }
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -233,9 +263,10 @@ object AST {
 
       // TODO: Should be auto-generated with Shapeless
       implicit def reprScheme: Repr[ShapeOf[AST]] = {
-        case t: Blank => Repr.of(t)
+//        case t: Blank => Repr.of(t)
 //        case t: Var   => Repr.of(t)
-        case t: Cons => Repr.of(t)
+//        case t: Cons              => Repr.of(t)
+        case t: App.PrefixOf[AST] => Repr.of(t)(App.implicits.reprPrefix)
       }
 
       // TODO: Should be auto-generated with Shapeless
@@ -263,34 +294,34 @@ object AST {
   //// Invalid /////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Invalid      = InvalidOf[AST]
-  type Unrecognized = _Unrecognized[AST]
-  type Unexpected   = _Unexpected[AST]
+  type Invalid      = ASTFrom[InvalidOf]
+  type Unrecognized = ASTFrom[UnrecognizedOf]
+  type Unexpected   = ASTFrom[UnexpectedOf]
 
-  sealed trait InvalidOf[T]                extends ShapeOf[T]
-  case class _Unrecognized[T](str: String) extends InvalidOf[T] with Phantom
-  case class _Unexpected[T](msg: String, stream: _Stream[T])
+  sealed trait InvalidOf[T]                 extends ShapeOf[T]
+  case class UnrecognizedOf[T](str: String) extends InvalidOf[T] with Phantom
+  case class UnexpectedOf[T](msg: String, stream: _Stream[T])
       extends InvalidOf[T]
 
-  implicit def ftorInvalid:      Functor[InvalidOf]     = semi.functor
-  implicit def ftorUnexpected:   Functor[_Unexpected]   = semi.functor
-  implicit def ftorUnrecognized: Functor[_Unrecognized] = semi.functor
-  implicit def reprUnrecognized: Repr[_Unrecognized[_]] = _.str
-  implicit def reprUnexpected[T: Repr]: Repr[_Unexpected[T]] =
+  implicit def ftorInvalid:      Functor[InvalidOf]      = semi.functor
+  implicit def ftorUnexpected:   Functor[UnexpectedOf]   = semi.functor
+  implicit def ftorUnrecognized: Functor[UnrecognizedOf] = semi.functor
+  implicit def reprUnrecognized: Repr[UnrecognizedOf[_]] = _.str
+  implicit def reprUnexpected[T: Repr]: Repr[UnexpectedOf[T]] =
     t => Repr.of(t.stream)
-  implicit def offZipUnrecognized[T]: OffsetZip[_Unrecognized, T] =
+  implicit def offZipUnrecognized[T]: OffsetZip[UnrecognizedOf, T] =
     t => t.coerce
-  implicit def offZipUnexpected[T: Repr]: OffsetZip[_Unexpected, T] =
+  implicit def offZipUnexpected[T: Repr]: OffsetZip[UnexpectedOf, T] =
     t => t.copy(stream = OffsetZip(t.stream))
 
   //////////////////////////////////////////////////////////////////////////////
   //// Ident ///////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Ident = IdentOf[AST]
+  type Ident = ASTFrom[IdentOf]
   sealed trait IdentOf[T] extends ShapeOf[T] with Phantom { val name: String }
 
-  implicit class IdentOps(t: Tagged[Ident]) {
+  implicit class IdentOps(t: Ident) {
     def name: String = t.shape.name
   }
 
@@ -302,22 +333,21 @@ object AST {
 
   val Blank = Ident.Blank
   val Var   = Ident.Var
-  val Var_  = Ident.Var_
   val Cons  = Ident.Cons
   val Opr   = Ident.Opr
   val Mod   = Ident.Mod
 
   object Ident {
-    case class InvalidSuffix[T](elem: Tagged[Ident], suffix: String)
+    case class InvalidSuffix[T](elem: Ident, suffix: String)
         extends InvalidOf[T]
 
     //// Definition ////
 
-    type Blank = BlankOf[AST]
-    type Var   = Tagged[VarOf[AST]]
-    type Cons  = ConsOf[AST]
-    type Opr   = OprOf[AST]
-    type Mod   = ModOf[AST]
+    type Blank = ASTFrom[BlankOf]
+    type Var   = ASTFrom[VarOf]
+    type Cons  = ASTFrom[ConsOf]
+    type Opr   = ASTFrom[OprOf]
+    type Mod   = ASTFrom[ModOf]
 
     case class BlankOf[T]()            extends IdentOf[T] { val name = "_" }
     case class VarOf[T](name: String)  extends IdentOf[T]
@@ -330,71 +360,57 @@ object AST {
     //// Companions ////
 
     object Blank {
-      def apply():         Blank   = BlankOf()
+      val any = UnapplyByType[Blank]
+      def apply():         Blank   = BlankOf[AST]()
       def unapply(t: AST): Boolean = t.shape.isInstanceOf[BlankOf[_]]
     }
 
     object Var {
-      def apply(name: String): Var = Tagged(VarOf(name))
-      def unapply(t: AST): Option[String] = t.shape match {
-        case VarOf(name) => if (name.length > 5) Some(name) else None
-        case _           => None
-      }
-      trait implicits {
-        implicit def stringToVar(str: String): Var = Var(str)
-      }
-      val tp = Var_
-    }
-    object Var_ {
-      def unapply(t: AST): Option[Var] = t.unFix match {
-        case t @ Tagged(v: VarOf[AST], i) => Some(Tagged(v, i))
-        case _                            => None
-      }
+      val any             = UnapplyByType[Var]
+      def unapply(t: AST) = Unapply[Var].run(_.name)(t)
+      def apply(name: String): Var = VarOf[AST](name)
     }
 
     object Cons {
-      def apply(name: String): Cons = ConsOf(name)
-      def unapply(t: AST): Option[String] = t.shape match {
-        case ConsOf(name) => Some(name)
-        case _            => None
-      }
-      trait implicits {
-        implicit def stringToCons(str: String): Cons = Cons(str)
-      }
+      val any             = UnapplyByType[Cons]
+      def unapply(t: AST) = Unapply[Cons].run(_.name)(t)
+      def apply(name: String): Cons = ConsOf[AST](name)
     }
 
     object Opr {
-      def apply(name: String): Opr = OprOf(name)
-      def unapply(t: AST): Option[String] = t.shape match {
-        case OprOf(name) => Some(name)
-        case _           => None
-      }
-      trait implicits {
-        implicit def stringToOpr(str: String): Opr = Opr(str)
-      }
-      val app: Opr = Opr(" ")
+      val app             = Opr(" ")
+      val any             = UnapplyByType[Cons]
+      def unapply(t: AST) = Unapply[Cons].run(_.name)(t)
+      def apply(name: String): Opr = OprOf[AST](name)
     }
 
     object Mod {
-      def apply(name: String): Mod = ModOf(name)
-      def unapply(t: AST): Option[String] = t.shape match {
-        case ModOf(name) => Some(name)
-        case _           => None
-      }
-      trait implicits {
-        implicit def stringToMod(str: String): Mod = Mod(str)
-      }
+      val any             = UnapplyByType[Cons]
+      def unapply(t: AST) = Unapply[Cons].run(_.name)(t)
+      def apply(name: String): Mod = ModOf[AST](name)
     }
 
     //// Instances ////
 
+    trait IndirectConversions {
+      implicit def stringToIdent(str: String): Ident = {
+        if (str == "") throw new Error("Empty literal")
+        if (str == "_") Blank()
+        else if (str.head.isLower) Var(str)
+        else if (str.head.isUpper) Cons(str)
+        else Opr(str)
+      }
+    }
+
+    trait DirectConversions extends IndirectConversions {
+      implicit def strToVar(str: String):  Var  = Var(str)
+      implicit def strToCons(str: String): Cons = Cons(str)
+      implicit def strToOpr(str: String):  Opr  = Opr(str)
+      implicit def strToMod(str: String):  Mod  = Mod(str)
+    }
+
     object implicits extends implicits
-    trait implicits
-        extends Shape.implicits
-        with Var.implicits
-        with Cons.implicits
-        with Opr.implicits
-        with Mod.implicits {
+    trait implicits extends Shape.implicits with DirectConversions {
       implicit def reprBlank:      Repr[BlankOf[_]]      = _.name
       implicit def reprVar:        Repr[VarOf[_]]        = _.name
       implicit def reprCons:       Repr[ConsOf[_]]       = _.name
@@ -411,13 +427,6 @@ object AST {
       implicit def offZipOpr[T]:   OffsetZip[OprOf, T]   = t => t.coerce
       implicit def offZipMod[T]:   OffsetZip[ModOf, T]   = t => t.coerce
 
-      implicit def stringToIdent(str: String): Ident = {
-        if (str == "") throw new Error("Empty literal")
-        if (str == "_") Blank()
-//        else if (str.head.isLower) Var(str)
-        else if (str.head.isUpper) Cons(str)
-        else Opr(str)
-      }
     }
   }
 
@@ -549,9 +558,7 @@ object AST {
       //// Quote ////
       ///////////////
 
-      sealed trait Quote {
-        val asInt: Int
-      }
+      sealed trait Quote { val asInt: Int }
       object Quote {
         final case object Single extends Quote { val asInt = 1 }
         final case object Triple extends Quote { val asInt = 3 }
@@ -603,17 +610,10 @@ object AST {
             case t: _Plain[T] => OffsetZip(t)
             case t: _Expr[T]  => OffsetZip(t)
           }
-
           implicit def fromString[T](str: String): _Plain[T] = _Plain(str)
         }
-
-        //        trait Escape extends Interpolated
-        //        val Escape = text.Escape
-
       }
-
     }
-
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -628,26 +628,22 @@ object AST {
 
     //// Constructors ////
 
-    type Prefix = PrefixOf[AST]
-    type Infix  = InfixOf[AST]
+    type Prefix = ASTFrom[PrefixOf]
+    type Infix  = ASTFrom[InfixOf]
     case class PrefixOf[T](fn: T, off: Int, arg: T) extends AppOf[T]
     case class InfixOf[T](larg: T, loff: Int, opr: Opr, roff: Int, rarg: T)
         extends AppOf[T]
 
     object Prefix {
-      def unapply(t: AST) = t.shape match {
-        case t: PrefixOf[_] => Some((t.fn, t.arg))
-        case _              => None
-      }
+      val any             = UnapplyByType[Prefix]
+      def unapply(t: AST) = Unapply[Prefix].run(t => (t.fn, t.arg))(t)
       def apply(fn: AST, off: Int, arg: AST): Prefix = PrefixOf(fn, off, arg)
       def apply(fn: AST, arg: AST):           Prefix = Prefix(fn, 1, arg)
     }
 
     object Infix {
-      def unapply(t: AST) = t.shape match {
-        case t: InfixOf[_] => Some((t.larg, t.opr, t.rarg))
-        case _             => None
-      }
+      val any             = UnapplyByType[Infix]
+      def unapply(t: AST) = Unapply[Infix].run(t => (t.larg, t.opr, t.rarg))(t)
       def apply(larg: AST, loff: Int, opr: Opr, roff: Int, rarg: AST): Infix =
         InfixOf(larg, loff, opr, roff, rarg)
       def apply(larg: AST, loff: Int, opr: Opr, rarg: AST): Infix =
@@ -724,15 +720,15 @@ object AST {
 
       object implicits extends implicits
       trait implicits {
+        implicit def ftorLeft:  Functor[LeftOf]  = semi.functor
+        implicit def ftorRight: Functor[RightOf] = semi.functor
+        implicit def ftorSides: Functor[SidesOf] = semi.functor
         implicit def reprLeft[T: Repr]: Repr[LeftOf[T]] =
           t => R + t.arg + t.off + t.opr
         implicit def reprRight[T: Repr]: Repr[RightOf[T]] =
           t => R + t.opr + t.off + t.arg
         implicit def reprSides[T: Repr]: Repr[SidesOf[T]] =
           t => R + t.opr
-        implicit def ftorLeft:  Functor[LeftOf]  = semi.functor
-        implicit def ftorRight: Functor[RightOf] = semi.functor
-        implicit def ftorSides: Functor[SidesOf] = semi.functor
         implicit def offZipLeft[T]: OffsetZip[LeftOf, T] =
           t => t.copy(arg = (0, t.arg))
         implicit def offZipRight[T]: OffsetZip[RightOf, T] =
@@ -742,12 +738,6 @@ object AST {
       }
     }
   }
-
-  ///
-
-  //
-
-  //
 
   //////////////////////////////////////////////////////////////////////////////
   //// Block ///////////////////////////////////////////////////////////////////
@@ -833,22 +823,33 @@ object AST {
     //    val foo2 = fix2(foo): FixedAST
 
     //    println(foox.withNewID())
-    val tfoo = Var("foo")
+    val v1 = Var("foo"): AST
+    val v2 = App.Prefix(v1, 2, v1): AST
 //    val tfoo2 = Fix.implicits.fixDeep(tfoo): AST
-    val tfoo3 = tfoo: AST
 
-    tfoo3 match {
-      case Var.tp(v) => println("VAR")
-//      case Var_ :: v => println("Var")
-      case Var(_)  => println("!!!!")
-      case Blank() => println("DD")
+    v1 match {
+      case Var.any(v)        => println("VAR")
+      case App.Prefix.any(v) => println("PREFIX")
+      case Var(_)            => println("!!!!")
+      case Blank()           => println("DD")
     }
 
-    val l1 = Block.Line(tfoo3): Block.Line
+    v2 match {
+      case Var.any(v)        => println("VAR")
+      case App.Prefix.any(v) => println("PREFIX")
+      case Var(_)            => println("!!!!")
+      case Blank()           => println("DD")
+    }
+
+    v2 match {
+      case Var.any(v)       => println("VAR")
+      case App.Prefix(x, y) => println(s"PREFIX ${x}, ${y}")
+      case Var(_)           => println("!!!!")
+      case Blank()          => println("DD")
+    }
 
     println("..........")
 //    println(tfoo2)
-    println(tfoo3)
 //    println(ttt3.repr)
 
     val x1   = toTagged(foo)
@@ -889,7 +890,7 @@ object AST {
       def setID(newID: ID)                     = copy(id = Some(newID))
       def map(f: Shape => Shape)               = this
       def mapWithOff(f: (Int, Shape) => Shape) = this
-      def path(): List1[Shape] = segs.toList1().map(_.el.head)
+      def path(): List1[AST] = segs.toList1().map(_.el.head)
     }
     object Match {
       case class Segment(head: Ident, body: Pattern.Match) {

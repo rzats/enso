@@ -67,8 +67,8 @@ object AST {
     trait implicits {
 
       // FIXME: Makes IntelliJ happy, but probably lowers performance
-      implicit def shapeToAST(shape: Shape): AST =
-        Fix.implicits.fixDeep(shape)
+//      implicit def shapeToAST(shape: Shape): AST =
+//        Fix.implicits.fixDeep(shape)
 
       implicit def stringToAST(str: String): Shape = {
         if (str == "") throw new Error("Empty literal")
