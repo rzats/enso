@@ -73,14 +73,6 @@ object AST {
       implicit def shapeToAST(shape: Shape): AST =
         Fix.implicits.fixDeep(shape)
 
-      implicit def stringToAST(str: String): AST = {
-        if (str == "") throw new Error("Empty literal")
-        if (str == "_") Blank()
-        else if (str.head.isLower) Var(str)
-        else if (str.head.isUpper) Cons(str)
-        else Opr(str)
-      }
-
       implicit def offZipStream[T: Repr]: OffsetZip[_Stream, T] = { stream =>
         var off = 0
         stream.map { t =>
@@ -137,6 +129,37 @@ object AST {
         //        go(off, f(off, ast))
         //      }
         //    }
+      }
+    }
+
+  }
+
+  object Generic {
+    object implicits extends implicits
+    trait implicits {
+
+      implicit def ftorShapeOf: Functor[ShapeOf] = semi.functor
+
+      // TODO: Should be auto-generated with Shapeless
+      implicit def reprScheme: Repr[ShapeOf[AST]] = {
+        //        case t: Blank => Repr.of(t)
+        //        case t: Var   => Repr.of(t)
+        //        case t: Cons              => Repr.of(t)
+        case t: App.PrefixOf[AST] => Repr.of(t)(App.implicits.reprPrefix)
+      }
+
+      // TODO: Should be auto-generated with Shapeless
+      implicit def offZipScheme[T: Repr]: OffsetZip[ShapeOf, T] = {
+        case t: Ident.VarOf[T]  => OffsetZip(t)
+        case t: Ident.ConsOf[T] => OffsetZip(t)
+      }
+
+      implicit def stringToAST(str: String): AST = {
+        if (str == "") throw new Error("Empty literal")
+        if (str == "_") Blank()
+        else if (str.head.isLower) Var(str)
+        else if (str.head.isUpper) Cons(str)
+        else Opr(str)
       }
     }
   }
@@ -227,9 +250,9 @@ object AST {
     * caches the repr of the node.
     *
     * @param shape Is the structure of the AST node. In most cases, it is a
-    *               subtype of [[Shape]].
-    * @param id     Is the unique AST Node ID assigned by parser from the marker
-    *               map.
+    *              subtype of [[Shape]].
+    * @param id    Is the unique AST Node ID assigned by parser from the marker
+    *              map.
     */
   case class Tagged[+T: Repr](shape: T, id: Option[ID]) {
     val repr: RRR   = Repr.of(shape)
@@ -254,28 +277,6 @@ object AST {
     * @tparam T The type of elements.
     */
   sealed trait ShapeOf[T]
-
-  object Shape {
-    object implicits extends implicits
-    trait implicits {
-
-      implicit def ftorShapeOf: Functor[ShapeOf] = semi.functor
-
-      // TODO: Should be auto-generated with Shapeless
-      implicit def reprScheme: Repr[ShapeOf[AST]] = {
-//        case t: Blank => Repr.of(t)
-//        case t: Var   => Repr.of(t)
-//        case t: Cons              => Repr.of(t)
-        case t: App.PrefixOf[AST] => Repr.of(t)(App.implicits.reprPrefix)
-      }
-
-      // TODO: Should be auto-generated with Shapeless
-      implicit def offZipScheme[T: Repr]: OffsetZip[ShapeOf, T] = {
-        case t: Ident.VarOf[T]  => OffsetZip(t)
-        case t: Ident.ConsOf[T] => OffsetZip(t)
-      }
-    }
-  }
 
   //////////////////////////////////////////////////////////////////////////////
   //// Phantom /////////////////////////////////////////////////////////////////
@@ -392,7 +393,7 @@ object AST {
 
     //// Instances ////
 
-    trait IndirectConversions {
+    trait IndirectConversions extends Generic.implicits {
       implicit def stringToIdent(str: String): Ident = {
         if (str == "") throw new Error("Empty literal")
         if (str == "_") Blank()
@@ -410,7 +411,7 @@ object AST {
     }
 
     object implicits extends implicits
-    trait implicits extends Shape.implicits with DirectConversions {
+    trait implicits extends DirectConversions {
       implicit def reprBlank:      Repr[BlankOf[_]]      = _.name
       implicit def reprVar:        Repr[VarOf[_]]        = _.name
       implicit def reprCons:       Repr[ConsOf[_]]       = _.name
@@ -426,7 +427,6 @@ object AST {
       implicit def offZipCons[T]:  OffsetZip[ConsOf, T]  = t => t.coerce
       implicit def offZipOpr[T]:   OffsetZip[OprOf, T]   = t => t.coerce
       implicit def offZipMod[T]:   OffsetZip[ModOf, T]   = t => t.coerce
-
     }
   }
 
@@ -476,7 +476,7 @@ object AST {
       //// Instances ////
 
       object implicits extends implicits
-      trait implicits {
+      trait implicits extends Generic.implicits {
         implicit def ftorNum:      Functor[NumberOf]       = semi.functor
         implicit def ftorNumDang:  Functor[DanglingBaseOf] = semi.functor
         implicit def offZipNum[T]: OffsetZip[NumberOf, T]  = t => t.coerce
@@ -586,7 +586,7 @@ object AST {
         //// Instances ////
 
         object implicits extends implicits
-        trait implicits {
+        trait implicits extends Generic.implicits {
           implicit def reprTxtSPlain[T]: Repr[_Plain[T]] = _.value
           implicit def reprTxtSExpr[T: Repr]: Repr[_Expr[T]] =
             R + '`' + _.value + '`'

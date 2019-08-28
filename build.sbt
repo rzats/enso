@@ -59,6 +59,8 @@ scalacOptions in ThisBuild ++= Seq(
 //  "-Xmacro-settings:-logging@org.enso.flexer.automata"
 )
 
+javacOptions in ThisBuild ++= Seq("-Xmx3G", "-Xss4M")
+
 // Benchmark Configuration
 lazy val Benchmark = config("bench") extend Test
 lazy val bench     = taskKey[Unit]("Run Benchmarks")
