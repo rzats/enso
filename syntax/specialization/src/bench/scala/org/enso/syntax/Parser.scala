@@ -10,9 +10,9 @@ import org.enso.flexer
 import org.enso.syntax.text.Parser
 import org.scalameter.api._
 //import org.enso.syntax.text.{test4 => ast2}
-import org.enso.syntax.text.{test5 => ast5}
+import org.enso.syntax.text.{v2 => ast5}
 //import org.enso.syntax.text.test4.AST.implicits._
-import org.enso.syntax.text.test5.AST.implicits._
+import org.enso.syntax.text.v2.AST.implicits._
 
 import scala.math.pow
 
@@ -141,7 +141,7 @@ object ParserBenchmark extends Bench.LocalTime {
     var x: Int = 0
     for { j <- 0.to(i) } {
       v = v match {
-        case ast5.AST.App.Prefix.tp(t) => {
+        case ast5.AST.App.Prefix.any(t) => {
           x += t.shape.off
           t.shape.arg
         }
@@ -199,11 +199,11 @@ object ParserBenchmark extends Bench.LocalTime {
 //    }
 //  }
 //
-//  performance of "testAST1" in {
-//    tests.foreach {
-//      case (name, gen) => measure method name in (using(gen) in testAST1)
-//    }
-//  }
+  performance of "testAST1" in {
+    tests.foreach {
+      case (name, gen) => measure method name in (using(gen) in testAST1)
+    }
+  }
 //
 ////  performance of "testAST2" in {
 ////    tests.foreach {
@@ -217,11 +217,11 @@ object ParserBenchmark extends Bench.LocalTime {
 ////    }
 ////  }
 //
-//  performance of "testAST5" in {
-//    tests.foreach {
-//      case (name, gen) => measure method name in (using(gen) in testAST5)
-//    }
-//  }
+  performance of "testAST5" in {
+    tests.foreach {
+      case (name, gen) => measure method name in (using(gen) in testAST5)
+    }
+  }
   performance of "testAST5_2" in {
     tests.foreach {
       case (name, gen) => measure method name in (using(gen) in testAST5_2)

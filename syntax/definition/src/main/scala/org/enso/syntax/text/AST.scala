@@ -806,8 +806,9 @@ object AST {
         val segsRepr  = segs.map(_.repr)
         R + pfxRepr + segsRepr
       }
-      def setID(newID: ID)                 = copy(id = Some(newID))
-      def map(f: AST => AST)               = this
+      def setID(newID: ID)   = copy(id   = Some(newID))
+      def map(f: AST => AST) = copy(segs = segs.map(_.map(_.map(f))))
+
       def mapWithOff(f: (Int, AST) => AST) = this
       def path(): List1[AST] = segs.toList1().map(_.el.head)
     }
@@ -845,6 +846,17 @@ object AST {
       }
     }
 
+    //// Resolver ////
+
+    type Resolver = Resolver.Context => AST
+    object Resolver {
+      final case class Context(
+        prefix: Option[Pattern.Match],
+        body: List[Macro.Match.Segment],
+        id: ID
+      )
+    }
+
     //// Definition ////
 
     type Definition = __Definition__
@@ -852,7 +864,7 @@ object AST {
       back: Option[Pattern],
       init: List[Definition.Segment],
       last: Definition.LastSegment,
-      fin: Definition.Finalizer
+      resolver: Resolver
     ) {
       def path: List1[AST] = init.map(_.head) +: List1(last.head)
       def fwdPats: List1[Pattern] =
@@ -860,7 +872,6 @@ object AST {
     }
     object Definition {
       import Pattern._
-      type Finalizer = (Option[Pattern.Match], List[Macro.Match.Segment]) => AST
 
       final case class Segment(head: AST, pattern: Pattern) {
         def map(f: Pattern => Pattern): Segment = copy(pattern = f(pattern))
@@ -880,7 +891,7 @@ object AST {
       }
 
       def apply(back: Option[Pattern], t1: Segment.Tup, ts: List[Segment.Tup])(
-        fin: Finalizer
+        fin: Resolver
       ): Definition = {
         val segs    = List1(t1, ts)
         val init    = segs.init
@@ -890,19 +901,19 @@ object AST {
       }
 
       def apply(back: Option[Pattern], t1: Segment.Tup, ts: Segment.Tup*)(
-        fin: Finalizer
+        fin: Resolver
       ): Definition = Definition(back, t1, ts.toList)(fin)
 
       def apply(t1: Segment.Tup, t2_ : Segment.Tup*)(
-        fin: Finalizer
+        fin: Resolver
       ): Definition = Definition(None, t1, t2_.toList)(fin)
 
       def apply(initTups: List[Segment.Tup], lastHead: AST)(
-        fin: Finalizer
+        fin: Resolver
       ): Definition =
         Definition(None, initTups, (lastHead, None), fin)
 
-      def apply(t1: Segment.Tup, last: AST)(fin: Finalizer): Definition =
+      def apply(t1: Segment.Tup, last: AST)(fin: Resolver): Definition =
         Definition(List(t1), last)(fin)
 //
 //      def apply(backPat: Option[Pattern], t1: Segment.Tup, ts: Segment.Tup*)(
@@ -914,7 +925,7 @@ object AST {
         back: Option[Pattern],
         initTups: List[Segment.Tup],
         lastTup: LastSegment.Tup,
-        fin: Finalizer
+        resolver: Resolver
       ): Definition = {
         type PP = Pattern => Pattern
         val checkValid: PP = _ | ErrTillEnd("unmatched pattern")
@@ -931,24 +942,21 @@ object AST {
         val backPatWithCheck   = back.map(checkValid)
         val initSegsWithChecks = addInitChecks(initSegs)
         val lastSegWithChecks  = addLastCheck(lastSeg)
-        def finalizerWithChecks(
-          pfx: Option[Pattern.Match],
-          segs: List[Macro.Match.Segment]
-        ) = {
-          val pfxFail  = !pfx.forall(_.isValid)
-          val segsFail = !segs.forall(_.isValid)
+        def resolverWithChecks(ctx: Resolver.Context) = {
+          val pfxFail  = !ctx.prefix.forall(_.isValid)
+          val segsFail = !ctx.body.forall(_.isValid)
           if (pfxFail || segsFail) {
-            val pfxStream  = pfx.map(_.toStream).getOrElse(List())
-            val segsStream = segs.flatMap(_.toStream)
+            val pfxStream  = ctx.prefix.map(_.toStream).getOrElse(List())
+            val segsStream = ctx.body.flatMap(_.toStream)
             val stream     = pfxStream ++ segsStream
             AST.Unexpected("invalid statement", stream)
-          } else fin(pfx, segs)
+          } else resolver(ctx)
         }
         __Definition__(
           backPatWithCheck,
           initSegsWithChecks,
           lastSegWithChecks,
-          finalizerWithChecks
+          resolverWithChecks
         )
       }
 

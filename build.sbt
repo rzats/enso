@@ -56,6 +56,7 @@ scalacOptions in ThisBuild ++= Seq(
   "-Ypartial-unification",
 //  "-language:implicitConversions",
   "-Xmacro-settings:-logging@org.enso"
+//  "-optimize"
 //  "-Xmacro-settings:-logging@org.enso.flexer.automata"
 )
 

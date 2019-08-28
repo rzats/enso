@@ -260,6 +260,35 @@ object Pattern {
         case Match.TillEnd(t)   => t.isValid
         case Match.Tok(_)       => true
       }
+
+      def map(f: AST => AST): Of[T] = {
+        println("MAPPING!!!-------------")
+        mapX(this)(f)
+      }
+
+      def mapList[A](t: List[A])(f: A => A): List[A] = t.map(f)
+
+      def mapY(t: Match.Of[_])(f: AST => AST): Match.Of[_] = mapX(t)(f)
+      def mapX[X](t: Match.Of[X])(f: AST => AST): Match.Of[X] = t match {
+        case Of(pat: Pattern.Build, s) => {
+          println("!!!!")
+          Of[X](pat, s.map(f))
+        }
+        case Of(pat: Pattern.Cls[AST], s)  => Of[X](pat, s.map(f))
+        case Of(pat: Pattern.Err, s)       => Of[X](pat, s.map(f))
+        case Of(pat: Pattern.FromBegin, s) => Of[X](pat, mapY(s)(f))
+        case Of(pat: Pattern.Many, s) =>
+          Of[X](pat, mapList(s)((m: Match) => (m: Match)))
+        case Of(pat: Pattern.Except, s)  => Of[X](pat, mapY(s)(f))
+        case Of(pat: Pattern.Nothing, s) => Of[X](pat, s)
+        case Of(pat: Pattern.Or, s)      => Of[X](pat, mapY(s)(f))
+        case Of(pat: Pattern.Seq, (s1, s2)) =>
+          Of[X](pat, (mapY(s1)(f), mapY(s2)(f)))
+        case Of(pat: Pattern.Tag, s)     => Of[X](pat, mapY(s)(f))
+        case Of(pat: Pattern.TillEnd, s) => Of[X](pat, mapY(s)(f))
+        case Of(pat: Pattern.Tok, s)     => Of[X](pat, s.map(f))
+
+      }
     }
 
     //// Smart Deconstructors ////
@@ -272,7 +301,6 @@ object Pattern {
     }
 
     object Cls {
-      def apply(t: SAST): Match = Match(Pattern.Cls[AST](), t)
       def unapply(t: Match): Option[SAST] = t match {
         case Of(_: Pattern.Cls[_], t) => Some(t)
         case _                        => None

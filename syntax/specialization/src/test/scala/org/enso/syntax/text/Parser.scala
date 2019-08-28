@@ -16,44 +16,32 @@ import org.scalatest._
 class ParserSpec extends FlatSpec with Matchers {
 
   def assertModule(input: String, result: AST): Assertion = {
-    val parser = Parser()
-    val output = parser.run(new Reader(input))
-    output match {
-      case Result(offset, Result.Success(module)) =>
-        val rmodule = parser.resolveMacros(module)
-        assert(rmodule == result)
-        assert(module.show() == new Reader(input).toString())
-      case _ => fail(s"Parsing failed, consumed ${output.offset} chars")
-    }
+    val parser  = Parser()
+    val module  = parser.run(new Reader(input))
+    val rmodule = parser.dropMacroMeta(module)
+    assert(rmodule == result)
+    assert(module.show() == new Reader(input).toString())
   }
 
   def assertExpr(input: String, result: AST): Assertion = {
-    val parser = Parser()
-    val output = parser.run(new Reader(input))
-    output match {
-      case Result(offset, Result.Success(module)) =>
-        val rmodule = parser.resolveMacros(module)
-        val tail    = module.lines.tail
-        if (!tail.forall(_.elem.isEmpty)) fail("Multi-line block")
-        else {
-          rmodule.lines.head.elem match {
-            case None => fail("Empty expression")
-            case Some(e) =>
-              assert(e == result)
-              assert(module.show() == new Reader(input).toString())
-          }
-        }
-      case _ => fail(s"Parsing failed, consumed ${output.offset} chars")
+    val parser  = Parser()
+    val module  = parser.run(new Reader(input))
+    val rmodule = parser.dropMacroMeta(module)
+    val tail    = module.lines.tail
+    if (!tail.forall(_.elem.isEmpty)) fail("Multi-line block")
+    else {
+      rmodule.lines.head.elem match {
+        case None => fail("Empty expression")
+        case Some(e) =>
+          assert(e == result)
+          assert(module.show() == new Reader(input).toString())
+      }
     }
   }
 
   def assertIdentity(input: String): Assertion = {
-    val output = Parser().run(new Reader(input))
-    output match {
-      case Result(offset, Result.Success(value)) =>
-        assert(value.show() == new Reader(input).toString())
-      case _ => fail(s"Parsing failed, consumed ${output.offset} chars")
-    }
+    val module = Parser().run(new Reader(input))
+    assert(module.show() == new Reader(input).toString())
   }
 
   implicit class TestString(input: String) {

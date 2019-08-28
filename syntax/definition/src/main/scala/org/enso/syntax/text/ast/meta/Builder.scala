@@ -102,12 +102,14 @@ class Builder(
 
   if (isModuleBuilder)
     macroDef = Some(
-      Macro.Definition(AST.Blank() -> Pattern.Expr()) {
-        case (_, List(seg)) =>
-          seg.body.toStream match {
-            case List(mod) => mod.el
-            case _         => throw new scala.Error("Impossible happened")
-          }
+      Macro.Definition(AST.Blank() -> Pattern.Expr()) { ctx =>
+        ctx.body match {
+          case List(seg) =>
+            seg.body.toStream match {
+              case List(mod) => mod.el
+              case _         => throw new scala.Error("Impossible happened")
+            }
+        }
       }
     )
 

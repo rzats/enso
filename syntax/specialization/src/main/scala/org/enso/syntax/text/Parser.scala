@@ -10,12 +10,15 @@ import org.enso.syntax.text.ast.meta.Pattern
 import org.enso.syntax.text.prec.Distance
 import org.enso.syntax.text.prec.Operator
 import org.enso.syntax.text.ast.opr.Prec
-import org.enso.syntax.text.test5
+import org.enso.syntax.text.v2
+import java.util.UUID
 
 import scala.annotation.tailrec
 
-//import org.enso.syntax.text.test2
-import org.enso.syntax.text.test4
+////////////////////////////////
+
+class InternalError(reason: String, cause: Throwable = None.orNull)
+    extends Exception(s"Internal error $reason", cause)
 
 ////////////////
 //// Parser ////
@@ -135,7 +138,7 @@ import org.enso.syntax.text.test4
   * information is stored only in the basic set of tokens and [[AST.Macro]]
   * tokens. Each AST node has a [[AST.map]] function for mapping over sub-nodes,
   * which allows easy building of AST traversals. The [[Parser#resolveMacros]]
-  * is such a traversal, which applies [[AST.Macro.Definition.Finalizer]] to
+  * is such a traversal, which applies [[AST.Macro.Definition.Resolver]] to
   * each [[AST.Macro.Match]] found in the AST, while loosing a lot of positional
   * information.
   */
@@ -143,11 +146,42 @@ class Parser {
   import Parser._
   private val engine = newEngine()
 
-  def run(input: Reader): Result[AST.Module] =
+  def run(input: Reader): AST.Module =
     run(input, Map())
 
-  def run(input: Reader, idMap: Map[(Int, Int), AST.ID]): Result[AST.Module] =
-    engine.run(input).map(Macro.run)
+  def run(input: Reader, idMap: Map[(Int, Int), AST.ID]): AST.Module =
+    engine.run(input).map(Macro.run) match {
+      case flexer.Parser.Result(_, flexer.Parser.Result.Success(mod)) => {
+        val mod2_ = mod.traverseWithOff { (off, ast) =>
+          idMap.get((off, ast.span)) match {
+            case Some(id) => ast.setID(id)
+            case None =>
+              ast match {
+                case _: AST.Macro.Match => ast.withNewID()
+                case _                  => ast
+              }
+          }
+        }
+
+        // FIXME: This should not be needed if traverseWithOff could travel
+        //        Macro Matches
+        // vvvvvvvvvvvvv
+        def go(t: AST): AST = t match {
+          case ast: AST.Macro.Match =>
+            val nast = if (ast.id.isEmpty) ast.withNewID() else ast
+            nast.map(go)
+          case ast => ast.map(go)
+        }
+        val mod3_ = go(mod2_)
+        // ^^^^^^^^^^^^^
+
+        // FIXME: The following line will be removed with new AST
+        val mod3 = mod3_.asInstanceOf[AST.Module]
+//        resolveMacros(mod2)
+        mod3
+      }
+      case _ => throw ParsingFailed
+    }
 
   /** Although this function does not use any Parser-specific API now, it will
     * use such in the future when the interpreter will provide information about
@@ -160,22 +194,47 @@ class Parser {
     ast match {
       case ast: AST.Macro.Match =>
         Builtin.registry.get(ast.path) match {
-          case None => throw new Error("Macro definition not found")
+          case None => throw MissingMacroDefinition
           case Some(spec) =>
-            resolveMacros(spec.fin(ast.pfx, ast.segs.toList().map(_.el)))
+            val id       = ast.id.getOrElse(throw new Error("Missing ID"))
+            val segments = ast.segs.toList().map(_.el)
+            val ctx      = AST.Macro.Resolver.Context(ast.pfx, segments, id)
+            ast.copy(resolved = resolveMacros(spec.resolver(ctx)))
         }
       case _ => ast.map(resolveMacros)
     }
   }
 
+  /** Drops macros metadata keeping only resolved macros in the AST. Please
+    * remember that this operation drops the information about AST spacing as
+    * well.
+    */
+  def dropMacroMeta(ast: AST.Module): AST.Module = {
+    def go: AST => AST = {
+      case t: AST.Macro.Match => t.resolved
+      case t                  => t.map(go)
+    }
+    ast.map(go)
+  }
+
 }
 
 object Parser {
-  type Result[T] = flexer.Parser.Result[T]
+  def apply(): Parser = new Parser()
   private val newEngine = flexer.Parser.compile(ParserDef())
 
-  def apply(): Parser = new Parser()
+  //// Exceptions ////
+
+  case object ParsingFailed extends ParserError("parsing failed")
+  case object MissingMacroDefinition
+      extends ParserError("macro definition not found")
+  class ParserError(reason: String, cause: Throwable = None.orNull)
+      extends InternalError(s"in parser $reason", cause)
 }
+
+////////////////////////////////////////////////////////////////////////////////
+//// Interactive Testing Utilities /////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
 //////////////
 //// Main ////
@@ -252,36 +311,33 @@ object Main extends App {
 //val inp = "(a) b = c"
 //val inp = "a = b -> c"
 //val inp = "a = b -> c d"
-  val inp = "a + b * c"
+  val inp = "a -> b -> c"
 //  val inp = "x(x[a))"
-  val out = parser.run(new Reader(inp), Map())
-  pprint.pprintln(out, width = 50, height = 10000)
+  val mod = parser.run(
+    new Reader(inp),
+    Map((0, 5) -> UUID.fromString("00000000-0000-0000-0000-000000000000"))
+  )
+  pprint.pprintln(mod, width = 50, height = 10000)
 
-  out match {
-    case flexer.Parser.Result(_, flexer.Parser.Result.Success(mod)) =>
-      println(pretty(mod.toString))
-      val rmod = parser.resolveMacros(mod)
-      if (mod != rmod) {
-        println("\n---\n")
-        println(pretty(rmod.toString))
-      }
-      println("------")
-      println(mod.show() == inp)
-      println("------")
-      println(mod.show())
-      println("------")
+  println(pretty(mod.toString))
+//  val rmod = parser.resolveMacros(mod)
+//  if (mod != rmod) {
+//    println("\n---\n")
+//    println(pretty(rmod.toString))
+//  }
+  println("------")
+  println(mod.show() == inp)
+  println("------")
+  println(mod.show())
+  println("------")
 
-      mod.traverseWithOff { (off, ast) =>
-        println(s">> $off - ${off + ast.span}: $ast")
-        ast
-      }
-
+  mod.traverseWithOff { (off, ast) =>
+    println(s">> $off - ${off + ast.span}: $ast")
+    ast
   }
+
   println()
 
-  test5.AST.main()
-//  test.AST.main()
+  v2.AST.main()
 
 }
-// 147
-//
