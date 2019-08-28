@@ -11,6 +11,8 @@ import org.enso.syntax.text.prec.Distance
 import org.enso.syntax.text.prec.Operator
 import org.enso.syntax.text.ast.opr.Prec
 
+import org.enso.syntax.text.ast.Doc
+
 import scala.annotation.tailrec
 
 ////////////////
@@ -32,7 +34,7 @@ import scala.annotation.tailrec
   *
   * Macro resolution steps:
   *
-  * 1. Parser is executed by using the [[Parser.run]] function. It reads source
+  * 1. Parser is executed by using the [[Parser#run]] function. It reads source
   * code and outputs a token stream [[AST.Stream]]. The token stream contains a
   * very narrow range of possible elements: [[AST.Blank]], [[AST.Var]],
   * [[AST.Cons]], [[AST.Opr]], [[AST.Number]], [[AST.Text]], and [[AST.Block]],
@@ -130,10 +132,12 @@ import scala.annotation.tailrec
   * to work with by automated tools like the interpreter, while all the spacing
   * information is stored only in the basic set of tokens and [[AST.Macro]]
   * tokens. Each AST node has a [[AST.map]] function for mapping over sub-nodes,
-  * which allows easy building of AST traversals. The [[Parser.resolveMacros]]
+  * which allows easy building of AST traversals. The [[Parser#resolveMacros]]
   * is such a traversal, which applies [[AST.Macro.Definition.Finalizer]] to
   * each [[AST.Macro.Match]] found in the AST, while loosing a lot of positional
-  * information.
+  * information. The [[Parser#createDocumentation]] is used to invoke our
+  * Documentation Parser on every comment in code and parse it, which enables us
+  * to create immersive documentation for code, with double representation in mind
   */
 class Parser {
   import Parser._
@@ -161,6 +165,33 @@ class Parser {
             resolveMacros(spec.fin(ast.pfx, ast.segs.toList().map(_.el)))
         }
       case _ => ast.map(resolveMacros)
+    }
+  }
+
+  def createDocumentationSL(ast: AST.Comment.SingleLine): AST = {
+    val in = ast.text
+    DocParser.parserRun(in)
+  }
+
+  def createDocumentationML(ast: AST.Comment.MultiLine): AST = {
+    val in = ast.lines.mkString("\n")
+    DocParser.parserRun(in)
+  }
+
+  def createDocumentation(ast: AST): AST = {
+    ast match {
+      case ast: AST.Macro.Match =>
+        Builtin.registry.get(ast.path) match {
+          case None => throw new Error("Macro definition not found")
+          case Some(spec) =>
+            createDocumentation(spec.fin(ast.pfx, ast.segs.toList().map(_.el)))
+        }
+      case v: AST.Comment.MultiLine =>
+        createDocumentationML(v)
+      case v: AST.Comment.SingleLine =>
+        createDocumentationSL(v)
+      case v =>
+        v.map(createDocumentation)
     }
   }
 
@@ -250,14 +281,143 @@ object Main extends App {
 //val inp = "a = b -> c"
 //val inp = "a = b -> c d"
   val inp = "x = skip (a.b)"
+  val comments =
+    """foo = a.b ##inline Comment
+      |
+      |##
+      | DEPRECATED
+      | REMOVED - replaced by SwiftUI
+      | ADDED
+      | MODIFIED
+      | UPCOMING
+      | ALAMAKOTA a kot ma Ale
+      | Construct and manage a graphical, event-driven user interface for your
+      | iOS or tvOS app.
+      | 
+      | The UIKit framework provides the required infrastructure for your iOS or
+      | tvOS apps. It provides the window and view architecture for implementing
+      | your interface, the event handling infrastructure for delivering Multi-
+      | Touch and other types of input to your app, and the main run loop needed
+      | to manage interactions among the user, the system, and your app. Other
+      | features offered by the framework include animation support, document
+      | support, drawing and printing support, information about the current
+      | device, text management and display, search support, accessibility  
+      | support, app extension support, and resource management.
+      | 
+      | ! Important
+      |   Use UIKit classes only from your app’s main thread or main dispatch
+      |   queue, unless otherwise indicated. This restriction particularly
+      |   applies to classes derived from UIResponder or that involve
+      |   manipulating your app’s user interface in any way.
+      |
+      |Next = a.b""".stripMargin
+
+  val bigTest =
+    """foo = a.b ##inline Comment
+      |
+      |##
+      | DEPRECATED
+      | REMOVED - replaced by SwiftUI
+      | ADDED
+      | MODIFIED
+      | UPCOMING
+      | ALAMAKOTA a kot ma Ale
+      | Construct and manage a graphical, event-driven user interface for your
+      | iOS or tvOS app.
+      | 
+      | The UIKit framework provides the required infrastructure for your iOS or
+      | tvOS apps. It provides the window and view architecture for implementing
+      | your interface, the event handling infrastructure for delivering Multi-
+      | Touch and other types of input to your app, and the main run loop needed
+      | to manage interactions among the user, the system, and your app. Other
+      | features offered by the framework include animation support, document
+      | support, drawing and printing support, information about the current
+      | device, text management and display, search support, accessibility  
+      | support, app extension support, and resource management.
+      | 
+      | ! Important
+      |   Use UIKit classes only from your app’s main thread or main dispatch
+      |   queue, unless otherwise indicated. This restriction particularly
+      |   applies to classes derived from UIResponder or that involve
+      |   manipulating your app’s user interface in any way.
+      |
+      |Next = a.b # disabled a.c
+      |##
+      | DEPRECATED
+      | REMOVED - replaced by SwiftUI
+      | Construct and manage a graphical, event-driven user interface for your iOS or
+      | tvOS app.
+      |
+      | The UIKit framework provides the required infrastructure for your iOS or tvOS
+      | apps. It provides the window and view architecture for implementing your
+      | interface, the event handling infrastructure for delivering Multi-Touch and
+      | other types of input to your app, and the main run loop needed to manage
+      | interactions among the user, the system, and your app. Other features offered
+      | by the framework include animation support, document support, drawing and
+      | printing support, information about the current device, text management and
+      | display, search support, accessibility support, app extension support, and
+      | resource management. [Some inline link](http://google.com). *Bold test*,
+      | or _italics_ are allowed. ~Strikethrough as well~. *_~Combined is funny~_*.
+      | ![Images are allowed as well](https://github.com/luna/luna-studio/raw/master/resources/logo.ico).
+      |
+      | You can use ordered or unordered lists as well:
+      |   - First unordered item
+      |   - Second unordered item
+      |     * First ordered sub item
+      |     * Second ordered sub item
+      |       
+      | ! Important
+      |   An example warning block. Use UIKit classes only from your app’s main thread
+      |   or main dispatch queue, unless otherwise indicated. This restriction
+      |   particularly applies to classes derived from UIResponder or that involve
+      |   manipulating your app’s user interface in any way.
+      |
+      | ? An example info block.
+      |   `Inline code is allowed everywhere`. It can span a single line only
+      |
+      |
+      | A new section title *is* after 2 newlines
+      | Now we can write a new
+      |
+      |
+      | Invalid indent test:
+      |   - First unordered item
+      |   - Second unordered item
+      |     * First ordered sub item
+      |     * Second ordered sub item
+      |   - Third unordered item
+      |     * First ordered sub item
+      |     * Second ordered sub item
+      |       - First unordered sub item
+      |       - Second unordered sub item
+      |     * Third ordered sub item
+      |    * Wrong Indent Item
+      |   - Fourth unordered item
+      |
+      |
+      | Invalid Formatter test
+      | This is a *Unclosed test
+      |
+      | > Title of an example
+      |   This is an example displayed as a button in the docs. The first line is its
+      |   name and this is its description. Code has to be indented.
+      |       import Std.Math.Vector
+      |       v = Vec3 1 2 'foo' : Vector (Int | String)
+      |       print v 
+      |   Continuation of example section can occur after multiline code
+      |   test of [invalid]link)
+      |""".stripMargin
 //  val inp = "x(x[a))"
-  val out = parser.run(new Reader(inp), Seq())
+  val out = parser.run(new Reader(bigTest), Seq())
   pprint.pprintln(out, width = 50, height = 10000)
 
   out match {
     case flexer.Parser.Result(_, flexer.Parser.Result.Success(mod)) =>
       println(pretty(mod.toString))
-      val rmod = parser.resolveMacros(mod)
+      val rmod          = parser.resolveMacros(mod)
+      val documentation = parser.createDocumentation(mod)
+      pprint.pprintln(documentation, width = 50, height = 10000)
+      println("-----------------")
       if (mod != rmod) {
         println("\n---\n")
         println(pretty(rmod.toString))
@@ -267,10 +427,11 @@ object Main extends App {
       println("------")
       println(mod.show())
       println("------")
+      println(documentation.show())
+      println("------")
 
   }
   println()
-
 }
 
 // 1. Parsing patterns in-place with segments
