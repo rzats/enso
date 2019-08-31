@@ -114,7 +114,7 @@ class Builder(
     )
 
   def buildAsModule(): AST = {
-    build(List())._2.head.el match {
+    build(List())._2.el match {
       case m: Macro.Match =>
         m.segs.head.body.toStream match {
           case s :: Nil => s.el
@@ -173,10 +173,11 @@ object Builder {
       pat: Pattern,
       reversed: Boolean = false
     ): (Shifted[Match.Segment], AST.Stream) = {
-      pat.matchOpt(revStream.reverse, lineBegin, reversed) match {
+      val stream = revStream.reverse
+      pat.matchOpt(stream, lineBegin, reversed) match {
         case None =>
           throw new Error(
-            "Internal error: template pattern segment was unmatched"
+            s"Internal error: template pattern segment was unmatched"
           )
         case Some(rr) =>
           (Shifted(offset, Match.Segment(ast, rr.elem)), rr.stream)

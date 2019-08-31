@@ -15,6 +15,12 @@ import org.enso.syntax.text.ast.Repr
 ////////////////////////////////////////////////////////////////////////////////
 
 object Pattern {
+  import cats.Functor
+  import cats.Foldable
+  import cats.Traverse
+  import cats.derived._
+//  import cats.implicits._
+
   type P      = Pattern
   type Spaced = Option[Boolean]
 
@@ -61,12 +67,16 @@ object Pattern {
 
   /** Token Patterns */
   final case class Tok     (spaced : Spaced, ast  : AST)            extends P
+  final case class Blank   (spaced : Spaced)                        extends P
   final case class Var     (spaced : Spaced)                        extends P
   final case class Cons    (spaced : Spaced)                        extends P
   final case class Opr     (spaced : Spaced, maxPrec: Option[Int])  extends P
+  final case class Mod     (spaced : Spaced)                        extends P
   final case class Num     (spaced : Spaced)                        extends P
   final case class Text    (spaced : Spaced)                        extends P
   final case class Block   (spaced : Spaced)                        extends P
+  final case class Macro   (spaced : Spaced)                        extends P
+  final case class Invalid (spaced : Spaced)                        extends P
   // format: on
 
   //// Smart Constructors ////
@@ -101,19 +111,22 @@ object Pattern {
   }
 
   def Any(spaced: Spaced = None): Pattern =
+    Blank(spaced) |
     Var(spaced) |
     Cons(spaced) |
     Opr(spaced) |
+    Mod(spaced) |
     Num(spaced) |
     Text(spaced) |
-    Block(spaced)
+    Block(spaced) |
+    Macro(spaced) |
+    Invalid(spaced)
   def Any(spaced: Boolean): Pattern = Any(Some(spaced))
   def ErrTillEnd(msg: String)   = Any().tillEnd.err(msg)
   def ErrUnmatched(msg: String) = End() | ErrTillEnd(msg)
   def Expr()                    = Any().many1.build
-//  def NonSpacedExpr_            = Any().but(Block()) ::
-  def NonSpacedExpr()  = Any(spaced                        = false).many1.build
-  def NonSpacedExpr_() = (Any().but(Block()) :: Any(spaced = false).many).build
+  def NonSpacedExpr()           = Any(spaced = false).many1.build
+  def NonSpacedExpr_()          = (Any().but(Block()) :: Any(spaced = false).many).build
   def SepList(pat: Pattern, div: Pattern): Pattern = pat :: (div :: pat).many
   def SepList(pat: Pattern, div: Pattern, err: String): Pattern = {
     val seg = pat | Any().till(div).err(err)
@@ -139,8 +152,9 @@ object Pattern {
   //////////////////////////////////////////////////////////////////////////////
 
   object Match {
-    type M = Match
-    type P = Pattern
+    type Switch[T] = Either[T, T]
+    type M[T]      = MatchOf[T]
+    type P         = Pattern
     val P = Pattern
     val A = AST
 
@@ -148,36 +162,40 @@ object Pattern {
 
     // format: off
     /** Boundary Matches */
-    final case class Begin   (pat : P.Begin)                           extends M
-    final case class End     (pat : P.End)                             extends M
-  
+    final case class Begin   [T](pat:P.Begin)                       extends M[T]
+    final case class End     [T](pat:P.End)                         extends M[T]
+
     /** Structural Matches */
-    final case class Nothing (pat : P.Nothing)                         extends M
-    final case class Seq     (pat : P.Seq      , elems : (M, M))       extends M
-    final case class Or      (pat : P.Or       , elem  : Either[M,M])  extends M
-    final case class Many    (pat : P.Many     , elems : List[M])      extends M
-    final case class Except  (pat : P.Except   , elem  : M)            extends M
-  
+    final case class Nothing [T](pat:P.Nothing)                     extends M[T]
+    final case class Seq     [T](pat:P.Seq   , elems:(M[T], M[T]))  extends M[T]
+    final case class Or      [T](pat:P.Or    , elem :Switch[M[T]])  extends M[T]
+    final case class Many    [T](pat:P.Many  , elems:List[M[T]])    extends M[T]
+    final case class Except  [T](pat:P.Except, elem :M[T])          extends M[T]
+
     /** Meta Matches */
-    final case class Build   (pat : P.Build    , ast   : SAST)         extends M
-    final case class Err     (pat : P.Err      , ast   : SAST)         extends M
-    final case class Tag     (pat : P.Tag      , elem  : M)            extends M
-    final case class Cls     (pat : P.Cls      , elem  : M)            extends M
-  
+    final case class Build [T](pat:P.Build , ast: T)                extends M[T]
+    final case class Err   [T](pat:P.Err   , ast: T)                extends M[T]
+    final case class Tag   [T](pat:P.Tag   , elem:M[T])             extends M[T]
+    final case class Cls   [T](pat:P.Cls   , elem:M[T])             extends M[T]
+
     /** Token Matches */
-    final case class Tok     (pat : P.Tok   , ast : SAST)              extends M
-    final case class Var     (pat : P.Var   , ast : Shifted[A.Var])    extends M
-    final case class Cons    (pat : P.Cons  , ast : Shifted[A.Cons])   extends M
-    final case class Opr     (pat : P.Opr   , ast : Shifted[A.Opr])    extends M
-    final case class Num     (pat : P.Num   , ast : Shifted[A.Number]) extends M
-    final case class Text    (pat : P.Text  , ast : Shifted[A.Text])   extends M
-    final case class Block   (pat : P.Block , ast : Shifted[A.Block])  extends M
+    final case class Tok     [T](pat:P.Tok     , ast:T)               extends M[T]
+    final case class Blank   [T](pat:P.Blank   , ast:T)               extends M[T]
+    final case class Var     [T](pat:P.Var     , ast:T)               extends M[T]
+    final case class Cons    [T](pat:P.Cons    , ast:T)               extends M[T]
+    final case class Opr     [T](pat:P.Opr     , ast:T)               extends M[T]
+    final case class Mod     [T](pat:P.Mod     , ast:T)               extends M[T]
+    final case class Num     [T](pat:P.Num     , ast:T)               extends M[T]
+    final case class Text    [T](pat:P.Text    , ast:T)               extends M[T]
+    final case class Block   [T](pat:P.Block   , ast:T)               extends M[T]
+    final case class Macro   [T](pat:P.Macro   , ast:T)               extends M[T]
+    final case class Invalid [T](pat:P.Invalid , ast:T)               extends M[T]
     // format: on
 
     //// Smart Constructors ////
 
     object Nothing {
-      def apply(): Match.Nothing = Match.Nothing(Pattern.Nothing())
+      def apply[T](): Match.Nothing[T] = Match.Nothing(Pattern.Nothing())
     }
 
     //// Result ////
@@ -186,57 +204,68 @@ object Pattern {
       def map(fn: Match => Match): Result = copy(elem = fn(elem))
     }
 
-    implicit def reprForMatch: Repr.Of[Match] = {
-      case _: Match.Begin => Repr.R
-      //      case _: Match.End     => List()
-      //      case _: Match.Nothing => List()
-      //      case m: Match.Seq     => m.elems._1.toStream ++ m.elems._2.toStream
-      //      case m: Match.Or      => m.elem.merge.toStream
-      //      case m: Match.Many    => m.elems.flatMap(_.toStream)
-      //      case m: Match.Except  => m.elem.toStream
-      //      case m: Match.Build   => List(m.ast)
-      //      case m: Match.Err     => List(m.ast)
-      //      case m: Match.Tag     => m.elem.toStream
-      //      case m: Match.Cls     => m.elem.toStream
-      //      case m: Match.Tok     => List(m.ast)
-      //      case m: Match.Var     => List(m.ast)
-      //      case m: Match.Cons    => List(m.ast)
-      //      case m: Match.Opr     => List(m.ast)
-      //      case m: Match.Num     => List(m.ast)
-      //      case m: Match.Text    => List(m.ast)
-      //      case m: Match.Block   => List(m.ast)
-    }
   }
 
-  sealed trait Match {
+  type Match = MatchOf[SAST]
+  sealed trait MatchOf[T] {
+    import cats.implicits._
+    import MatchOf._
+
+    val M = Match
     val pat: Pattern
 
-    def toStream: Stream = this match {
-      case _: Match.Begin   => List()
-      case _: Match.End     => List()
-      case _: Match.Nothing => List()
-      case m: Match.Seq     => m.elems._1.toStream ++ m.elems._2.toStream
-      case m: Match.Or      => m.elem.merge.toStream
-      case m: Match.Many    => m.elems.flatMap(_.toStream)
-      case m: Match.Except  => m.elem.toStream
-      case m: Match.Build   => List(m.ast)
-      case m: Match.Err     => List(m.ast)
-      case m: Match.Tag     => m.elem.toStream
-      case m: Match.Cls     => m.elem.toStream
-      case m: Match.Tok     => List(m.ast)
-      case m: Match.Var     => List(m.ast)
-      case m: Match.Cons    => List(m.ast)
-      case m: Match.Opr     => List(m.ast)
-      case m: Match.Num     => List(m.ast)
-      case m: Match.Text    => List(m.ast)
-      case m: Match.Block   => List(m.ast)
+    override def toString = s"Match(${this.toStream})"
+
+    def toStream: List[T] = this.map(List(_)).fold
+    def mapMatch(f: MatchOf[T] => MatchOf[T]): MatchOf[T] = this match {
+      case m: M.Begin[T]   => f(m)
+      case m: M.End[T]     => f(m)
+      case m: M.Nothing[T] => f(m)
+      case m: M.Seq[T]     => f(m.copy(elems = m.elems.map(_.mapMatch(f))))
+      case m: M.Or[T]      => f(m.copy(elem = m.elem.map(_.mapMatch(f))))
+      case m: M.Many[T]    => f(m.copy(elems = m.elems.map(_.mapMatch(f))))
+      case m: M.Except[T]  => f(m.copy(elem = f(m.elem)))
+      case m: M.Build[T]   => f(m)
+      case m: M.Err[T]     => f(m)
+      case m: M.Tag[T]     => f(m.copy(elem = f(m.elem)))
+      case m: M.Cls[T]     => f(m.copy(elem = f(m.elem)))
+      case m: M.Tok[T]     => f(m)
+      case m: M.Var[T]     => f(m)
+      case m: M.Cons[T]    => f(m)
+      case m: M.Opr[T]     => f(m)
+      case m: M.Num[T]     => f(m)
+      case m: M.Text[T]    => f(m)
+      case m: M.Block[T]   => f(m)
+      case m: M.Macro[T]   => f(m)
     }
 
-    def isValid: Boolean = ???
-    //  def map(f: SAST => SAST): Match = ???
-    def map(f: AST => AST): Match = ???
-  }
+    def isValid: Boolean = {
+      var out = true
+      this.mapMatch {
+        case m: M.Err[_] => out = false; m
+        case m           => m
+      }
+      out
+    }
 
+  }
+  object MatchOf {
+    import cats.implicits._
+
+    implicit def reprMatch[T: Repr.Of]: Repr.Of[MatchOf[T]] =
+      _.map(Repr.of(_)).fold
+    implicit def ftorMatch: Functor[MatchOf]  = _MatchOf.ftorMatch
+    implicit def travMatch: Traverse[MatchOf] = _MatchOf.travMatch
+    implicit def foldMatch: Foldable[MatchOf] = _MatchOf.foldMatch
+  }
+  object _MatchOf {
+    def ftorMatch: Functor[MatchOf]  = semi.functor
+    def travMatch: Traverse[MatchOf] = semi.traverse[MatchOf]
+    def foldMatch: Foldable[MatchOf] = {
+      import cats.derived.auto.foldable._
+      semi.foldable[MatchOf]
+    }
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -413,17 +442,42 @@ sealed trait Pattern {
             case _ => None
           }
 
-        case p @ P.Var(spaced)   => matchByCls_(spaced, M.Var(p, _))
-        case p @ P.Cons(spaced)  => matchByCls_(spaced, M.Cons(p, _))
-        case p @ P.Num(spaced)   => matchByCls_(spaced, M.Num(p, _))
-        case p @ P.Text(spaced)  => matchByCls_(spaced, M.Text(p, _))
-        case p @ P.Block(spaced) => matchByCls_(spaced, M.Block(p, _))
+        case p @ P.Blank(spaced) =>
+          matchByCls_[AST.Blank](spaced, M.Blank(p, _))
+        case p @ P.Var(spaced)  => matchByCls_[AST.Var](spaced, M.Var(p, _))
+        case p @ P.Cons(spaced) => matchByCls_[AST.Cons](spaced, M.Cons(p, _))
+        case p @ P.Num(spaced)  => matchByCls_[AST.Number](spaced, M.Num(p, _))
+        case p @ P.Text(spaced) => matchByCls_[AST.Text](spaced, M.Text(p, _))
+        case p @ P.Block(spaced) =>
+          matchByCls_[AST.Block](spaced, M.Block(p, _))
         case p @ P.Opr(spaced, maxPrec) =>
           matchByCls[AST.Opr](spaced) { sast =>
             Option.when(maxPrec.forall(_ >= sast.el.prec))(M.Opr(p, sast))
           }
+        case p @ P.Mod(spaced) => matchByCls_[AST.Opr.Mod](spaced, M.Mod(p, _))
+
+        case p @ P.Macro(spaced) =>
+          matchByCls_[AST.Macro](spaced, M.Macro(p, _))
+
+        case p @ P.Invalid(spaced) =>
+          matchByCls_[AST.Invalid](spaced, M.Invalid(p, _))
+
       }
     }
     step(this, stream0)
   }
 }
+//object Test {
+//  import cats.Functor
+//  import cats.Foldable
+//  import cats.Traverse
+//  import cats.derived._
+////  import cats.implicits._
+//
+//  def functorForMatch: Functor[Pattern.MatchOf] = semi.functor
+//  def traversableForMatch: Traverse[Pattern.MatchOf] = semi.traverse[Pattern.MatchOf]
+//  def foldableForMatch: Foldable[Pattern.MatchOf] = {
+//    import cats.derived.auto.foldable._
+//    semi.foldable[Pattern.MatchOf]
+//  }
+//}

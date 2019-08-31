@@ -57,7 +57,7 @@ class ParserSpec extends FlatSpec with Matchers {
 
     private val testBase = it should parseTitle(input)
 
-    def ?=(out: AST)    = testBase in { assertExpr(input, out) }
+    def ?=(out: AST)    = testBase in { assertExpr(input, out)   }
     def ?=(out: Module) = testBase in { assertModule(input, out) }
 //    def ?#=(out: AST) = testBase in { assertExpr(input, out, markers) }
     def testIdentity = testBase in { assertIdentity(input) }
@@ -296,11 +296,14 @@ class ParserSpec extends FlatSpec with Matchers {
   //////////////////////////////////////////////////////////////////////////////
 
   def amb(head: AST, lst: List[List[AST]]): Macro.Ambiguous =
-    Macro.Ambiguous(Macro.Ambiguous.Segment(head), Tree(lst.map(_ -> (())): _*))
+    Macro.Ambiguous(
+      Shifted.List1(Macro.Ambiguous.Segment(head)),
+      Tree(lst.map(_ -> (())): _*)
+    )
 
   def amb(head: AST, lst: List[List[AST]], body: SAST): Macro.Ambiguous =
     Macro.Ambiguous(
-      Macro.Ambiguous.Segment(head, Some(body)),
+      Shifted.List1(Macro.Ambiguous.Segment(head, Some(body))),
       Tree(lst.map(_ -> (())): _*)
     )
 
@@ -370,6 +373,8 @@ class ParserSpec extends FlatSpec with Matchers {
   //////////////////////////////////////////////////////////////////////////////
   //// Foreign /////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
+
+  "f = foreign Python3\n a" ?= "f" $_ "=" $_ Foreign(1, "Python3", List("a"))
 
   val pyLine1 = "import re"
   val pyLine2 = """re.match(r"[^@]+@[^@]+\.[^@]+", "foo@ds.pl") != None"""

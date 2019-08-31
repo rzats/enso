@@ -37,71 +37,66 @@ object Builtin {
       val body = Pattern.Block().tag("body").opt
       head :: args :: body
     }) { ctx =>
-      ???
-//      ctx.body match {
-//        case List(st1) =>
-//          import Pattern.Match._
-//          st1.body match {
-//            case Seq(Cls(name), Seq(Many(argsMatches), bodyMatch)) =>
-//              val args = argsMatches.map {
-//                case Build(t) => t.el
-//                case _        => internalError
-//              }
-//              val body = bodyMatch match {
-//                case Cls(Shifted(off, block: AST.Block)) => Some(block)
-//                case Nothing()                           => None
-//                case _                                   => internalError
-//              }
-//              name.el match {
-//                case n: AST.Cons => AST.Def(n, args, body)
-//                case _           => internalError
-//              }
-//            case _ => internalError
-//          }
-//      }
+      ctx.body match {
+        case List(st1) =>
+          import Pattern.Match._
+          st1.body match {
+            case Seq(_, (namePat, Seq(_, (argsPat, bodyPat)))) =>
+              val args = argsPat.toStream.map(_.el)
+              val body = bodyPat.toStream match {
+                case List(Shifted(off, block: AST.Block)) => Some(block)
+                case List()                               => None
+                case _                                    => internalError
+              }
+              namePat.toStream match {
+                case List(Shifted(_, n: AST.Cons)) => AST.Def(n, args, body)
+                case _                             => internalError
+              }
+            case _ => internalError
+          }
+      }
     }
 
     val imp = Definition(
       Var("import") ->
       Pattern.SepList(Pattern.Cons(), AST.Opr("."), "expected module name")
     ) { ctx =>
-      ???
-//      ctx.body match {
-//        case List(s1) =>
-//          import Pattern.Match._
-//          s1.body match {
-//            case Seq(headMatch, Many(tailMatch)) =>
-//              def unwrapSeg(lseg: Pattern.Match): Cons =
-//                lseg.toStream match {
-//                  case List(Shifted(_, t @ Cons(_))) => t
-//                  case _                             => internalError
-//                }
-//
-//              val head = unwrapSeg(headMatch)
-//              val tail = tailMatch.map {
-//                case Seq(Tok(Shifted(_, Opr("."))), seg) => unwrapSeg(seg)
-//                case _                                   => internalError
-//              }
-//              AST.Import(head, tail)
-//          }
-//        case _ => internalError
-//      }
+      ctx.body match {
+        case List(s1) =>
+          import Pattern.Match._
+          s1.body match {
+            case Seq(_, (headMatch, Many(_, tailMatch))) =>
+              def unwrapSeg(lseg: Pattern.Match): AST.Cons =
+                lseg.toStream match {
+                  case List(Shifted(_, t @ AST.Cons(_))) => t
+                  case _                                 => internalError
+                }
+
+              val head = unwrapSeg(headMatch)
+              val tail = tailMatch.map {
+                case Seq(_, (Tok(_, Shifted(_, AST.Opr("."))), seg)) =>
+                  unwrapSeg(seg)
+                case _ => internalError
+              }
+              AST.Import(head, tail)
+          }
+        case _ => internalError
+      }
     }
 
     val if_then = Definition(
       Var("if")   -> Pattern.Expr(),
       Var("then") -> Pattern.Expr()
     ) { ctx =>
-      ???
-//      ctx.body match {
-//        case List(s1, s2) =>
-//          (s1.body.toStream, s2.body.toStream) match {
-//            case (List(t1), List(t2)) =>
-//              AST.Mixfix(List1(s1.head, s2.head), List1(t1.el, t2.el))
-//            case _ => internalError
-//          }
-//        case _ => internalError
-//      }
+      ctx.body match {
+        case List(s1, s2) =>
+          (s1.body.toStream, s2.body.toStream) match {
+            case (List(t1), List(t2)) =>
+              AST.Mixfix(List1(s1.head, s2.head), List1(t1.el, t2.el))
+            case _ => internalError
+          }
+        case _ => internalError
+      }
     }
 
     val if_then_else = Definition(
@@ -109,19 +104,18 @@ object Builtin {
       Var("then") -> Pattern.Expr(),
       Var("else") -> Pattern.Expr()
     ) { ctx =>
-      ???
-//      ctx.body match {
-//        case List(s1, s2, s3) =>
-//          (s1.body.toStream, s2.body.toStream, s3.body.toStream) match {
-//            case (List(t1), List(t2), List(t3)) =>
-//              AST.Mixfix(
-//                List1(s1.head, s2.head, s3.head),
-//                List1(t1.el, t2.el, t3.el)
-//              )
-//            case _ => internalError
-//          }
-//        case _ => internalError
-//      }
+      ctx.body match {
+        case List(s1, s2, s3) =>
+          (s1.body.toStream, s2.body.toStream, s3.body.toStream) match {
+            case (List(t1), List(t2), List(t3)) =>
+              AST.Mixfix(
+                List1(s1.head, s2.head, s3.head),
+                List1(t1.el, t2.el, t3.el)
+              )
+            case _ => internalError
+          }
+        case _ => internalError
+      }
     }
 
     val nonSpacedExpr = Pattern.Any(Some(false)).many1.build
@@ -130,74 +124,70 @@ object Builtin {
       Some(nonSpacedExpr.or(Pattern.OprExpr("->"))),
       Opr("->") -> Pattern.NonSpacedExpr().or(Pattern.Expr())
     ) { ctx =>
-      ???
-//      (ctx.prefix, ctx.body) match {
-//        case (Some(pfx), List(s1)) =>
-//          (pfx.toStream, s1.body.toStream) match {
-//            case (List(l), List(r)) => AST.App(l.el, Opr("->"), r.el)
-//            case _                  => internalError
-//          }
-//      }
+      (ctx.prefix, ctx.body) match {
+        case (Some(pfx), List(s1)) =>
+          (pfx.toStream, s1.body.toStream) match {
+            case (List(l), List(r)) => AST.App(l.el, Opr("->"), r.el)
+            case _                  => internalError
+          }
+      }
     }
 
     val foreign = Definition(
       Var("foreign") -> (Pattern.Cons() :: Pattern.Block())
     ) { ctx =>
-      ???
-//      ctx.body match {
-//        case List(s1) =>
-//          s1.body.toStream match {
-//            case List(langAST, Shifted(_, bodyAST: AST.Block)) =>
-//              val indent     = bodyAST.indent
-//              val lang       = langAST.el.show()
-//              val body       = bodyAST.show()
-//              val bodyLines  = body.split("\\r?\\n").toList.drop(1)
-//              val bodyLines2 = bodyLines.map(_.drop(indent))
-//              AST.Foreign(indent, lang, bodyLines2)
-//            case _ => internalError
-//          }
-//        case _ => internalError
-//      }
+      ctx.body match {
+        case List(s1) =>
+          s1.body.toStream match {
+            case List(langAST, Shifted(_, bodyAST: AST.Block)) =>
+              val indent     = bodyAST.indent
+              val lang       = langAST.el.show()
+              val body       = bodyAST.show()
+              val bodyLines  = body.split("\\r?\\n").toList.drop(1)
+              val bodyLines2 = bodyLines.map(_.drop(indent))
+              AST.Foreign(indent, lang, bodyLines2)
+            case _ => internalError
+          }
+        case _ => internalError
+      }
     }
-
+//
     val skip = Definition(
       Var("skip") -> Pattern.Expr()
     ) { ctx =>
-      ???
-//      ctx.body match {
-//        case List(s1) =>
-//          s1.body.el match {
-//            case Shifted(_, body: AST) =>
-//              @tailrec
-//              def go(t: AST): AST = t match {
-//                case AST.App(_, arg)           => arg
-//                case AST.App.Infix(self, _, _) => go(self)
-//                case m: AST.Macro.Match        => go(m.resolved)
-//                case AST.Group(None, _)        => t
-//                case AST.Group(Some(s), _)     => go(s)
-//                case _                         => t
-//              }
-//              go(body)
-//            case _ => internalError
-//          }
-//        case _ => internalError
-//      }
+      ctx.body match {
+        case List(s1) =>
+          s1.body.toStream match {
+            case List(Shifted(_, body: AST)) =>
+              @tailrec
+              def go(t: AST): AST = t match {
+                case AST.App(_, arg)           => arg
+                case AST.App.Infix(self, _, _) => go(self)
+                case m: AST.Macro.Match        => go(m.resolved)
+                case AST.Group(None, _)        => t
+                case AST.Group(Some(s), _)     => go(s)
+                case _                         => t
+              }
+              go(body)
+            case _ => internalError
+          }
+        case _ => internalError
+      }
     }
 
     val freeze = Definition(
       Var("freeze") -> Pattern.Expr()
     ) { ctx =>
-      ???
-//      ctx.body match {
-//        case List(s1) =>
-//          s1.body.el match {
-//            case Shifted(_, body: AST) =>
-//              // TODO: Ability to do parsing here
-//              Var(s"Save to file using ${ctx.id}")
-//            case _ => internalError
-//          }
-//        case _ => internalError
-//      }
+      ctx.body match {
+        case List(s1) =>
+          s1.body.toStream match {
+            case List(Shifted(_, body: AST)) =>
+              // TODO: Ability to do parsing here
+              Var(s"Save to file using ${ctx.id}")
+            case _ => internalError
+          }
+        case _ => internalError
+      }
     }
 
     val docComment = Definition(
@@ -207,18 +197,17 @@ object Builtin {
         .fromBegin
         .or(Pattern.Any().but(Pattern.Block()).many)
     ) { ctx =>
-      ???
-//      ctx.body match {
-//        case List(s1) =>
-//          val stream = s1.body.toStream
-//          val text   = stream.map(_.repr.show()).mkString("")
-//          val lines  = text.split("\n").toList
-//          lines match {
-//            case List(l) => AST.Comment.SingleLine(text)
-//            case ls      => AST.Comment.MultiLine(0, ls)
-//          }
-//        case _ => internalError
-//      }
+      ctx.body match {
+        case List(s1) =>
+          val stream = s1.body.toStream
+          val text   = stream.map(_.repr.show()).mkString("")
+          val lines  = text.split("\n").toList
+          lines match {
+            case List(l) => AST.Comment.SingleLine(text)
+            case ls      => AST.Comment.MultiLine(0, ls)
+          }
+        case _ => internalError
+      }
     }
 
     val disableComment = Definition(

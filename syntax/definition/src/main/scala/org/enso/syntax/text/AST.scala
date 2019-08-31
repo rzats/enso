@@ -12,6 +12,7 @@ import org.enso.syntax.text.ast.text
 import java.util.UUID
 
 import scala.annotation.tailrec
+import cats.implicits._
 
 sealed trait AST_Type2 extends AST.Symbol {
   import AST._
@@ -30,6 +31,11 @@ sealed trait AST_Type2 extends AST.Symbol {
       }
     }
     go(0, this)
+  }
+
+  def isValid: Boolean = this match {
+    case _: Invalid => false
+    case _          => true
   }
 }
 
@@ -806,8 +812,15 @@ object AST {
         val segsRepr  = segs.map(_.repr)
         R + pfxRepr + segsRepr
       }
-      def setID(newID: ID)   = copy(id   = Some(newID))
-      def map(f: AST => AST) = copy(segs = segs.map(_.map(_.map(f))))
+      def setID(newID: ID) = copy(id = Some(newID))
+      // FIXME ugly code vvv
+      def map(f: AST => AST) = {
+        copy(
+          segs = segs.map(
+            _.map((a: Pattern.Match) => a.map(_.map(f)))
+          )
+        )
+      }
 
       def mapWithOff(f: (Int, AST) => AST) = this
       def path(): List1[AST] = segs.toList1().map(_.el.head)
@@ -915,11 +928,6 @@ object AST {
 
       def apply(t1: Segment.Tup, last: AST)(fin: Resolver): Definition =
         Definition(List(t1), last)(fin)
-//
-//      def apply(backPat: Option[Pattern], t1: Segment.Tup, ts: Segment.Tup*)(
-//        fin: Finalizer
-//      ): Definition =
-//        Definition(backPat, List1(t1, ts: _*), fin)
 
       def apply(
         back: Option[Pattern],
@@ -928,29 +936,60 @@ object AST {
         resolver: Resolver
       ): Definition = {
         type PP = Pattern => Pattern
-        val checkValid: PP = _ | ErrTillEnd("unmatched pattern")
-        val checkFull: PP  = _ :: ErrUnmatched("unmatched tokens")
+        val applyValidChecker: PP     = _ | ErrTillEnd("unmatched pattern")
+        val applyFullChecker: PP      = _ :: ErrUnmatched("unmatched tokens")
+        val applyDummyFullChecker: PP = _ :: Nothing()
 
-        val addInitChecks: List[Segment] => List[Segment] =
-          _.map(_.map(checkValid).map(checkFull))
+        val unapplyValidChecker: Pattern.Match => Pattern.Match = {
+          case Pattern.Match.Or(_, Left(tgt)) => tgt
+          case _                              => throw new Error("Internal error")
+        }
+        val unapplyFullChecker: Pattern.Match => Pattern.Match = {
+          case Pattern.Match.Seq(_, (tgt, _)) => tgt
+          case _                              => throw new Error("Internal error")
+        }
+        val applySegInitCheckers: List[Segment] => List[Segment] =
+          _.map(_.map(p => applyFullChecker(applyValidChecker(p))))
 
-        val addLastCheck: LastSegment => LastSegment =
-          _.map(checkValid)
+        val applySegLastCheckers: LastSegment => LastSegment =
+          _.map(p => applyDummyFullChecker(applyValidChecker(p)))
+
+        val unapplySegCheckers
+          : List[AST.Macro.Match.Segment] => List[AST.Macro.Match.Segment] =
+          _.map(_.map({
+            case m @ Pattern.Match.Nothing(_) => m
+            case m =>
+              unapplyValidChecker(unapplyFullChecker(m))
+          }))
 
         val initSegs           = initTups.map(Segment(_))
         val lastSeg            = LastSegment(lastTup)
-        val backPatWithCheck   = back.map(checkValid)
-        val initSegsWithChecks = addInitChecks(initSegs)
-        val lastSegWithChecks  = addLastCheck(lastSeg)
+        val backPatWithCheck   = back.map(applyValidChecker)
+        val initSegsWithChecks = applySegInitCheckers(initSegs)
+        val lastSegWithChecks  = applySegLastCheckers(lastSeg)
+
+        def unexpected(ctx: Resolver.Context, msg: String): AST = {
+          val pfxStream  = ctx.prefix.map(_.toStream).getOrElse(List())
+          val segsStream = ctx.body.flatMap(_.toStream)
+          val stream     = pfxStream ++ segsStream
+          AST.Unexpected(msg, stream)
+        }
+
         def resolverWithChecks(ctx: Resolver.Context) = {
           val pfxFail  = !ctx.prefix.forall(_.isValid)
           val segsFail = !ctx.body.forall(_.isValid)
-          if (pfxFail || segsFail) {
-            val pfxStream  = ctx.prefix.map(_.toStream).getOrElse(List())
-            val segsStream = ctx.body.flatMap(_.toStream)
-            val stream     = pfxStream ++ segsStream
-            AST.Unexpected("invalid statement", stream)
-          } else resolver(ctx)
+          if (pfxFail || segsFail) unexpected(ctx, "invalid statement")
+          else {
+            val ctx2 = ctx.copy(
+              prefix = ctx.prefix.map(unapplyValidChecker),
+              body   = unapplySegCheckers(ctx.body)
+            )
+            try resolver(ctx2)
+            catch {
+              case _: Throwable =>
+                unexpected(ctx, "exception during macro resolution")
+            }
+          }
         }
         __Definition__(
           backPatWithCheck,

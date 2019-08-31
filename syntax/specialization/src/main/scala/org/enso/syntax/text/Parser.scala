@@ -177,8 +177,8 @@ class Parser {
 
         // FIXME: The following line will be removed with new AST
         val mod3 = mod3_.asInstanceOf[AST.Module]
-//        resolveMacros(mod2)
-        mod3
+        resolveMacros(mod3)
+//        mod3
       }
       case _ => throw ParsingFailed
     }
@@ -193,13 +193,18 @@ class Parser {
   def resolveMacros(ast: AST): AST = {
     ast match {
       case ast: AST.Macro.Match =>
-        Builtin.registry.get(ast.path) match {
+        val resolvedAST = ast.map(resolveMacros)
+        Builtin.registry.get(resolvedAST.path) match {
           case None => throw MissingMacroDefinition
           case Some(spec) =>
-            val id       = ast.id.getOrElse(throw new Error("Missing ID"))
-            val segments = ast.segs.toList().map(_.el)
-            val ctx      = AST.Macro.Resolver.Context(ast.pfx, segments, id)
-            ast.copy(resolved = resolveMacros(spec.resolver(ctx)))
+            val id       = resolvedAST.id.getOrElse(throw new Error("Missing ID"))
+            val segments = resolvedAST.segs.toList().map(_.el)
+            val ctx      = AST.Macro.Resolver.Context(resolvedAST.pfx, segments, id)
+            resolvedAST.copy(resolved = {
+//              println("SPEC RESOLVER")
+//              println(spec)
+              resolveMacros(spec.resolver(ctx))
+            })
         }
       case _ => ast.map(resolveMacros)
     }
@@ -211,7 +216,7 @@ class Parser {
     */
   def dropMacroMeta(ast: AST.Module): AST.Module = {
     def go: AST => AST = {
-      case t: AST.Macro.Match => t.resolved
+      case t: AST.Macro.Match => go(t.resolved)
       case t                  => t.map(go)
     }
     ast.map(go)
@@ -313,8 +318,9 @@ object Main extends App {
 //val inp = "(a) b = c"
 //val inp = "a = b -> c"
 //val inp = "a = b -> c d"
-  val inp = "a"
+  val inp = "test = foreign Python3\n a"
 //  val inp = "x(x[a))"
+  // 48
 
   println("--- PARSING ---")
 
@@ -322,9 +328,10 @@ object Main extends App {
     new Reader(inp),
     Map((0, 5) -> UUID.fromString("00000000-0000-0000-0000-000000000000"))
   )
-  pprint.pprintln(mod, width = 50, height = 10000)
+//  pprint.pprintln(mod, width = 50, height = 10000)
 
   println(pretty(mod.toString))
+  println(pretty(parser.dropMacroMeta(mod).toString))
 //  val rmod = parser.resolveMacros(mod)
 //  if (mod != rmod) {
 //    println("\n---\n")
