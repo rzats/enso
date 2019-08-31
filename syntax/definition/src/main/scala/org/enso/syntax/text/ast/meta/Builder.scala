@@ -72,7 +72,7 @@ class Builder(
           case Some(pat) =>
             val fstSegOff                = segs.head.off
             val (revStreamL2, lastLOff)  = streamShift(fstSegOff, revStreamL)
-            val pfxMatch                 = pat.matchRev(revStreamL2)
+            val pfxMatch                 = pat.matchRevUnsafe(revStreamL2)
             val revStreamL3              = pfxMatch.stream
             val streamL3                 = revStreamL3.reverse
             val (streamL4, newFstSegOff) = streamShift(lastLOff, streamL3)

@@ -290,6 +290,8 @@ object Main extends App {
     go(0, str.toList, List()).reverse.mkString("")
   }
 
+  println("--- START ---")
+
   val parser = new Parser()
 
   val in_def_maybe =
@@ -311,8 +313,11 @@ object Main extends App {
 //val inp = "(a) b = c"
 //val inp = "a = b -> c"
 //val inp = "a = b -> c d"
-  val inp = "a -> b -> c"
+  val inp = "a"
 //  val inp = "x(x[a))"
+
+  println("--- PARSING ---")
+
   val mod = parser.run(
     new Reader(inp),
     Map((0, 5) -> UUID.fromString("00000000-0000-0000-0000-000000000000"))

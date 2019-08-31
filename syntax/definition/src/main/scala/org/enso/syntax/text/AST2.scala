@@ -1032,7 +1032,7 @@ object AST {
       ): Definition = {
         type PP = Pattern => Pattern
         val checkValid: PP = _ | ErrTillEnd("unmatched pattern")
-        val checkFull: PP  = TillEndMarkUnmatched(_, "unmatched tokens")
+        val checkFull: PP  = _ :: ErrUnmatched("unmatched tokens")
 
         val addInitChecks: List[Segment] => List[Segment] =
           _.map(_.map(checkValid).map(checkFull))
