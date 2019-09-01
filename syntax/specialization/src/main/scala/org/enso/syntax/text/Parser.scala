@@ -154,7 +154,7 @@ class Parser {
       case flexer.Parser.Result(_, flexer.Parser.Result.Success(mod)) => {
         val mod2 = annotateModule(idMap, mod)
         resolveMacros(mod2)
-//        mod2
+        //        mod2
       }
       case _ => throw ParsingFailed
     }
@@ -195,8 +195,8 @@ class Parser {
             val segments = resolvedAST.segs.toList().map(_.el)
             val ctx      = AST.Macro.Resolver.Context(resolvedAST.pfx, segments, id)
             resolvedAST.copy(resolved = {
-//              println("SPEC RESOLVER")
-//              println(spec)
+              //              println("SPEC RESOLVER")
+              //              println(spec)
               resolveMacros(spec.resolver(ctx))
             })
         }
@@ -308,12 +308,12 @@ object Main extends App {
   val in3 = "(a) b = c"
   val in4 = "if a then (b)"
   val in2 = "(a) b = c]"
-//  val inp = "foreign Py\n xx"
-//val inp = "(a) b = c"
-//val inp = "a = b -> c"
-//val inp = "a = b -> c d"
+  //  val inp = "foreign Py\n xx"
+  //val inp = "(a) b = c"
+  //val inp = "a = b -> c"
+  //val inp = "a = b -> c d"
   val inp = "((a))"
-//  val inp = "x(x[a))"
+  //  val inp = "x(x[a))"
   // 48
 
   println("--- PARSING ---")
@@ -322,25 +322,25 @@ object Main extends App {
     new Reader(inp),
     Map((0, 5) -> UUID.fromString("00000000-0000-0000-0000-000000000000"))
   )
-//  pprint.pprintln(mod, width = 50, height = 10000)
+  //  pprint.pprintln(mod, width = 50, height = 10000)
 
   println(pretty(mod.toString))
-//  println(pretty(parser.dropMacroMeta(mod).toString))
-//  val rmod = parser.resolveMacros(mod)
-//  if (mod != rmod) {
-//    println("\n---\n")
-//    println(pretty(rmod.toString))
-//  }
+  //  println(pretty(parser.dropMacroMeta(mod).toString))
+  //  val rmod = parser.resolveMacros(mod)
+  //  if (mod != rmod) {
+  //    println("\n---\n")
+  //    println(pretty(rmod.toString))
+  //  }
   println("------")
   println(mod.show() == inp)
   println("------")
   println(mod.show())
   println("------")
 
-//  mod.traverseWithOff { (off, ast) =>
-//    println(s">> $off - ${off + ast.span}: $ast")
-//    ast
-//  }
+  //  mod.traverseWithOff { (off, ast) =>
+  //    println(s">> $off - ${off + ast.span}: $ast")
+  //    ast
+  //  }
 
   println()
 
