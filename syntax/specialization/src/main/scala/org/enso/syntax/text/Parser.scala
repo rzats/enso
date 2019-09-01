@@ -325,7 +325,7 @@ object Main extends App {
   //  pprint.pprintln(mod, width = 50, height = 10000)
 
   println(pretty(mod.toString))
-  //  println(pretty(parser.dropMacroMeta(mod).toString))
+  println(pretty(parser.dropMacroMeta(mod).toString))
   //  val rmod = parser.resolveMacros(mod)
   //  if (mod != rmod) {
   //    println("\n---\n")

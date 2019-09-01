@@ -91,9 +91,9 @@ object AST {
       }
 
       implicit class ShapeOps[T[_]](ast: T[AST]) {
-        def repr:     RRR = ast.repr
-        def span:     Int = repr.span
-        def byteSpan: Int = repr.byteSpan
+        def repr:     RRR.Builder = ast.repr
+        def span:     Int         = repr.span
+        def byteSpan: Int         = repr.byteSpan
 
         def map(f: AST => AST)(
           implicit
@@ -266,8 +266,8 @@ object AST {
     *              map.
     */
   case class Tagged[+T: ASTNode](shape: T, id: Option[ID]) {
-    val repr: RRR   = ASTNode[T].reprForT.of(shape)
-    def withNewID() = copy(id = Some(UUID.randomUUID()))
+    val repr: RRR.Builder = ASTNode[T].reprForT.of(shape)
+    def withNewID()       = copy(id = Some(UUID.randomUUID()))
     def map(f: AST => AST): Tagged[T] =
       copy(shape = ASTNode[T].map(shape)(f))
   }
@@ -1134,7 +1134,7 @@ object AST {
     trait implicits {
       implicit def ftorImport[T]: Functor[_Import] = semi.functor
       implicit def reprImport[T]: Repr[_Import[T]] =
-        t => R + ("import " + t.path.map(_.repr.show()).toList.mkString("."))
+        t => R + ("import " + t.path.map(_.repr.build()).toList.mkString("."))
     }
   }
 

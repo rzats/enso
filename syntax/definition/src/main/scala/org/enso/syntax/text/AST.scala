@@ -85,8 +85,10 @@ object AST {
   sealed trait Symbol extends Repr.Provider {
     def byteSpan: Int    = repr.byteSpan
     def span:     Int    = repr.span
-    def show():   String = repr.show()
+    def show():   String = repr.build()
   }
+
+//  implicit def reprForAST: Repr.Of[AST] = _.repr
 
   //////////////////////////////////////////////////////////////////////////////
   //// Conversions /////////////////////////////////////////////////////////////
@@ -457,7 +459,7 @@ object AST {
         copy(quote, segments)
 
       def raw: Text.Raw =
-        Raw(quote, segments.map(s => Segment.Plain(s.repr.show())))
+        Raw(quote, segments.map(s => Segment.Plain(s.repr.build())))
     }
 
     final case class Raw(
