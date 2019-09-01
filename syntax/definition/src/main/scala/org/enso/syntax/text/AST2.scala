@@ -33,10 +33,11 @@ object AST {
 
   //// Structure ////
 
+  type AST      = AST_Type
   type AST_Type = Fix[TaggedShapeOf]
+//  type AST              = Fix[TaggedShapeOf]
 
   type Shape            = ShapeOf[AST]
-  type AST              = Fix[TaggedShapeOf]
   type ASTFrom[T[_]]    = Tagged[T[AST]]
   type TaggedShapeOf[T] = Tagged[ShapeOf[T]]
 
@@ -294,8 +295,9 @@ object AST {
   object Tagged {
     def apply[T: ASTNode](shape: T): Tagged[T] = Tagged(shape, None)
     trait implicits {
-      implicit def toTagged[T: ASTNode](t: T): Tagged[T]       = Tagged(t)
-      implicit def reprTagged[T]:              Repr[Tagged[T]] = _.repr
+      implicit def toTagged[T: ASTNode](t: T):  Tagged[T]       = Tagged(t)
+      implicit def fromTagged[T](t: Tagged[T]): T               = t.shape
+      implicit def reprTagged[T]:               Repr[Tagged[T]] = _.repr
     }
   }
 
@@ -417,8 +419,8 @@ object AST {
 
     object Opr {
       val app             = Opr(" ")
-      val any             = UnapplyByType[Cons]
-      def unapply(t: AST) = Unapply[Cons].run(_.name)(t)
+      val any             = UnapplyByType[Opr]
+      def unapply(t: AST) = Unapply[Opr].run(_.name)(t)
       def apply(name: String): Opr = OprOf[AST](name)
 
       type Mod = AST.Mod // FIXME: remove me
@@ -430,8 +432,8 @@ object AST {
     }
 
     object Mod {
-      val any             = UnapplyByType[Cons]
-      def unapply(t: AST) = Unapply[Cons].run(_.name)(t)
+      val any             = UnapplyByType[Mod]
+      def unapply(t: AST) = Unapply[Mod].run(_.name)(t)
       def apply(name: String): Mod = ModOf[AST](name)
     }
 
@@ -708,7 +710,7 @@ object AST {
     //// Instances ////
 
     object implicits extends implicits
-    trait implicits {
+    trait implicits extends Section.implicits {
       implicit def reprPrefix[T: Repr]: Repr[PrefixOf[T]] =
         t => R + t.fn + t.off + t.arg
       implicit def reprInfix[T: Repr]: Repr[InfixOf[T]] =
@@ -733,38 +735,32 @@ object AST {
 
       //// Constructors ////
 
-      type Left  = LeftOf[AST]
-      type Right = RightOf[AST]
-      type Sides = SidesOf[AST]
+      type Left  = ASTFrom[LeftOf]
+      type Right = ASTFrom[RightOf]
+      type Sides = ASTFrom[SidesOf]
 
       case class LeftOf[T](arg: T, off: Int, opr: Opr)  extends SectionOf[T]
       case class RightOf[T](opr: Opr, off: Int, arg: T) extends SectionOf[T]
       case class SidesOf[T](opr: Opr)                   extends SectionOf[T] with Phantom
 
       object Left {
-        def unapply(t: AST) = t.shape match {
-          case t: LeftOf[_] => Some((t.arg, t.opr))
-          case _            => None
-        }
+        val any             = UnapplyByType[Left]
+        def unapply(t: AST) = Unapply[Left].run(t => (t.arg, t.opr))(t)
         def apply(arg: AST, off: Int, opr: Opr): Left = LeftOf(arg, off, opr)
         def apply(arg: AST, opr: Opr):           Left = Left(arg, 1, opr)
       }
 
       object Right {
-        def unapply(t: AST) = t.shape match {
-          case t: RightOf[_] => Some((t.opr, t.arg))
-          case _             => None
-        }
+        val any             = UnapplyByType[Right]
+        def unapply(t: AST) = Unapply[Right].run(t => (t.opr, t.arg))(t)
         def apply(opr: Opr, off: Int, arg: AST): Right = RightOf(opr, off, arg)
         def apply(opr: Opr, arg: AST):           Right = Right(opr, 1, arg)
       }
 
       object Sides {
-        def unapply(t: AST) = t.shape match {
-          case t: SidesOf[_] => Some(t.opr)
-          case _             => None
-        }
-        def apply(opr: Opr): Sides = SidesOf(opr)
+        val any             = UnapplyByType[Sides]
+        def unapply(t: AST) = Unapply[Sides].run(t => (t.opr))(t)
+        def apply(opr: Opr): Sides = SidesOf[AST](opr)
       }
 
       //// Instances ////

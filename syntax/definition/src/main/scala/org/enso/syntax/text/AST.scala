@@ -14,6 +14,8 @@ import java.util.UUID
 import scala.annotation.tailrec
 import cats.implicits._
 
+import scala.reflect.ClassTag
+
 sealed trait AST_Type2 extends AST.Symbol {
   import AST._
 
@@ -63,6 +65,17 @@ object AST {
       off += t.el.span
       out
     }
+  }
+
+  sealed trait UnapplyByType[T] {
+    def unapply(t: AST): Option[T]
+  }
+  object UnapplyByType {
+    def apply[T](implicit ev: UnapplyByType[T]) = ev
+    implicit def inst[T](implicit ct: ClassTag[T]): UnapplyByType[T] =
+      new UnapplyByType[T] {
+        def unapply(t: AST) = ct.unapply(t)
+      }
   }
 
   //////////////////////////////////////////////////////////////////////////////
@@ -211,6 +224,7 @@ object AST {
     def mapWithOff(f: (Int, AST) => AST) = this
   }
   object Opr {
+    val any = UnapplyByType[Opr]
     def apply(name: String): Opr            = _Opr(name)
     def unapply(t: Opr):     Option[String] = Some(t.name)
 
@@ -296,7 +310,9 @@ object AST {
       def map(f: AST => AST)               = copy(arg = f(arg))
       def mapWithOff(f: (Int, AST) => AST) = copy(arg = f(0, arg)) // x
     }
+
     object Left {
+      val any = UnapplyByType[Left]
       def apply(arg: AST, off: Int, op: Opr): Left = _Left(arg, off, op)
       def apply(arg: AST, op: Opr):           Left = Left(arg, 1, op)
       def unapply(t: Left) = Some((t.arg, t.opr))

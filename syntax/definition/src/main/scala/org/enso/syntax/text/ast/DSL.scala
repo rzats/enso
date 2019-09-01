@@ -9,14 +9,13 @@ object DSL {
 
   implicit final class ASTHelper(self: AST) {
     private def smartApp(off: Int, r: AST): AST = self match {
-      case self: AST.App.Section.Left =>
-        Infix(self.arg, self.off, self.opr, off, r)
-      case _ => smartAppRaw(off, r)
+      case AST.App.Section.Left.any(t) => Infix(t.arg, t.off, t.opr, off, r)
+      case _                           => smartAppRaw(off, r)
     }
 
     private def smartAppRaw(off: Int, r: AST): AST = (self, r) match {
-      case (l, r @ Opr(_)) => App.Section.Left(l, off, r)
-      case (l @ Opr(_), r) => App.Section.Right(l, off, r)
+      case (l, Opr.any(r)) => App.Section.Left(l, off, r)
+      case (Opr.any(l), r) => App.Section.Right(l, off, r)
       case (l, r)          => App.Prefix(l, off, r)
     }
 
