@@ -288,201 +288,201 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
 
   import AST.Text.Quote
 
-  final object text {
-    var stack: List[AST.Text.Interpolated] = Nil
-
-    def current = stack.head
-
-    def withCurrent(f: AST.Text.Interpolated => AST.Text.Interpolated) =
-      stack = f(stack.head) :: stack.tail
-
-    def push(quoteSize: Quote): Unit = logger.trace {
-      stack +:= AST.Text.Interpolated(quoteSize)
-    }
-
-    def pop(): Unit = logger.trace {
-      stack = stack.tail
-    }
-
-    def submitEmpty(groupIx: State, quoteNum: Quote): Unit =
-      logger.trace {
-        if (groupIx == RAW)
-          result.app(AST.Text.Raw(quoteNum))
-        else
-          result.app(AST.Text.Interpolated(quoteNum))
-      }
-
-    def finishCurrent(): AST.Text.Class[_] = logger.trace {
-      withCurrent(t => t.copy(segments = t.segments.reverse))
-      val txt = if (state.current == RAW) current.raw else current
-      pop()
-      state.end()
-      val singleLine = !txt.segments.contains(EOL())
-      if (singleLine || block.current.firstLine.isDefined || result.current.isDefined)
-        txt
-      else {
-        val segs =
-          AST.Text.MultiLine.stripOffset(block.current.indent, txt.segments)
-        AST.Text.MultiLine(block.current.indent, txt.quoteChar, txt.quote, segs)
-      }
-    }
-
-    def submit(): Unit = logger.trace {
-      result.app(finishCurrent())
-    }
-
-    def submit(segment: AST.Text.Interpolated.Segment): Unit =
-      logger.trace {
-        withCurrent(_.prepend(segment))
-      }
-
-    def submitUnclosed(): Unit = logger.trace {
-      result.app(AST.Text.Unclosed(finishCurrent()))
-    }
-
-    def onBegin(grp: State, quoteSize: Quote): Unit = logger.trace {
-      push(quoteSize)
-      state.begin(grp)
-    }
-
-    def submitPlainSegment(
-      segment: AST.Text.Interpolated.Segment
-    ): Unit =
-      logger.trace {
-        withCurrent(_.prependMergeReversed(segment))
-      }
-
-    def onPlainSegment(): Unit = logger.trace {
-      submitPlainSegment(AST.Text.Segment.Plain(currentMatch))
-    }
-
-    def onQuote(quoteSize: Quote): Unit = logger.trace {
-      if (current.quote == Quote.Triple
-          && quoteSize == Quote.Single) onPlainSegment()
-      else if (current.quote == Quote.Single
-               && quoteSize == Quote.Triple) {
-        val groupIx = state.current
-        submit()
-        submitEmpty(groupIx, Quote.Single)
-      } else
-        submit()
-    }
-
-    def onEscape(code: AST.Text.Segment.Escape): Unit = logger.trace {
-      submit(code)
-    }
-
-    def onEscapeU16(): Unit = logger.trace {
-      val code = currentMatch.drop(2)
-      submit(AST.Text.Segment.Escape.Unicode.U16(code))
-    }
-
-    def onEscapeU32(): Unit = logger.trace {
-      val code = currentMatch.drop(2)
-      submit(AST.Text.Segment.Escape.Unicode.U32(code))
-    }
-
-    def onEscapeInt(): Unit = logger.trace {
-      val int = currentMatch.drop(1).toInt
-      submit(AST.Text.Segment.Escape.Number(int))
-    }
-
-    def onInvalidEscape(): Unit = logger.trace {
-      val str = currentMatch.drop(1)
-      submit(AST.Text.Segment.Escape.Invalid(str))
-    }
-
-    def onEscapeSlash(): Unit = logger.trace {
-      submit(AST.Text.Segment.Escape.Slash)
-    }
-
-    def onEscapeQuote(): Unit = logger.trace {
-      submit(AST.Text.Segment.Escape.Quote)
-    }
-
-    def onEscapeRawQuote(): Unit = logger.trace {
-      submit(AST.Text.Segment.Escape.RawQuote)
-    }
-
-    def onInterpolateBegin(): Unit = logger.trace {
-      result.push()
-      off.push()
-      state.begin(INTERPOLATE)
-    }
-
-    def onInterpolateEnd(): Unit = logger.trace {
-      if (state.isInside(INTERPOLATE)) {
-        state.endTill(INTERPOLATE)
-        submit(AST.Text.Segment.Interpolation(result.current))
-        result.pop()
-        off.pop()
-        state.end()
-      } else {
-        onUnrecognized()
-      }
-    }
-
-    def onEOF(): Unit = logger.trace {
-      submitUnclosed()
-      rewind()
-    }
-
-    def onEOL(): Unit = logger.trace {
-      submitPlainSegment(AST.Text.Segment.EOL())
-    }
-
-    val stringChar = noneOf("'`\"\\\n")
-    val seg        = stringChar.many1
-    val escape_int = "\\" >> num.decimal
-    val escape_u16 = "\\u" >> repeat(stringChar, 0, 4)
-    val escape_u32 = "\\U" >> repeat(stringChar, 0, 8)
-
-    val INTP: State        = state.define("Text")
-    val RAW: State         = state.define("Raw Text")
-    val INTERPOLATE: State = state.define("Interpolate")
-    INTERPOLATE.parent = ROOT
-  }
-
-  ROOT      || '`'      || reify { text.onInterpolateEnd()               }
-  text.INTP || '`'      || reify { text.onInterpolateBegin()             }
-  ROOT      || "'"      || reify { text.onBegin(text.INTP, Quote.Single) }
-  ROOT      || "'''"    || reify { text.onBegin(text.INTP, Quote.Triple) }
-  text.INTP || "'"      || reify { text.onQuote(Quote.Single)            }
-  text.INTP || "'''"    || reify { text.onQuote(Quote.Triple)            }
-  text.INTP || text.seg || reify { text.onPlainSegment()                 }
-  text.INTP || eof      || reify { text.onEOF()                          }
-  text.INTP || '\n'     || reify { text.onEOL()                          }
-
-  ROOT     || "\""           || reify { text.onBegin(text.RAW, Quote.Single) }
-  ROOT     || "\"\"\""       || reify { text.onBegin(text.RAW, Quote.Triple) }
-  text.RAW || "\""           || reify { text.onQuote(Quote.Single)           }
-  text.RAW || "\"\"\""       || reify { text.onQuote(Quote.Triple)           }
-  text.RAW || noneOf("\"\n") || reify { text.onPlainSegment()                }
-  text.RAW || eof            || reify { text.onEOF()                         }
-  text.RAW || '\n'           || reify { text.onEOL()                         }
-
-  AST.Text.Segment.Escape.Character.codes.foreach { ctrl =>
-    import scala.reflect.runtime.universe._
-    val name = TermName(ctrl.toString)
-    val func = q"text.onEscape(AST.Text.Segment.Escape.Character.$name)"
-    text.INTP || s"\\$ctrl" || func
-  }
-
-  AST.Text.Segment.Escape.Control.codes.foreach { ctrl =>
-    import scala.reflect.runtime.universe._
-    val name = TermName(ctrl.toString)
-    val func = q"text.onEscape(AST.Text.Segment.Escape.Control.$name)"
-    text.INTP || s"\\$ctrl" || func
-  }
-
-  text.INTP || text.escape_u16           || reify { text.onEscapeU16()      }
-  text.INTP || text.escape_u32           || reify { text.onEscapeU32()      }
-  text.INTP || text.escape_int           || reify { text.onEscapeInt()      }
-  text.INTP || "\\\\"                    || reify { text.onEscapeSlash()    }
-  text.INTP || "\\'"                     || reify { text.onEscapeQuote()    }
-  text.INTP || "\\\""                    || reify { text.onEscapeRawQuote() }
-  text.INTP || ("\\" >> text.stringChar) || reify { text.onInvalidEscape()  }
-  text.INTP || "\\"                      || reify { text.onPlainSegment()   }
+//  final object text {
+//    var stack: List[AST.Text.Interpolated] = Nil
+//
+//    def current = stack.head
+//
+//    def withCurrent(f: AST.Text.Interpolated => AST.Text.Interpolated) =
+//      stack = f(stack.head) :: stack.tail
+//
+//    def push(quoteSize: Quote): Unit = logger.trace {
+//      stack +:= AST.Text.Interpolated(quoteSize)
+//    }
+//
+//    def pop(): Unit = logger.trace {
+//      stack = stack.tail
+//    }
+//
+//    def submitEmpty(groupIx: State, quoteNum: Quote): Unit =
+//      logger.trace {
+//        if (groupIx == RAW)
+//          result.app(AST.Text.Raw(quoteNum))
+//        else
+//          result.app(AST.Text.Interpolated(quoteNum))
+//      }
+//
+//    def finishCurrent(): AST.Text.Class[_] = logger.trace {
+//      withCurrent(t => t.copy(segments = t.segments.reverse))
+//      val txt = if (state.current == RAW) current.raw else current
+//      pop()
+//      state.end()
+//      val singleLine = !txt.segments.contains(EOL())
+//      if (singleLine || block.current.firstLine.isDefined || result.current.isDefined)
+//        txt
+//      else {
+//        val segs =
+//          AST.Text.MultiLine.stripOffset(block.current.indent, txt.segments)
+//        AST.Text.MultiLine(block.current.indent, txt.quoteChar, txt.quote, segs)
+//      }
+//    }
+//
+//    def submit(): Unit = logger.trace {
+//      result.app(finishCurrent())
+//    }
+//
+//    def submit(segment: AST.Text.Interpolated.Segment): Unit =
+//      logger.trace {
+//        withCurrent(_.prepend(segment))
+//      }
+//
+//    def submitUnclosed(): Unit = logger.trace {
+//      result.app(AST.Text.Unclosed(finishCurrent()))
+//    }
+//
+//    def onBegin(grp: State, quoteSize: Quote): Unit = logger.trace {
+//      push(quoteSize)
+//      state.begin(grp)
+//    }
+//
+//    def submitPlainSegment(
+//      segment: AST.Text.Interpolated.Segment
+//    ): Unit =
+//      logger.trace {
+//        withCurrent(_.prependMergeReversed(segment))
+//      }
+//
+//    def onPlainSegment(): Unit = logger.trace {
+//      submitPlainSegment(AST.Text.Segment.Plain(currentMatch))
+//    }
+//
+//    def onQuote(quoteSize: Quote): Unit = logger.trace {
+//      if (current.quote == Quote.Triple
+//          && quoteSize == Quote.Single) onPlainSegment()
+//      else if (current.quote == Quote.Single
+//               && quoteSize == Quote.Triple) {
+//        val groupIx = state.current
+//        submit()
+//        submitEmpty(groupIx, Quote.Single)
+//      } else
+//        submit()
+//    }
+//
+//    def onEscape(code: AST.Text.Segment.Escape): Unit = logger.trace {
+//      submit(code)
+//    }
+//
+//    def onEscapeU16(): Unit = logger.trace {
+//      val code = currentMatch.drop(2)
+//      submit(AST.Text.Segment.Escape.Unicode.U16(code))
+//    }
+//
+//    def onEscapeU32(): Unit = logger.trace {
+//      val code = currentMatch.drop(2)
+//      submit(AST.Text.Segment.Escape.Unicode.U32(code))
+//    }
+//
+//    def onEscapeInt(): Unit = logger.trace {
+//      val int = currentMatch.drop(1).toInt
+//      submit(AST.Text.Segment.Escape.Number(int))
+//    }
+//
+//    def onInvalidEscape(): Unit = logger.trace {
+//      val str = currentMatch.drop(1)
+//      submit(AST.Text.Segment.Escape.Invalid(str))
+//    }
+//
+//    def onEscapeSlash(): Unit = logger.trace {
+//      submit(AST.Text.Segment.Escape.Slash)
+//    }
+//
+//    def onEscapeQuote(): Unit = logger.trace {
+//      submit(AST.Text.Segment.Escape.Quote)
+//    }
+//
+//    def onEscapeRawQuote(): Unit = logger.trace {
+//      submit(AST.Text.Segment.Escape.RawQuote)
+//    }
+//
+//    def onInterpolateBegin(): Unit = logger.trace {
+//      result.push()
+//      off.push()
+//      state.begin(INTERPOLATE)
+//    }
+//
+//    def onInterpolateEnd(): Unit = logger.trace {
+//      if (state.isInside(INTERPOLATE)) {
+//        state.endTill(INTERPOLATE)
+//        submit(AST.Text.Segment.Interpolation(result.current))
+//        result.pop()
+//        off.pop()
+//        state.end()
+//      } else {
+//        onUnrecognized()
+//      }
+//    }
+//
+//    def onEOF(): Unit = logger.trace {
+//      submitUnclosed()
+//      rewind()
+//    }
+//
+//    def onEOL(): Unit = logger.trace {
+//      submitPlainSegment(AST.Text.Segment.EOL())
+//    }
+//
+//    val stringChar = noneOf("'`\"\\\n")
+//    val seg        = stringChar.many1
+//    val escape_int = "\\" >> num.decimal
+//    val escape_u16 = "\\u" >> repeat(stringChar, 0, 4)
+//    val escape_u32 = "\\U" >> repeat(stringChar, 0, 8)
+//
+//    val INTP: State        = state.define("Text")
+//    val RAW: State         = state.define("Raw Text")
+//    val INTERPOLATE: State = state.define("Interpolate")
+//    INTERPOLATE.parent = ROOT
+//  }
+//
+//  ROOT      || '`'      || reify { text.onInterpolateEnd()               }
+//  text.INTP || '`'      || reify { text.onInterpolateBegin()             }
+//  ROOT      || "'"      || reify { text.onBegin(text.INTP, Quote.Single) }
+//  ROOT      || "'''"    || reify { text.onBegin(text.INTP, Quote.Triple) }
+//  text.INTP || "'"      || reify { text.onQuote(Quote.Single)            }
+//  text.INTP || "'''"    || reify { text.onQuote(Quote.Triple)            }
+//  text.INTP || text.seg || reify { text.onPlainSegment()                 }
+//  text.INTP || eof      || reify { text.onEOF()                          }
+//  text.INTP || '\n'     || reify { text.onEOL()                          }
+//
+//  ROOT     || "\""           || reify { text.onBegin(text.RAW, Quote.Single) }
+//  ROOT     || "\"\"\""       || reify { text.onBegin(text.RAW, Quote.Triple) }
+//  text.RAW || "\""           || reify { text.onQuote(Quote.Single)           }
+//  text.RAW || "\"\"\""       || reify { text.onQuote(Quote.Triple)           }
+//  text.RAW || noneOf("\"\n") || reify { text.onPlainSegment()                }
+//  text.RAW || eof            || reify { text.onEOF()                         }
+//  text.RAW || '\n'           || reify { text.onEOL()                         }
+//
+//  AST.Text.Segment.Escape.Character.codes.foreach { ctrl =>
+//    import scala.reflect.runtime.universe._
+//    val name = TermName(ctrl.toString)
+//    val func = q"text.onEscape(AST.Text.Segment.Escape.Character.$name)"
+//    text.INTP || s"\\$ctrl" || func
+//  }
+//
+//  AST.Text.Segment.Escape.Control.codes.foreach { ctrl =>
+//    import scala.reflect.runtime.universe._
+//    val name = TermName(ctrl.toString)
+//    val func = q"text.onEscape(AST.Text.Segment.Escape.Control.$name)"
+//    text.INTP || s"\\$ctrl" || func
+//  }
+//
+//  text.INTP || text.escape_u16           || reify { text.onEscapeU16()      }
+//  text.INTP || text.escape_u32           || reify { text.onEscapeU32()      }
+//  text.INTP || text.escape_int           || reify { text.onEscapeInt()      }
+//  text.INTP || "\\\\"                    || reify { text.onEscapeSlash()    }
+//  text.INTP || "\\'"                     || reify { text.onEscapeQuote()    }
+//  text.INTP || "\\\""                    || reify { text.onEscapeRawQuote() }
+//  text.INTP || ("\\" >> text.stringChar) || reify { text.onInvalidEscape()  }
+//  text.INTP || "\\"                      || reify { text.onPlainSegment()   }
 
   //////////////
   /// Blocks ///
@@ -573,7 +573,7 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
               current.lines +:= AST.Block.Line(result.current, off.use())
           }
       }
-      emptyLines.reverse.foreach(current.lines +:= AST.Block.OptLine[AST](_))
+      emptyLines.reverse.foreach(current.lines +:= AST.Block.OptLine(_))
       emptyLines     = Nil
       result.current = None
     }
@@ -603,7 +603,7 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
       state.end()
       submitLine()
       off.on()
-      current.lines +:= AST.Block.OptLine[AST](off.use())
+      current.lines +:= AST.Block.OptLine(off.use())
       off.pop()
       onEOF()
     }

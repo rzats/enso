@@ -465,7 +465,9 @@ sealed trait Pattern {
 
         case p @ P.Err(msg, p1) =>
           step(p1, stream).map {
-            _.map(m => M.Err(p, Shifted(AST.Unexpected(msg, m.toStream))))
+            _.map(
+              m => M.Err(p, Shifted(AST.Invalid.Unexpected(msg, m.toStream)))
+            )
           }
 
         case p @ P.Tag(tag, p1) => stepWith(p1, stream)(M.Tag(p, _))
