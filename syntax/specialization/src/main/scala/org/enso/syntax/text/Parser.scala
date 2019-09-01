@@ -11,6 +11,7 @@ import org.enso.syntax.text.prec.Distance
 import org.enso.syntax.text.prec.Operator
 import org.enso.syntax.text.ast.opr.Prec
 import org.enso.syntax.text.v2
+import org.enso.syntax.text.v3
 import java.util.UUID
 
 import scala.annotation.tailrec
@@ -345,5 +346,6 @@ object Main extends App {
   println()
 
   v2.AST.main()
+  v3.AST.main()
 
 }
