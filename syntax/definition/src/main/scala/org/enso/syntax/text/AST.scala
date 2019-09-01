@@ -204,6 +204,7 @@ object AST {
     def mapWithOff(f: (Int, AST) => AST) = this
   }
   object Cons {
+    val any = UnapplyByType[Cons]
     def apply(name: String): Cons           = _Cons(name)
     def unapply(t: Cons):    Option[String] = Some(t.name)
     trait implicits {

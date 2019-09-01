@@ -3,6 +3,7 @@ package org.enso.syntax.text.ast.meta
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.syntax.text.AST
+import org.enso.syntax.text.AST.implicits._
 import org.enso.syntax.text.AST.Macro.Definition
 import org.enso.syntax.text.AST.Cons
 import org.enso.syntax.text.AST.Opr
@@ -17,19 +18,21 @@ object Builtin {
 
     def internalError = throw new Error("Internal error")
 
-    val group = Definition(Opr("(") -> Pattern.Expr().opt, Opr(")")) { ctx =>
-      ctx.body match {
-        case List(st1, _) =>
-          st1.body.toStream match {
-            case List()  => AST.Group()
-            case List(t) => AST.Group(t)
-            case _       => internalError
+    val group =
+      Definition((Opr("("): AST) -> Pattern.Expr().opt, (Opr(")"): AST)) {
+        ctx =>
+          ctx.body match {
+            case List(st1, _) =>
+              st1.body.toStream match {
+                case List()  => AST.Group()
+                case List(t) => AST.Group(t)
+                case _       => internalError
+              }
+            case _ => internalError
           }
-        case _ => internalError
       }
-    }
 
-    val defn = Definition(Var("def") -> {
+    val defn = Definition((Var("def"): AST) -> {
       import Pattern._
       val head = Pattern.Cons().or("missing name").tag("name")
       val args =
@@ -58,8 +61,9 @@ object Builtin {
     }
 
     val imp = Definition(
-      Var("import") ->
-      Pattern.SepList(Pattern.Cons(), AST.Opr("."), "expected module name")
+      (Var("import"): AST) ->
+      Pattern
+        .SepList(Pattern.Cons(), (AST.Opr("."): AST), "expected module name")
     ) { ctx =>
       ctx.body match {
         case List(s1) =>
@@ -68,7 +72,7 @@ object Builtin {
             case Seq(_, (headMatch, Many(_, tailMatch))) =>
               def unwrapSeg(lseg: Pattern.Match): AST.Cons =
                 lseg.toStream match {
-                  case List(Shifted(_, t @ AST.Cons(_))) => t
+                  case List(Shifted(_, AST.Cons.any(t))) => t
                   case _                                 => internalError
                 }
 
@@ -85,8 +89,8 @@ object Builtin {
     }
 
     val if_then = Definition(
-      Var("if")   -> Pattern.Expr(),
-      Var("then") -> Pattern.Expr()
+      (Var("if"): AST)   -> Pattern.Expr(),
+      (Var("then"): AST) -> Pattern.Expr()
     ) { ctx =>
       ctx.body match {
         case List(s1, s2) =>
@@ -100,9 +104,9 @@ object Builtin {
     }
 
     val if_then_else = Definition(
-      Var("if")   -> Pattern.Expr(),
-      Var("then") -> Pattern.Expr(),
-      Var("else") -> Pattern.Expr()
+      (Var("if"): AST)   -> Pattern.Expr(),
+      (Var("then"): AST) -> Pattern.Expr(),
+      (Var("else"): AST) -> Pattern.Expr()
     ) { ctx =>
       ctx.body match {
         case List(s1, s2, s3) =>
@@ -122,7 +126,7 @@ object Builtin {
 
     val arrow = Definition(
       Some(nonSpacedExpr.or(Pattern.OprExpr("->"))),
-      Opr("->") -> Pattern.NonSpacedExpr().or(Pattern.Expr())
+      (Opr("->"): AST) -> Pattern.NonSpacedExpr().or(Pattern.Expr())
     ) { ctx =>
       (ctx.prefix, ctx.body) match {
         case (Some(pfx), List(s1)) =>
@@ -134,7 +138,7 @@ object Builtin {
     }
 
     val foreign = Definition(
-      Var("foreign") -> (Pattern.Cons() :: Pattern.Block())
+      (Var("foreign"): AST) -> (Pattern.Cons() :: Pattern.Block())
     ) { ctx =>
       ctx.body match {
         case List(s1) =>
@@ -153,7 +157,7 @@ object Builtin {
     }
 //
     val skip = Definition(
-      Var("skip") -> Pattern.Expr()
+      (Var("skip"): AST) -> Pattern.Expr()
     ) { ctx =>
       ctx.body match {
         case List(s1) =>
@@ -176,7 +180,7 @@ object Builtin {
     }
 
     val freeze = Definition(
-      Var("freeze") -> Pattern.Expr()
+      (Var("freeze"): AST) -> Pattern.Expr()
     ) { ctx =>
       ctx.body match {
         case List(s1) =>
@@ -191,7 +195,7 @@ object Builtin {
     }
 
     val docComment = Definition(
-      Opr("##") -> Pattern
+      (Opr("##"): AST) -> Pattern
         .Any()
         .many
         .fromBegin
@@ -211,7 +215,7 @@ object Builtin {
     }
 
     val disableComment = Definition(
-      Opr("#") -> Pattern.Expr()
+      (Opr("#"): AST) -> Pattern.Expr()
     ) { ctx =>
       ctx.body match {
         case List(s1) =>

@@ -62,6 +62,8 @@ object AST {
       with Block.implicits
       with Fix.implicits
       with Tagged.implicits
+      with Import.implicits
+      with Def.implicits
 
   object TopLevel {
     object implicits extends implicits
@@ -911,11 +913,11 @@ object AST {
 
   }
 
-  //////////////////////////////////////////////////////////////////////////////
+  ////////////////////////////////////////////////////////////////////////////
   //// Macro ///////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Macro = MacroOf[AST]
+  type Macro = ASTFrom[MacroOf]
   sealed trait MacroOf[T] extends ShapeOf[T]
   object Macro {
 
@@ -923,25 +925,22 @@ object AST {
 
     //// Matched ////
 
-    final case class Match(
+    type Match = ASTFrom[MatchOf]
+    final case class MatchOf[T](
       pfx: Option[Pattern.Match],
       segs: Shifted.List1[Match.Segment],
-      resolved: Shape,
-      id: Option[ID] = None
-    ) extends Macro {
-      val repr = {
-        val pfxStream = pfx.map(_.toStream.reverse).getOrElse(List())
-        val pfxRepr   = pfxStream.map(t => R + t.el + t.off)
-        val segsRepr  = segs.map(_.repr)
-        R + pfxRepr + segsRepr
-      }
-      def setID(newID: ID)                     = copy(id = Some(newID))
-      def map(f: Shape => Shape)               = this
-      def mapWithOff(f: (Int, Shape) => Shape) = this
+      resolved: AST
+    ) extends MacroOf[T] {
       def path(): List1[AST] = segs.toList1().map(_.el.head)
     }
     object Match {
-      case class Segment(head: Ident, body: Pattern.Match) {
+      def apply(
+        pfx: Option[Pattern.Match],
+        segs: Shifted.List1[Match.Segment],
+        resolved: AST
+      ): Match = ??? // MatchOf(pfx, segs, resolved)
+
+      final case class Segment(head: Ident, body: Pattern.Match) {
         val repr = R + head + body
         def toStream: AST.Stream = ??? // Shifted(head) :: body.toStream
         def isValid:  Boolean    = body.isValid
@@ -955,22 +954,20 @@ object AST {
 
     //// Ambiguous ////
 
-    case class Ambiguous(
+    type Ambiguous = ASTFrom[AmbiguousOf]
+    final case class AmbiguousOf[T](
       segs: Shifted.List1[Ambiguous.Segment],
-      paths: Tree[Shape, Unit],
-      id: Option[ID] = None
-    ) extends Macro {
-      val repr                                 = R + segs.map(_.repr)
-      def setID(newID: ID)                     = copy(id = Some(newID))
-      def map(f: Shape => Shape)               = this
-      def mapWithOff(f: (Int, Shape) => Shape) = this
-    }
+      paths: Tree[AST, Unit]
+    ) extends MacroOf[T]
     object Ambiguous {
-      case class Segment(head: Shape, body: Option[SAST]) {
-        val repr = R // + head + body
-      }
+      def apply(
+        segs: Shifted.List1[Ambiguous.Segment],
+        paths: Tree[AST, Unit]
+      ): Ambiguous = ??? // AmbiguousOf(segs, paths)
+
+      final case class Segment(head: AST, body: Option[SAST])
       object Segment {
-        def apply(head: Shape): Segment = Segment(head, None)
+        def apply(head: AST): Segment = Segment(head, None)
       }
     }
 
@@ -979,7 +976,7 @@ object AST {
     type Resolver = Resolver.Context => AST
     object Resolver {
       final case class Context(
-        prefix: Option[Pattern.MatchOf[SAST]],
+        prefix: Option[Pattern.Match],
         body: List[Macro.Match.Segment],
         id: ID
       )
@@ -988,44 +985,44 @@ object AST {
     //// Definition ////
 
     type Definition = __Definition__
-    case class __Definition__(
+    final case class __Definition__(
       back: Option[Pattern],
       init: List[Definition.Segment],
       last: Definition.LastSegment,
       resolver: Resolver
     ) {
-      def path: List1[Shape] = init.map(_.head) +: List1(last.head)
+      def path: List1[AST] = init.map(_.head) +: List1(last.head)
       def fwdPats: List1[Pattern] =
         init.map(_.pattern) +: List1(last.pattern.getOrElse(Pattern.Nothing()))
     }
     object Definition {
       import Pattern._
 
-      case class Segment(head: Shape, pattern: Pattern) {
+      final case class Segment(head: AST, pattern: Pattern) {
         def map(f: Pattern => Pattern): Segment = copy(pattern = f(pattern))
       }
       object Segment {
-        type Tup = (Shape, Pattern)
+        type Tup = (AST, Pattern)
         def apply(t: Tup): Segment = Segment(t._1, t._2)
       }
 
-      case class LastSegment(head: Shape, pattern: Option[Pattern]) {
+      final case class LastSegment(head: AST, pattern: Option[Pattern]) {
         def map(f: Pattern => Pattern): LastSegment =
           copy(pattern = pattern.map(f))
       }
       object LastSegment {
-        type Tup = (Shape, Option[Pattern])
+        type Tup = (AST, Option[Pattern])
         def apply(t: Tup): LastSegment = LastSegment(t._1, t._2)
       }
 
       def apply(back: Option[Pattern], t1: Segment.Tup, ts: List[Segment.Tup])(
-        resolver: Resolver
+        fin: Resolver
       ): Definition = {
         val segs    = List1(t1, ts)
         val init    = segs.init
         val lastTup = segs.last
         val last    = (lastTup._1, Some(lastTup._2))
-        Definition(back, init, last, resolver)
+        Definition(back, init, last, fin)
       }
 
       def apply(back: Option[Pattern], t1: Segment.Tup, ts: Segment.Tup*)(
@@ -1033,20 +1030,16 @@ object AST {
       ): Definition = Definition(back, t1, ts.toList)(fin)
 
       def apply(t1: Segment.Tup, t2_ : Segment.Tup*)(
-        resolver: Resolver
-      ): Definition = Definition(None, t1, t2_.toList)(resolver)
+        fin: Resolver
+      ): Definition = Definition(None, t1, t2_.toList)(fin)
 
-      def apply(initTups: List[Segment.Tup], lastHead: Shape)(
-        resolver: Resolver
-      ): Definition = Definition(None, initTups, (lastHead, None), resolver)
+      def apply(initTups: List[Segment.Tup], lastHead: AST)(
+        fin: Resolver
+      ): Definition =
+        Definition(None, initTups, (lastHead, None), fin)
 
-      def apply(t1: Segment.Tup, last: Shape)(resolver: Resolver): Definition =
-        Definition(List(t1), last)(resolver)
-      //
-      //      def apply(backPat: Option[Pattern], t1: Segment.Tup, ts: Segment.Tup*)(
-      //        fin: Finalizer
-      //      ): Definition =
-      //        Definition(backPat, List1(t1, ts: _*), fin)
+      def apply(t1: Segment.Tup, last: AST)(fin: Resolver): Definition =
+        Definition(List(t1), last)(fin)
 
       def apply(
         back: Option[Pattern],
@@ -1055,29 +1048,61 @@ object AST {
         resolver: Resolver
       ): Definition = {
         type PP = Pattern => Pattern
-        val checkValid: PP = _ | ErrTillEnd("unmatched pattern")
-        val checkFull: PP  = _ :: ErrUnmatched("unmatched tokens")
+        val applyValidChecker: PP     = _ | ErrTillEnd("unmatched pattern")
+        val applyFullChecker: PP      = _ :: ErrUnmatched("unmatched tokens")
+        val applyDummyFullChecker: PP = _ :: Nothing()
 
-        val addInitChecks: List[Segment] => List[Segment] =
-          _.map(_.map(checkValid).map(checkFull))
+        val unapplyValidChecker: Pattern.Match => Pattern.Match = {
+          case Pattern.Match.Or(_, Left(tgt)) => tgt
+          case _                              => throw new Error("Internal error")
+        }
+        val unapplyFullChecker: Pattern.Match => Pattern.Match = {
+          case Pattern.Match.Seq(_, (tgt, _)) => tgt
+          case _                              => throw new Error("Internal error")
+        }
+        val applySegInitCheckers: List[Segment] => List[Segment] =
+          _.map(_.map(p => applyFullChecker(applyValidChecker(p))))
 
-        val addLastCheck: LastSegment => LastSegment =
-          _.map(checkValid)
+        val applySegLastCheckers: LastSegment => LastSegment =
+          _.map(p => applyDummyFullChecker(applyValidChecker(p)))
+
+        val unapplySegCheckers
+          : List[AST.Macro.Match.Segment] => List[AST.Macro.Match.Segment] =
+          _.map(_.map({
+            case m @ Pattern.Match.Nothing(_) => m
+            case m =>
+              unapplyValidChecker(unapplyFullChecker(m))
+          }))
 
         val initSegs           = initTups.map(Segment(_))
         val lastSeg            = LastSegment(lastTup)
-        val backPatWithCheck   = back.map(checkValid)
-        val initSegsWithChecks = addInitChecks(initSegs)
-        val lastSegWithChecks  = addLastCheck(lastSeg)
-        def resolverWithChecks: Resolver = { ctx =>
+        val backPatWithCheck   = back.map(applyValidChecker)
+        val initSegsWithChecks = applySegInitCheckers(initSegs)
+        val lastSegWithChecks  = applySegLastCheckers(lastSeg)
+
+        def unexpected(ctx: Resolver.Context, msg: String): AST = {
+          val pfxStream  = ctx.prefix.map(_.toStream).getOrElse(List())
+          val segsStream = ctx.body.flatMap(_.toStream)
+          val stream     = pfxStream ++ segsStream
+//          AST.Unexpected(msg, stream)
+          ???
+        }
+
+        def resolverWithChecks(ctx: Resolver.Context) = {
           val pfxFail  = !ctx.prefix.forall(_.isValid)
           val segsFail = !ctx.body.forall(_.isValid)
-          if (pfxFail || segsFail) {
-            val pfxStream  = ctx.prefix.map(_.toStream).getOrElse(List())
-            val segsStream = ctx.body.flatMap(_.toStream)
-            val stream     = pfxStream ++ segsStream
-            AST.Unexpected("invalid statement", stream)
-          } else resolver(ctx)
+          if (pfxFail || segsFail) unexpected(ctx, "invalid statement")
+          else {
+            val ctx2 = ctx.copy(
+              prefix = ctx.prefix.map(unapplyValidChecker),
+              body   = unapplySegCheckers(ctx.body)
+            )
+            try resolver(ctx2)
+            catch {
+              case _: Throwable =>
+                unexpected(ctx, "exception during macro resolution")
+            }
+          }
         }
         __Definition__(
           backPatWithCheck,
@@ -1145,19 +1170,19 @@ object AST {
   //// Import //////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Import = _Import[AST]
-  case class _Import[T](path: List1[Cons]) extends SpacelessASTOf[T]
+  type Import = ASTFrom[ImportOf]
+  case class ImportOf[T](path: List1[Cons]) extends SpacelessASTOf[T]
 
   object Import {
-    def apply(path: List1[Cons]):            Import = _Import(path)
+    def apply(path: List1[Cons]):            Import = ImportOf[AST](path)
     def apply(head: Cons):                   Import = Import(head, List())
     def apply(head: Cons, tail: List[Cons]): Import = Import(List1(head, tail))
     def apply(head: Cons, tail: Cons*):      Import = Import(head, tail.toList)
 
     object implicits extends implicits
     trait implicits {
-      implicit def ftorImport[T]: Functor[_Import] = semi.functor
-      implicit def reprImport[T]: Repr[_Import[T]] =
+      implicit def ftorImport[T]: Functor[ImportOf] = semi.functor
+      implicit def reprImport[T]: Repr[ImportOf[T]] =
         t => R + ("import " + t.path.map(_.repr.build()).toList.mkString("."))
     }
   }
@@ -1171,6 +1196,7 @@ object AST {
       extends SpacelessASTOf[T]
 
   object Mixfix {
+    def apply(name: List1[Ident], args: List1[AST]): Mixfix = ???
     object implicits extends implicits
     trait implicits {
       implicit def ftorMixfix[T]: Functor[MixfixOf] = semi.functor
@@ -1187,7 +1213,7 @@ object AST {
   //// Group ///////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Group = GroupOf[AST]
+  type Group = ASTFrom[GroupOf]
   case class GroupOf[T](body: Option[T]) extends SpacelessASTOf[T]
 
   object Group {
@@ -1208,7 +1234,7 @@ object AST {
   //// Def /////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Def = DefOf[AST]
+  type Def = ASTFrom[DefOf]
   case class DefOf[T](name: Cons, args: List[T], body: Option[T])
       extends SpacelessASTOf[T]
 

@@ -4,6 +4,7 @@ import org.enso.data
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.syntax.text.AST
+import org.enso.syntax.text.AST.implicits._
 import org.enso.syntax.text.AST.Ident
 import org.enso.syntax.text.AST.Macro
 import Pattern.streamShift
@@ -35,7 +36,7 @@ class Builder(
     val revLeftStream = current.revStream
     val (revUnusedLeftTgt, matched, rightUnusedTgt) =
       that.build(revLeftStream)
-    val result = List1(matched, rightUnusedTgt)
+    val result = List1(matched: AST.SAST, rightUnusedTgt)
     current.revStream = result.toList.reverse ++ revUnusedLeftTgt
   }
 
@@ -102,7 +103,7 @@ class Builder(
 
   if (isModuleBuilder)
     macroDef = Some(
-      Macro.Definition(AST.Blank() -> Pattern.Expr()) { ctx =>
+      Macro.Definition((AST.Blank(): AST) -> Pattern.Expr()) { ctx =>
         ctx.body match {
           case List(seg) =>
             seg.body.toStream match {
