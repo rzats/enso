@@ -1,5 +1,5 @@
 package org.enso.syntax.text
-
+//
 //import java.util.UUID
 //
 //import cats.Functor
@@ -51,7 +51,8 @@ package org.enso.syntax.text
 //
 //  object implicits extends implicits
 //  trait implicits
-//      extends TopLevel.implicits
+//      extends Conversions.implicits
+//      with TopLevel.implicits
 //      with Ident.implicits
 //      with Invalid.implicits
 //      with Literal.implicits
@@ -64,6 +65,7 @@ package org.enso.syntax.text
 //      with Group.implicits
 //      with Def.implicits
 //      with Foreign.implicits
+//      with Module.implicits
 //  import implicits._
 //
 //  object TopLevel {
@@ -131,9 +133,9 @@ package org.enso.syntax.text
 //
 //  }
 //
-//  object Generic {
+//  object Conversions {
 //    object implicits extends implicits
-//    trait implicits {
+//    trait implicits extends Ident.IndirectConversions {
 //      implicit def stringToAST(str: String): AST = {
 //        if (str == "") throw new Error("Empty literal")
 //        if (str == "_") Blank()
@@ -288,10 +290,10 @@ package org.enso.syntax.text
 //
 //    object implicits extends implicits
 //    trait implicits {
-//      implicit def ftorInvalid:      Functor[InvalidOf]      = semi.functor
-//      implicit def ftorUnexpected:   Functor[UnexpectedOf]   = semi.functor
-//      implicit def ftorUnrecognized: Functor[UnrecognizedOf] = semi.functor
-//      implicit def reprUnrecognized: Repr[UnrecognizedOf[_]] = _.str
+//      implicit def ftorInvalid:         Functor[InvalidOf]      = semi.functor
+//      implicit def ftorUnexpected:      Functor[UnexpectedOf]   = semi.functor
+//      implicit def ftorUnrecognized:    Functor[UnrecognizedOf] = semi.functor
+//      implicit def reprUnrecognized[T]: Repr[UnrecognizedOf[T]] = _.str
 //      implicit def reprUnexpected[T: Repr]: Repr[UnexpectedOf[T]] =
 //        t => Repr(t.stream)
 //      implicit def offZipUnrecognized[T]: OffsetZip[UnrecognizedOf, T] =
@@ -302,6 +304,10 @@ package org.enso.syntax.text
 //    import implicits._
 //
 //    //// Smart Constructors ////
+//
+//    object Unrecognized {
+//      def apply(str: String): Unrecognized = UnrecognizedOf[AST](str)
+//    }
 //
 //    object Unexpected {
 //      def apply(msg: String, stream: Stream): Unexpected =
@@ -331,9 +337,6 @@ package org.enso.syntax.text
 //  val Mod   = Ident.Mod
 //
 //  object Ident {
-//    type InvalidSuffix = ASTOf[InvalidSuffixOf]
-//    case class InvalidSuffixOf[T](elem: Ident, suffix: String)
-//        extends InvalidOf[T]
 //
 //    //// Definition ////
 //
@@ -353,7 +356,14 @@ package org.enso.syntax.text
 //
 //    //// Instances ////
 //
-//    trait IndirectConversions extends Generic.implicits {
+//    trait DirectConversions {
+//      implicit def strToVar(str: String):  Var  = Var(str)
+//      implicit def strToCons(str: String): Cons = Cons(str)
+//      implicit def strToOpr(str: String):  Opr  = Opr(str)
+//      implicit def strToMod(str: String):  Mod  = Mod(str)
+//    }
+//
+//    trait IndirectConversions extends DirectConversions {
 //      implicit def stringToIdent(str: String): Ident = {
 //        if (str == "") throw new Error("Empty literal")
 //        if (str == "_") Blank()
@@ -363,15 +373,8 @@ package org.enso.syntax.text
 //      }
 //    }
 //
-//    trait DirectConversions extends IndirectConversions {
-//      implicit def strToVar(str: String):  Var  = Var(str)
-//      implicit def strToCons(str: String): Cons = Cons(str)
-//      implicit def strToOpr(str: String):  Opr  = Opr(str)
-//      implicit def strToMod(str: String):  Mod  = Mod(str)
-//    }
-//
 //    object implicits extends implicits
-//    trait implicits extends DirectConversions {
+//    trait implicits {
 //      implicit def reprBlank[T]:   Repr[BlankOf[T]]      = _.name
 //      implicit def reprVar[T]:     Repr[VarOf[T]]        = _.name
 //      implicit def reprCons[T]:    Repr[ConsOf[T]]       = _.name
@@ -427,6 +430,18 @@ package org.enso.syntax.text
 //      def apply(name: String): Mod = ModOf[AST](name)
 //    }
 //
+//    ///////////////////////
+//    //// InvalidSuffix ////
+//    ///////////////////////
+//
+//    type InvalidSuffix = ASTOf[InvalidSuffixOf]
+//    case class InvalidSuffixOf[T](elem: Ident, suffix: String)
+//        extends InvalidOf[T]
+//    object InvalidSuffix {
+//      def apply(elem: Ident, suffix: String): InvalidSuffix = ???
+////        InvalidSuffixOf(elem, suffix)
+//    }
+//
 //  }
 //
 //  //////////////////////////////////////////////////////////////////////////////
@@ -475,7 +490,7 @@ package org.enso.syntax.text
 //      //// Instances ////
 //
 //      object implicits extends implicits
-//      trait implicits extends Generic.implicits {
+//      trait implicits {
 //        implicit def ftorNum:      Functor[NumberOf]       = semi.functor
 //        implicit def ftorNumDang:  Functor[DanglingBaseOf] = semi.functor
 //        implicit def offZipNum[T]: OffsetZip[NumberOf, T]  = t => t.coerce
@@ -600,7 +615,7 @@ package org.enso.syntax.text
 //        //// Instances ////
 //
 //        object implicits extends implicits
-//        trait implicits extends Generic.implicits {
+//        trait implicits {
 //          implicit def reprTxtSPlain[T]: Repr[_Plain[T]] = _.value
 //          implicit def reprTxtSExpr[T: Repr]: Repr[_Expr[T]] =
 //            R + '`' + _.value + '`'
@@ -624,7 +639,7 @@ package org.enso.syntax.text
 //            case t: _Plain[T] => OffsetZip(t)
 //            case t: _Expr[T]  => OffsetZip(t)
 //          }
-//          implicit def fromString[T](str: String): _Plain[T] = _Plain(str)
+//          implicit def txtFromString[T](str: String): _Plain[T] = _Plain(str)
 //        }
 //      }
 //    }
@@ -767,7 +782,11 @@ package org.enso.syntax.text
 //    emptyLines: List[Int],
 //    firstLine: Block.LineOf[T],
 //    lines: List[Block.LineOf[Option[T]]]
-//  ) extends ShapeOf[T]
+//  ) extends ShapeOf[T] {
+//
+//    // FIXME: Compatibility mode
+//    def replaceType(ntyp: Block.Type): BlockOf[T] = copy(typ = ntyp)
+//  }
 //
 //  object Block {
 //    sealed trait Type
@@ -785,6 +804,16 @@ package org.enso.syntax.text
 //    import implicits._
 //
 //    //// Smart Constructors ////
+//
+//    // FIXME: Compatibility mode
+//    def apply(
+//      isOrphan: Boolean,
+//      typ: Type,
+//      indent: Int,
+//      emptyLines: List[Int],
+//      firstLine: LineOf[AST],
+//      lines: List[LineOf[Option[AST]]]
+//    ): Block = BlockOf(typ, indent, emptyLines, firstLine, lines)
 //
 //    def apply(
 //      typ: Type,
@@ -809,9 +838,17 @@ package org.enso.syntax.text
 //
 //    type Line    = LineOf[AST]
 //    type OptLine = LineOf[Option[AST]]
-//    case class LineOf[+T](elem: T, off: Int)
+//    case class LineOf[+T](elem: T, off: Int) {
+//      // FIXME: Compatibility mode
+//      def toOptional: LineOf[Option[T]] = copy(elem = Some(elem))
+//    }
 //    object Line {
+//      def apply[T](elem: T, off: Int) = LineOf(elem, off)
 //      def apply[T](elem: T): LineOf[T] = LineOf(elem, 0)
+//    }
+//    object OptLine {
+//      def apply[T](elem: T):  LineOf[Option[T]] = Line(Some(elem))
+//      def apply[T](off: Int): LineOf[Option[T]] = Line(None, off)
 //    }
 //  }
 //
@@ -819,15 +856,28 @@ package org.enso.syntax.text
 //  //// Module //////////////////////////////////////////////////////////////////
 //  //////////////////////////////////////////////////////////////////////////////
 //
-//  type Module = _Module[AST]
-//  case class _Module[T](lines: List1[Block.LineOf[T]]) extends ShapeOf[T]
+//  type Module = ASTOf[ModuleOf]
+//  case class ModuleOf[T](lines: List1[Block.OptLine]) extends ShapeOf[T]
 //
 //  object Module {
 //    import Block._
-//    def apply(ls: List1[Line]):         Module = _Module(ls)
-//    def apply(l: Line):                 Module = Module(List1(l))
-//    def apply(l: Line, ls: Line*):      Module = Module(List1(l, ls.to[List]))
-//    def apply(l: Line, ls: List[Line]): Module = Module(List1(l, ls))
+//
+//    //// Instances ////
+//
+//    object implicits extends implicits
+//    trait implicits {
+//      implicit def ftorModule:          Functor[ModuleOf]      = semi.functor
+//      implicit def reprModule[T: Repr]: Repr[ModuleOf[T]]      = ???
+//      implicit def offZipModule[T]:     OffsetZip[ModuleOf, T] = ???
+//    }
+//    import implicits._
+//
+//    //// Smart Constructors ////
+//
+//    def apply(ls: List1[OptLine]):            Module = ModuleOf[AST](ls)
+//    def apply(l: OptLine):                    Module = Module(List1(l))
+//    def apply(l: OptLine, ls: OptLine*):      Module = Module(List1(l, ls.to[List]))
+//    def apply(l: OptLine, ls: List[OptLine]): Module = Module(List1(l, ls))
 //  }
 //
 //  /////////////////////////////////////////////////
@@ -857,6 +907,8 @@ package org.enso.syntax.text
 //
 //    println(v1.name)
 //    println(opr1.assoc)
+//
+//    val str1 = "foo": AST
 //
 //    val vx = v2: AST
 //    vx match {

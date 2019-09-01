@@ -125,6 +125,10 @@ object AST {
     def setID(newID: ID)                 = this
     def mapWithOff(f: (Int, AST) => AST) = this
   }
+  object Invalid {
+    type Unrecognized = AST.Unrecognized
+    val Unrecognized = AST.Unrecognized
+  }
 
   final case class Unrecognized(str: String) extends Invalid {
     val repr               = str
@@ -270,6 +274,8 @@ object AST {
       copy(func = f(0, func), arg = f(func.span + off, arg))
   }
   object App {
+    val any = UnapplyByType[App]
+
     def apply(func: AST, off: Int = 1, arg: AST): App = _App(func, off, arg)
     def apply(func: AST, arg: AST): App = App(func, 1, arg)
     def unapply(t: App) = Some((t.func, t.arg))
@@ -726,6 +732,11 @@ object AST {
 
     //// Line ////
 
+    type OptLine = Line
+//    val OptLine = Line
+    object OptLine {
+      def apply[T](t: Int): Line = Line(t)
+    }
     type Line = _Line
     final case class _Line(elem: Option[AST], off: Int)
         extends Symbol

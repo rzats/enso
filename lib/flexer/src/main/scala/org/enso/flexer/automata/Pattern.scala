@@ -72,10 +72,11 @@ object Pattern {
       Or(char(_this), char(that))
   }
 
-  implicit def fromChar(char: Char): Pattern =
+  implicit def automataPtternFromChar(char: Char): Pattern =
     range(char, char)
-  implicit def fromString(str: String): Pattern = str.toList match {
-    case Nil     => always
-    case s :: ss => ss.foldLeft(char(s): Pattern)(_ >> _)
-  }
+  implicit def automataPatternFromString(str: String): Pattern =
+    str.toList match {
+      case Nil     => always
+      case s :: ss => ss.foldLeft(char(s): Pattern)(_ >> _)
+    }
 }

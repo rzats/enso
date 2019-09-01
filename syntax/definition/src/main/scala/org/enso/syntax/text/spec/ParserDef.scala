@@ -9,6 +9,7 @@ import org.enso.flexer.State
 import org.enso.flexer.automata.Pattern
 import org.enso.flexer.automata.Pattern._
 import org.enso.syntax.text.AST
+import org.enso.syntax.text.AST.implicits._
 import org.enso.syntax.text.AST.Text.Segment.EOL
 
 import scala.annotation.tailrec
@@ -76,15 +77,15 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     def app(ast: AST): Unit = logger.trace {
       current = Some(current match {
         case None    => ast
-        case Some(r) => AST.App(r, off.use(), ast)
+        case Some(r) => AST.App.Prefix(r, off.use(), ast)
       })
     }
 
     def last(): Option[AST] = {
       @tailrec
       def go(ast: AST): AST = ast match {
-        case app: AST.App => go(app.arg)
-        case t            => t
+        case AST.App.Prefix.any(t) => go(t.arg)
+        case t                     => t
       }
       current.map(go)
     }
@@ -148,7 +149,7 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     }
 
     def onErrSfx(): Unit = logger.trace {
-      val ast = InvalidSuffix(unwrap(current), currentMatch)
+      val ast = AST.Ident.InvalidSuffix(unwrap(current), currentMatch)
       result.app(ast)
       current = None
       state.end()
@@ -173,11 +174,11 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     val SFX_CHECK = state.define("Identifier Suffix Check")
   }
 
-  ROOT            || ident._var   || reify { ident.on(AST.Var(_)) }
+  ROOT            || ident._var   || reify { ident.on(AST.Var(_))  }
   ROOT            || ident.cons   || reify { ident.on(AST.Cons(_)) }
   ROOT            || "_"          || reify { ident.on(AST.Blank()) }
-  ident.SFX_CHECK || ident.errSfx || reify { ident.onErrSfx() }
-  ident.SFX_CHECK || always       || reify { ident.onNoErrSfx() }
+  ident.SFX_CHECK || ident.errSfx || reify { ident.onErrSfx()      }
+  ident.SFX_CHECK || always       || reify { ident.onNoErrSfx()    }
 
   //////////////////
   //// Operator ////
@@ -222,11 +223,11 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     MOD_CHECK.parent = SFX_CHECK
   }
 
-  ROOT          || opr.body     || reify { opr.on(AST.Opr(_)) }
+  ROOT          || opr.body     || reify { opr.on(AST.Opr(_))      }
   ROOT          || opr.opsNoMod || reify { opr.onNoMod(AST.Opr(_)) }
-  opr.MOD_CHECK || "="          || reify { opr.onMod() }
-  opr.SFX_CHECK || opr.errSfx   || reify { ident.onErrSfx() }
-  opr.SFX_CHECK || always       || reify { ident.onNoErrSfx() }
+  opr.MOD_CHECK || "="          || reify { opr.onMod()             }
+  opr.SFX_CHECK || opr.errSfx   || reify { ident.onErrSfx()        }
+  opr.SFX_CHECK || always       || reify { ident.onNoErrSfx()      }
 
   ////////////////
   //// NUMBER ////
@@ -276,9 +277,9 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     val PHASE2: State = state.define("Number Phase 2")
   }
 
-  ROOT       || num.decimal           || reify { num.onDecimal() }
-  num.PHASE2 || "_" >> alphaNum.many1 || reify { num.onExplicitBase() }
-  num.PHASE2 || "_"                   || reify { num.onDanglingBase() }
+  ROOT       || num.decimal           || reify { num.onDecimal()        }
+  num.PHASE2 || "_" >> alphaNum.many1 || reify { num.onExplicitBase()   }
+  num.PHASE2 || "_"                   || reify { num.onDanglingBase()   }
   num.PHASE2 || always                || reify { num.onNoExplicitBase() }
 
   //////////////
@@ -442,23 +443,23 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     INTERPOLATE.parent = ROOT
   }
 
-  ROOT      || '`'      || reify { text.onInterpolateEnd() }
-  text.INTP || '`'      || reify { text.onInterpolateBegin() }
+  ROOT      || '`'      || reify { text.onInterpolateEnd()               }
+  text.INTP || '`'      || reify { text.onInterpolateBegin()             }
   ROOT      || "'"      || reify { text.onBegin(text.INTP, Quote.Single) }
   ROOT      || "'''"    || reify { text.onBegin(text.INTP, Quote.Triple) }
-  text.INTP || "'"      || reify { text.onQuote(Quote.Single) }
-  text.INTP || "'''"    || reify { text.onQuote(Quote.Triple) }
-  text.INTP || text.seg || reify { text.onPlainSegment() }
-  text.INTP || eof      || reify { text.onEOF() }
-  text.INTP || '\n'     || reify { text.onEOL() }
+  text.INTP || "'"      || reify { text.onQuote(Quote.Single)            }
+  text.INTP || "'''"    || reify { text.onQuote(Quote.Triple)            }
+  text.INTP || text.seg || reify { text.onPlainSegment()                 }
+  text.INTP || eof      || reify { text.onEOF()                          }
+  text.INTP || '\n'     || reify { text.onEOL()                          }
 
   ROOT     || "\""           || reify { text.onBegin(text.RAW, Quote.Single) }
   ROOT     || "\"\"\""       || reify { text.onBegin(text.RAW, Quote.Triple) }
-  text.RAW || "\""           || reify { text.onQuote(Quote.Single) }
-  text.RAW || "\"\"\""       || reify { text.onQuote(Quote.Triple) }
-  text.RAW || noneOf("\"\n") || reify { text.onPlainSegment() }
-  text.RAW || eof            || reify { text.onEOF() }
-  text.RAW || '\n'           || reify { text.onEOL() }
+  text.RAW || "\""           || reify { text.onQuote(Quote.Single)           }
+  text.RAW || "\"\"\""       || reify { text.onQuote(Quote.Triple)           }
+  text.RAW || noneOf("\"\n") || reify { text.onPlainSegment()                }
+  text.RAW || eof            || reify { text.onEOF()                         }
+  text.RAW || '\n'           || reify { text.onEOL()                         }
 
   AST.Text.Segment.Escape.Character.codes.foreach { ctrl =>
     import scala.reflect.runtime.universe._
@@ -474,14 +475,14 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     text.INTP || s"\\$ctrl" || func
   }
 
-  text.INTP || text.escape_u16           || reify { text.onEscapeU16() }
-  text.INTP || text.escape_u32           || reify { text.onEscapeU32() }
-  text.INTP || text.escape_int           || reify { text.onEscapeInt() }
-  text.INTP || "\\\\"                    || reify { text.onEscapeSlash() }
-  text.INTP || "\\'"                     || reify { text.onEscapeQuote() }
+  text.INTP || text.escape_u16           || reify { text.onEscapeU16()      }
+  text.INTP || text.escape_u32           || reify { text.onEscapeU32()      }
+  text.INTP || text.escape_int           || reify { text.onEscapeInt()      }
+  text.INTP || "\\\\"                    || reify { text.onEscapeSlash()    }
+  text.INTP || "\\'"                     || reify { text.onEscapeQuote()    }
   text.INTP || "\\\""                    || reify { text.onEscapeRawQuote() }
-  text.INTP || ("\\" >> text.stringChar) || reify { text.onInvalidEscape() }
-  text.INTP || "\\"                      || reify { text.onPlainSegment() }
+  text.INTP || ("\\" >> text.stringChar) || reify { text.onInvalidEscape()  }
+  text.INTP || "\\"                      || reify { text.onPlainSegment()   }
 
   //////////////
   /// Blocks ///
@@ -494,7 +495,7 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     var indent: Int,
     var emptyLines: List[Int],
     var firstLine: Option[AST.Block.Line.NonEmpty],
-    var lines: List[AST.Block.Line]
+    var lines: List[AST.Block.OptLine]
   )
 
   final object block {
@@ -536,8 +537,12 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
       val block2 = result.last() match {
         case None => block
         case Some(ast) =>
-          if (!ast.isInstanceOf[AST.Opr]) block
-          else block.replaceType(AST.Block.Discontinuous)
+          ast match {
+            case _: AST.Opr =>
+              block.replaceType(AST.Block.Discontinuous): AST.Block
+            case _ => block
+
+          }
       }
       result.app(block2)
       off.push()
@@ -549,8 +554,9 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
         case None       => current.lines.reverse
         case Some(line) => line.toOptional +: current.lines.reverse
       }
-      val line :: lines = current.emptyLines.map(AST.Block.Line(_)) ++ body
-      val module        = AST.Module(line, lines)
+      val line :: lines = (current.emptyLines
+          .map(AST.Block.Line(None, _)): List[AST.Block.OptLine]) ++ body
+      val module = AST.Module(line, lines)
       result.current = Some(module)
       logger.endGroup()
     }
@@ -567,7 +573,7 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
               current.lines +:= AST.Block.Line(result.current, off.use())
           }
       }
-      emptyLines.reverse.foreach(current.lines +:= AST.Block.Line(_))
+      emptyLines.reverse.foreach(current.lines +:= AST.Block.OptLine[AST](_))
       emptyLines     = Nil
       result.current = None
     }
@@ -597,7 +603,7 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
       state.end()
       submitLine()
       off.on()
-      current.lines +:= AST.Block.Line(off.use())
+      current.lines +:= AST.Block.OptLine[AST](off.use())
       off.pop()
       onEOF()
     }
@@ -636,20 +642,20 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     val FIRSTCHAR = state.define("First Char")
   }
 
-  ROOT            || newline              || reify { block.onEndLine() }
-  block.NEWLINE   || space.opt >> newline || reify { block.onEmptyLine() }
-  block.NEWLINE   || space.opt >> eof     || reify { block.onEOFLine() }
-  block.NEWLINE   || space.opt            || reify { block.onNewLine() }
-  block.MODULE    || space.opt >> newline || reify { block.onEmptyLine() }
+  ROOT            || newline              || reify { block.onEndLine()     }
+  block.NEWLINE   || space.opt >> newline || reify { block.onEmptyLine()   }
+  block.NEWLINE   || space.opt >> eof     || reify { block.onEOFLine()     }
+  block.NEWLINE   || space.opt            || reify { block.onNewLine()     }
+  block.MODULE    || space.opt >> newline || reify { block.onEmptyLine()   }
   block.MODULE    || space.opt            || reify { block.onModuleBegin() }
-  block.FIRSTCHAR || always               || reify { state.end() }
+  block.FIRSTCHAR || always               || reify { state.end()           }
 
   ////////////////
   /// Defaults ///
   ////////////////
 
   final def onUnrecognized(): Unit = logger.trace {
-    result.app(AST.Unrecognized(_))
+    result.app(AST.Invalid.Unrecognized(_))
   }
 
   final def onEOF(): Unit = logger.trace {
@@ -660,8 +666,8 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     block.submitModule()
   }
 
-  ROOT || space || reify { off.on() }
-  ROOT || eof   || reify { onEOF() }
+  ROOT || space || reify { off.on()         }
+  ROOT || eof   || reify { onEOF()          }
   ROOT || any   || reify { onUnrecognized() }
 }
 
