@@ -33,6 +33,8 @@ object AST {
 
   //// Structure ////
 
+  type AST_Type = Fix[TaggedShapeOf]
+
   type Shape            = ShapeOf[AST]
   type AST              = Fix[TaggedShapeOf]
   type ASTFrom[T[_]]    = Tagged[T[AST]]
@@ -56,12 +58,15 @@ object AST {
       with Ident.implicits
       with Literal.implicits
       with App.implicits
+      with Block.implicits
       with Fix.implicits
       with Tagged.implicits
 
   object TopLevel {
     object implicits extends implicits
     trait implicits {
+
+      implicit def fixSAST(v: Shifted[TaggedShapeOf[AST]]): SAST = v.map(fix)
 
 //      // FIXME: Makes IntelliJ happy, but probably lowers performance
 //      implicit def shapeToAST(shape: Shape): AST =
@@ -415,6 +420,13 @@ object AST {
       val any             = UnapplyByType[Cons]
       def unapply(t: AST) = Unapply[Cons].run(_.name)(t)
       def apply(name: String): Opr = OprOf[AST](name)
+
+      type Mod = AST.Mod // FIXME: remove me
+      val Mod = AST.Mod // FIXME: remove me
+    }
+    implicit class OprOps(opr: Opr) {
+      def prec:  Int   = opr.shape.prec
+      def assoc: Assoc = opr.shape.assoc
     }
 
     object Mod {
@@ -467,6 +479,12 @@ object AST {
   //// Literal /////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
+  type Number = Literal.Number
+  val Number = Literal.Number
+
+  type Text = Literal.Text
+  val Text = Literal.Text
+
   type Literal = LiteralOf[AST]
   sealed trait LiteralOf[T] extends ShapeOf[T]
   object Literal {
@@ -480,7 +498,7 @@ object AST {
     //// Number ////
     ////////////////
 
-    type Number = NumberOf[AST]
+    type Number = ASTFrom[NumberOf]
     case class NumberOf[T](base: Option[String], int: String)
         extends LiteralOf[T]
         with Phantom
@@ -493,7 +511,7 @@ object AST {
       def apply(b: String, i: Int):    Number = Number(b, i.toString)
       def apply(b: Int, i: Int):       Number = Number(b.toString, i.toString)
       def apply(b: Option[String], i: String): Number =
-        NumberOf(b, i)
+        Tagged(NumberOf(b, i))
 
       //// DanglingBase ////
 
@@ -515,9 +533,9 @@ object AST {
         implicit def offZipNum[T]: OffsetZip[NumberOf, T]  = t => t.coerce
         implicit def offZipNumDang[T]: OffsetZip[DanglingBaseOf, T] =
           t => t.coerce
-        implicit def reprNum: Repr[NumberOf[_]] =
+        implicit def reprNum[T]: Repr[NumberOf[T]] =
           t => t.base.map(_ + "_").getOrElse("") + t.int
-        implicit def reprNumDang: Repr[NumberOf[_]] = R + _.base + '_'
+        implicit def reprNumDang[T]: Repr[DanglingBaseOf[T]] = R + _.base + '_'
       }
     }
 
@@ -525,8 +543,8 @@ object AST {
     //// Text ////
     //////////////
 
-    type Text = _Text[AST]
-    sealed trait _Text[T] extends ShapeOf[T]
+    type Text = ASTFrom[TextOf]
+    sealed trait TextOf[T] extends ShapeOf[T]
     object Text {
 
       //// Definition ////
@@ -534,18 +552,18 @@ object AST {
       type Line[T]  = List[T]
       type Block[T] = List1[Line[T]]
 
-      type Raw          = _Raw[AST]
-      type Interpolated = _Interpolated[AST]
-      type Unclosed     = _Unclosed[AST]
+      type Raw          = ASTFrom[RawOf]
+      type Interpolated = ASTFrom[InterpolatedOf]
+      type Unclosed     = ASTFrom[UnclosedOf]
 
-      case class _Raw[T](quote: Quote, lines: Raw.Block[T]) extends _Text[T] {
+      case class RawOf[T](quote: Quote, lines: Raw.Block[T]) extends TextOf[T] {
         val quoteChar: Char = '"'
       }
-      case class _Interpolated[T](quote: Quote, lines: Interpolated.Block[T])
-          extends _Text[T] {
+      case class InterpolatedOf[T](quote: Quote, lines: Interpolated.Block[T])
+          extends TextOf[T] {
         val quoteChar: Char = '\''
       }
-      case class _Unclosed[T](text: _Text[T]) extends AST.InvalidOf[T]
+      case class UnclosedOf[T](text: TextOf[T]) extends AST.InvalidOf[T]
 
       object Raw {
         type Segment[T] = Text.Segment._Raw[T]
@@ -563,27 +581,27 @@ object AST {
 
       object implicits extends implicits
       trait implicits extends Segment.implicits {
-        implicit def reprTextRaw[T]:      Repr[_Raw[T]]          = _ => ???
-        implicit def reprTextInt[T]:      Repr[_Interpolated[T]] = _ => ???
-        implicit def reprTextUnclosed[T]: Repr[_Unclosed[T]]     = _ => ???
+        implicit def reprTextRaw[T]:      Repr[RawOf[T]]          = _ => ???
+        implicit def reprTextInt[T]:      Repr[InterpolatedOf[T]] = _ => ???
+        implicit def reprTextUnclosed[T]: Repr[UnclosedOf[T]]     = _ => ???
 
-        implicit def ftorTextRaw[T]: Functor[_Raw] =
+        implicit def ftorTextRaw[T]: Functor[RawOf] =
           semi.functor
-        implicit def ftorTextInterpolated[T]: Functor[_Interpolated] =
+        implicit def ftorTextInterpolated[T]: Functor[InterpolatedOf] =
           semi.functor
-        implicit def ftorTextUnclosed[T]: Functor[_Unclosed] =
+        implicit def ftorTextUnclosed[T]: Functor[UnclosedOf] =
           semi.functor
-        implicit def offZipTextRaw[T]: OffsetZip[_Raw, T] =
+        implicit def offZipTextRaw[T]: OffsetZip[RawOf, T] =
           t =>
             t.copy(lines = t.lines.map(_.map(offZipTxtSRaw.zipWithOffset(_))))
-        implicit def offZipTextInt[T]: OffsetZip[_Interpolated, T] =
+        implicit def offZipTextInt[T]: OffsetZip[InterpolatedOf, T] =
           t =>
             t.copy(lines = t.lines.map(_.map(offZipTxtSInt.zipWithOffset(_))))
-        implicit def offZipUnclosed[T]: OffsetZip[_Unclosed, T] =
+        implicit def offZipUnclosed[T]: OffsetZip[UnclosedOf, T] =
           t => t.copy(text = OffsetZip(t.text))
-        implicit def offZipText[T]: OffsetZip[_Text, T] = {
-          case t: _Raw[T]          => OffsetZip(t)
-          case t: _Interpolated[T] => OffsetZip(t)
+        implicit def offZipText[T]: OffsetZip[TextOf, T] = {
+          case t: RawOf[T]          => OffsetZip(t)
+          case t: InterpolatedOf[T] => OffsetZip(t)
         }
       }
 
@@ -778,7 +796,7 @@ object AST {
 
   val newline = R + '\n'
 
-  type Block = BlockOf[AST]
+  type Block = ASTFrom[BlockOf]
   case class BlockOf[T](
     typ: Block.Type,
     indent: Int,
@@ -810,6 +828,13 @@ object AST {
     def unapply(t: AST) = t.shape match {
       case t: BlockOf[_] => Some((t.indent, t.firstLine, t.lines))
       case _             => None
+    }
+
+    object implicits extends implicits
+    trait implicits {
+      implicit def ftorBlock:          Functor[BlockOf]      = semi.functor
+      implicit def reprBlock[T: Repr]: Repr[BlockOf[T]]      = ???
+      implicit def offZipBlock[T]:     OffsetZip[BlockOf, T] = ???
     }
 
     //// Line ////

@@ -1,6 +1,7 @@
 package org.enso.syntax.text.ast.meta
 
 import org.enso.syntax.text.AST
+import org.enso.syntax.text.AST.implicits._
 import org.enso.syntax.text.AST.SAST
 import org.enso.syntax.text.AST.Stream
 import org.enso.syntax.text.prec.Operator
@@ -9,7 +10,6 @@ import scala.annotation.tailrec
 import scala.reflect.ClassTag
 import org.enso.data.Shifted
 import org.enso.syntax.text.ast.Repr
-import org.enso.syntax.text.v2.AST.OffsetZip
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Pattern ///////////////////////////////////////////////////////////////////
