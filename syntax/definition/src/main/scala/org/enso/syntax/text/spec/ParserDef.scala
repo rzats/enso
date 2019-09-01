@@ -538,7 +538,7 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
         case None => block
         case Some(ast) =>
           ast match {
-            case _: AST.Opr =>
+            case AST.Opr.any(_) =>
               block.replaceType(AST.Block.Discontinuous): AST.Block
             case _ => block
 
