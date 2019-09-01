@@ -1,6 +1,7 @@
 package org.enso.syntax.text.ast
 
 import org.enso.syntax.text.AST
+import org.enso.syntax.text.AST.implicits._
 import org.enso.syntax.text.AST.App.Infix
 
 object DSL {

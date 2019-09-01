@@ -131,7 +131,7 @@ object Builtin {
       (ctx.prefix, ctx.body) match {
         case (Some(pfx), List(s1)) =>
           (pfx.toStream, s1.body.toStream) match {
-            case (List(l), List(r)) => AST.App(l.el, Opr("->"), r.el)
+            case (List(l), List(r)) => AST.App.Infix(l.el, Opr("->"), r.el)
             case _                  => internalError
           }
       }
@@ -165,11 +165,11 @@ object Builtin {
             case List(Shifted(_, body: AST)) =>
               @tailrec
               def go(t: AST): AST = t match {
-                case AST.App(_, arg)           => arg
+                case AST.App.Prefix(_, arg)    => arg
                 case AST.App.Infix(self, _, _) => go(self)
                 case m: AST.Macro.Match        => go(m.resolved)
-                case AST.Group(None, _)        => t
-                case AST.Group(Some(s), _)     => go(s)
+                case AST.Group(None)           => t
+                case AST.Group(Some(s))        => go(s)
                 case _                         => t
               }
               go(body)

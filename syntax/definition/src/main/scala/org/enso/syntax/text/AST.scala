@@ -292,9 +292,11 @@ object AST {
     object Section {
       type Left  = App.Left
       type Right = App.Right
+      type Sides = App.Sides
 
       val Left  = App.Left
       val Right = App.Right
+      val Sides = App.Sides
     }
 
     val Prefix = App
@@ -332,6 +334,7 @@ object AST {
       def mapWithOff(f: (Int, AST) => AST) = copy(arg = f(opr.span + off, arg))
     }
     object Right {
+      val any = UnapplyByType[Right]
       def apply(opr: Opr, off: Int, arg: AST): Right = _Right(opr, off, arg)
       def apply(opr: Opr, arg: AST):           Right = Right(opr, 1, arg)
       def unapply(t: Right) = Some((t.opr, t.arg))
@@ -342,6 +345,9 @@ object AST {
       def setID(newID: ID)                 = copy(id = Some(newID))
       def map(f: AST => AST)               = this
       def mapWithOff(f: (Int, AST) => AST) = this
+    }
+    object Sides {
+      val any = UnapplyByType[Sides]
     }
 
     type Infix = _Infix
@@ -1127,7 +1133,8 @@ object AST {
   //// Group ///////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  final case class Group(body: Option[AST] = None, id: Option[ID] = None)
+  type Group = _Group
+  final case class _Group(body: Option[AST] = None, id: Option[ID] = None)
       extends AST {
     val repr                             = R + body
     def setID(newID: ID)                 = copy(id = Some(newID))
@@ -1135,9 +1142,13 @@ object AST {
     def mapWithOff(f: (Int, AST) => AST) = map(f(0, _))
   }
   object Group {
+    def apply(body: Option[AST], id: Option[ID] = None): Group =
+      _Group(body, id)
     def apply(body: AST):  Group = Group(Some(body))
     def apply(body: SAST): Group = Group(body.el)
     def apply():           Group = Group(None)
+
+    def unapply(t: Group): Option[Option[AST]] = Some(t.body)
   }
 
   //////////////////////////////////////////////////////////////////////////////
