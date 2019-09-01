@@ -118,7 +118,7 @@ lazy val unused = (project in file("lib/unused"))
 lazy val syntax_definition = (project in file("syntax/definition"))
   .settings(
     libraryDependencies ++= Seq(
-      "org.typelevel"      %% "cats-core"     % "1.6.0",
+      "org.typelevel"      %% "cats-core"     % "2.0.0-RC1",
       "com.lihaoyi"        %% "pprint"        % "0.5.3",
       "org.scala-lang"     % "scala-reflect"  % "2.12.8",
       "org.scala-lang"     % "scala-compiler" % "2.12.8",
@@ -156,7 +156,6 @@ lazy val syntax = (project in file("syntax/specialization"))
   .settings(
     libraryDependencies ++= Seq(
       "com.storm-enroute"  %% "scalameter"    % "0.17" % "bench",
-      "org.typelevel"      %% "cats-core"     % "1.6.0",
       "org.scalatest"      %% "scalatest"     % "3.0.5" % Test,
       "com.lihaoyi"        %% "pprint"        % "0.5.3",
       "org.scala-lang"     % "scala-reflect"  % "2.12.8",
@@ -164,7 +163,7 @@ lazy val syntax = (project in file("syntax/specialization"))
       "org.feijoas"        %% "mango"         % "0.14",
       "org.apache.commons" % "commons-text"   % "1.6",
       "org.scalameta"      %% "scalameta"     % "4.2.0",
-      "org.typelevel"      %% "cats-core"     % "1.6.1"
+      "org.typelevel"      %% "cats-core"     % "2.0.0-RC1"
     ),
     resolvers ++= Seq(
       "Sonatype OSS Snapshots" at
@@ -227,7 +226,7 @@ lazy val interpreter = (project in file("interpreter"))
       "org.graalvm.sdk"   % "graal-sdk"   % "19.0.0",
       "org.scalacheck"    %% "scalacheck" % "1.14.0" % Test,
       "org.scalatest"     %% "scalatest"  % "3.2.0-SNAP10" % Test,
-      "org.typelevel"     %% "cats-core"  % "2.0.0-M4"
+      "org.typelevel"     %% "cats-core"  % "2.0.0-RC1"
     )
   )
   .dependsOn(syntax)

@@ -13,7 +13,7 @@ import scala.annotation.tailrec
 //// Repr //////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
-trait Repr[-T] {
+trait Repr[T] {
   def repr(a: T): Repr.Builder
 }
 object Repr {
@@ -88,7 +88,7 @@ object Repr {
         case Nil =>
         case r :: rs =>
           r match {
-            case r: Empty  => go(rs)
+            case _: Empty  => go(rs)
             case r: Letter => bldr += r.char; go(rs)
             case r: Space  => for (_ <- 1 to r.span) { bldr += ' ' }; go(rs)
             case r: Text   => bldr ++= r.str; go(rs)
@@ -126,9 +126,9 @@ object Repr {
 
     //// Instances ////
 
-    implicit def fromString(a: String): Builder       = Repr(a)
-    implicit def fromChar(a: Char):     Builder       = Repr(a)
-    implicit def reprForBuilder:        Repr[Builder] = identity(_)
+    implicit def fromString(a: String):        Builder = Repr(a)
+    implicit def fromChar(a: Char):            Builder = Repr(a)
+    implicit def reprForBuilder[T <: Builder]: Repr[T] = identity(_)
     implicit val monoidForBuilder: Monoid[Builder] = new Monoid[Builder] {
       def empty: Builder = R
       def combine(l: Builder, r: Builder): Builder = (l, r) match {

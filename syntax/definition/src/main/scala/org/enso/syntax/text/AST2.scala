@@ -41,9 +41,9 @@ object AST {
   //// Aliases ////
 
   type SAST        = Shifted[AST]
-  type _Stream[T]  = List[Shifted[T]]
+  type StreamOf[T] = List[Shifted[T]]
   type _Stream1[T] = List1[Shifted[T]]
-  type Stream      = _Stream[AST]
+  type Stream      = StreamOf[AST]
   type Stream1     = _Stream1[AST]
   type ID          = UUID
 
@@ -67,7 +67,7 @@ object AST {
 //      implicit def shapeToAST(shape: Shape): AST =
 //        Fix.implicits.fixDeep(shape)
 
-      implicit def offZipStream[T: Repr]: OffsetZip[_Stream, T] = { stream =>
+      implicit def offZipStream[T: Repr]: OffsetZip[StreamOf, T] = { stream =>
         var off = 0
         stream.map { t =>
           off += t.off
@@ -290,7 +290,7 @@ object AST {
     def apply[T: ASTNode](shape: T): Tagged[T] = Tagged(shape, None)
     trait implicits {
       implicit def toTagged[T: ASTNode](t: T): Tagged[T]       = Tagged(t)
-      implicit def reprWithData:               Repr[Tagged[_]] = _.repr
+      implicit def reprTagged[T]:              Repr[Tagged[T]] = _.repr
     }
   }
 
@@ -328,8 +328,13 @@ object AST {
 
   sealed trait InvalidOf[T]                 extends ShapeOf[T]
   case class UnrecognizedOf[T](str: String) extends InvalidOf[T] with Phantom
-  case class UnexpectedOf[T](msg: String, stream: _Stream[T])
+  case class UnexpectedOf[T](msg: String, stream: StreamOf[T])
       extends InvalidOf[T]
+
+  object Unexpected {
+    def apply(msg: String, stream: Stream): Unexpected =
+      UnexpectedOf(msg, stream)
+  }
 
   implicit def ftorInvalid:      Functor[InvalidOf]      = semi.functor
   implicit def ftorUnexpected:   Functor[UnexpectedOf]   = semi.functor
@@ -439,11 +444,11 @@ object AST {
 
     object implicits extends implicits
     trait implicits extends DirectConversions {
-      implicit def reprBlank:      Repr[BlankOf[_]]      = _.name
-      implicit def reprVar:        Repr[VarOf[_]]        = _.name
-      implicit def reprCons:       Repr[ConsOf[_]]       = _.name
-      implicit def reprOpr:        Repr[OprOf[_]]        = _.name
-      implicit def reprMod:        Repr[ModOf[_]]        = _.name
+      implicit def reprBlank[T]:   Repr[BlankOf[T]]      = _.name
+      implicit def reprVar[T]:     Repr[VarOf[T]]        = _.name
+      implicit def reprCons[T]:    Repr[ConsOf[T]]       = _.name
+      implicit def reprOpr[T]:     Repr[OprOf[T]]        = _.name
+      implicit def reprMod[T]:     Repr[ModOf[T]]        = _.name
       implicit def ftorIdent:      Functor[IdentOf]      = semi.functor
       implicit def ftorBlank:      Functor[BlankOf]      = semi.functor
       implicit def ftorVar:        Functor[VarOf]        = semi.functor
@@ -837,9 +842,9 @@ object AST {
 
     import implicits._
 
-    val foo  = Var("foo")
-    val bar  = Var("foo")
-    val plus = Opr("+")
+    val foo = Var("foo")
+    val bar = Var("foo")
+//    val plus = Opr("+")
 
 //    foo.map()
 //    val ttt2   = foo: Shape
@@ -881,7 +886,7 @@ object AST {
 //    println(tfoo2)
 //    println(ttt3.repr)
 
-    var app1 = App.Prefix(fooAST, 0, bar)
+    App.Prefix(fooAST, 0, bar)
 
   }
 
@@ -953,7 +958,7 @@ object AST {
     type Resolver = Resolver.Context => AST
     object Resolver {
       final case class Context(
-        prefix: Option[Pattern.Match],
+        prefix: Option[Pattern.MatchOf[SAST]],
         body: List[Macro.Match.Segment],
         id: ID
       )
@@ -1043,14 +1048,14 @@ object AST {
         val backPatWithCheck   = back.map(checkValid)
         val initSegsWithChecks = addInitChecks(initSegs)
         val lastSegWithChecks  = addLastCheck(lastSeg)
-        def resolverWithChecks(ctx: Resolver.Context) = {
+        def resolverWithChecks: Resolver = { ctx =>
           val pfxFail  = !ctx.prefix.forall(_.isValid)
           val segsFail = !ctx.body.forall(_.isValid)
           if (pfxFail || segsFail) {
             val pfxStream  = ctx.prefix.map(_.toStream).getOrElse(List())
             val segsStream = ctx.body.flatMap(_.toStream)
             val stream     = pfxStream ++ segsStream
-            ??? // AST.Unexpected("invalid statement", stream)
+            AST.Unexpected("invalid statement", stream)
           } else resolver(ctx)
         }
         __Definition__(
