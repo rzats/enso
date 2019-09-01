@@ -223,9 +223,6 @@ object AST {
     }
   }
 
-//  type ASTOf[T[_]] = Node[T, ShapeOf]
-//  type AST         = ASTOf[ShapeOf]
-
   //// Ops ////
 
   trait NodeOps[T] {
@@ -332,8 +329,9 @@ object AST {
   val Mod   = Ident.Mod
 
   object Ident {
-//    case class InvalidSuffix[T](elem: Ident, suffix: String)
-//        extends InvalidOf[T]
+    type InvalidSuffix = ASTOf[InvalidSuffixOf]
+    case class InvalidSuffixOf[T](elem: Ident, suffix: String)
+        extends InvalidOf[T]
 
     //// Definition ////
 
