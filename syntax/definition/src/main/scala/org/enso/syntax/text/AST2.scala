@@ -18,8 +18,6 @@ import scala.reflect.ClassTag
 
 object AST {
 
-  type Repr[T] = Repr.Of[T]
-
   //////////////////////////////////////////////////////////////////////////////
   //// Reexports ///////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
@@ -74,7 +72,7 @@ object AST {
         stream.map { t =>
           off += t.off
           val out = t.map((off, _))
-          off += Repr.span(t.el)
+          off += Repr(t.el).span
           out
         }
       }
@@ -155,10 +153,10 @@ object AST {
     object helpers {
       // TODO: Should be auto-generated
 //      def reprShape: Repr[ShapeOf[AST]] = {
-//        case t: Ident.BlankOf[AST] => Repr.of(t)
-//        case t: Ident.VarOf[AST]   => Repr.of(t)
-//        case t: Ident.ConsOf[AST]  => Repr.of(t)
-//        case t: App.PrefixOf[AST]  => Repr.of(t)
+//        case t: Ident.BlankOf[AST] => Repr(t)
+//        case t: Ident.VarOf[AST]   => Repr(t)
+//        case t: Ident.ConsOf[AST]  => Repr(t)
+//        case t: App.PrefixOf[AST]  => Repr(t)
 //        // ...
 //      }
 
@@ -237,7 +235,7 @@ object AST {
     object implicits extends implicits
     trait implicits {
       implicit def reprFix[F[_]](implicit ev: Repr[Fix.Body[F]]): Repr[Fix[F]] =
-        t => Repr.of(t.unFix)
+        t => Repr(t.unFix)
 
       implicit def unfix[F[_]](t: Fix[F]):          Fix.Body[F]        = t.unFix
       implicit def fix(t: Fix.Body[TaggedShapeOf]): Fix[TaggedShapeOf] = Fix(t)
@@ -266,7 +264,7 @@ object AST {
     *              map.
     */
   case class Tagged[+T: ASTNode](shape: T, id: Option[ID]) {
-    val repr: RRR.Builder = ASTNode[T].reprForT.of(shape)
+    val repr: RRR.Builder = ASTNode[T].reprForT.repr(shape)
     def withNewID()       = copy(id = Some(UUID.randomUUID()))
     def map(f: AST => AST): Tagged[T] =
       copy(shape = ASTNode[T].map(shape)(f))
@@ -338,7 +336,7 @@ object AST {
   implicit def ftorUnrecognized: Functor[UnrecognizedOf] = semi.functor
   implicit def reprUnrecognized: Repr[UnrecognizedOf[_]] = _.str
   implicit def reprUnexpected[T: Repr]: Repr[UnexpectedOf[T]] =
-    t => Repr.of(t.stream)
+    t => Repr(t.stream)
   implicit def offZipUnrecognized[T]: OffsetZip[UnrecognizedOf, T] =
     t => t.coerce
   implicit def offZipUnexpected[T: Repr]: OffsetZip[UnexpectedOf, T] =
@@ -625,11 +623,11 @@ object AST {
           implicit def offZipTxtSExpr[T]:  OffsetZip[_Expr, T]  = _.map((0, _))
           implicit def offZipTxtSPlain[T]: OffsetZip[_Plain, T] = t => t.coerce
           implicit def reprTxtSRaw[T]: Repr[_Raw[T]] = {
-            case t: _Plain[T] => Repr.of(t)
+            case t: _Plain[T] => Repr(t)
           }
           implicit def reprTxtSInt[T: Repr]: Repr[_Interpolated[T]] = {
-            case t: _Plain[T] => Repr.of(t)
-            case t: _Expr[T]  => Repr.of(t)
+            case t: _Plain[T] => Repr(t)
+            case t: _Expr[T]  => Repr(t)
           }
           implicit def ftorTxtSRaw[T]: Functor[_Raw]          = semi.functor
           implicit def ftorTxtSInt[T]: Functor[_Interpolated] = semi.functor
@@ -695,7 +693,7 @@ object AST {
       implicit def ftorPrefix: Functor[PrefixOf] = semi.functor
       implicit def ftorInfix:  Functor[InfixOf]  = semi.functor
       implicit def offZipPrefix[T: Repr]: OffsetZip[PrefixOf, T] =
-        t => t.copy(fn = (0, t.fn), arg = (Repr.span(t.fn) + t.off, t.arg))
+        t => t.copy(fn = (0, t.fn), arg = (Repr(t.fn).span + t.off, t.arg))
       implicit def offZipInfix[T: Repr]: OffsetZip[InfixOf, T] = t => {
         val rargSpan = (R + t.larg + t.loff + t.opr + t.roff).span
         t.copy(larg = (0, t.larg), rarg = (rargSpan, t.rarg))
@@ -762,7 +760,7 @@ object AST {
         implicit def offZipLeft[T]: OffsetZip[LeftOf, T] =
           t => t.copy(arg = (0, t.arg))
         implicit def offZipRight[T]: OffsetZip[RightOf, T] =
-          t => t.copy(arg = (Repr.span(t.opr) + t.off, t.arg))
+          t => t.copy(arg = (Repr(t.opr).span + t.off, t.arg))
         implicit def offZipSides[T]: OffsetZip[SidesOf, T] =
           t => t.coerce
       }
@@ -1153,7 +1151,7 @@ object AST {
       implicit def reprMixfix[T: Repr]: Repr[MixfixOf[T]] = t => {
         val lastRepr = if (t.name.length == t.args.length) List() else List(R)
         val argsRepr = t.args.toList.map(R + " " + _) ++ lastRepr
-        val nameRepr = t.name.toList.map(Repr.of(_))
+        val nameRepr = t.name.toList.map(Repr(_))
         R + (nameRepr, argsRepr).zipped.map(_ + _)
       }
     }

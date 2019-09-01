@@ -259,8 +259,8 @@ object Pattern {
   object MatchOf {
     import cats.implicits._
 
-    implicit def reprMatch[T: Repr.Of]: Repr.Of[MatchOf[T]] =
-      _.map(Repr.of(_)).fold
+    implicit def reprMatch[T: Repr]: Repr[MatchOf[T]] =
+      _.map(Repr(_)).fold
     implicit def ftorMatch: Functor[MatchOf]  = _MatchOf.ftorMatch
     implicit def travMatch: Traverse[MatchOf] = _MatchOf.travMatch
     implicit def foldMatch: Foldable[MatchOf] = _MatchOf.foldMatch
@@ -269,23 +269,23 @@ object Pattern {
 
     val M = Match
     // format: off
-    def mapWithOff[T:Repr.Of](self:MatchOf[T])(f: (Int,T) => T): MatchOf[T] =
+    def mapWithOff[T:Repr](self:MatchOf[T])(f: (Int,T) => T): MatchOf[T] =
       mapWithOff_(self)(f,0)._1
     
-    def mapWithOff_[T:Repr.Of](self:MatchOf[T])(f: (Int,T) => T, off:Int): (MatchOf[T], Int) = self match {
-      case m: M.Build[T]   => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
-      case m: M.Err[T]     => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
-      case m: M.Tok[T]     => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
-      case m: M.Blank[T]   => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
-      case m: M.Var[T]     => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
-      case m: M.Cons[T]    => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
-      case m: M.Opr[T]     => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
-      case m: M.Mod[T]     => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
-      case m: M.Num[T]     => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
-      case m: M.Text[T]    => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
-      case m: M.Block[T]   => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
-      case m: M.Macro[T]   => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
-      case m: M.Invalid[T] => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
+    def mapWithOff_[T:Repr](self:MatchOf[T])(f: (Int,T) => T, off:Int): (MatchOf[T], Int) = self match {
+      case m: M.Build[T]   => (m.copy(elem = f(off,m.elem)), off + Repr(m.elem).span)
+      case m: M.Err[T]     => (m.copy(elem = f(off,m.elem)), off + Repr(m.elem).span)
+      case m: M.Tok[T]     => (m.copy(elem = f(off,m.elem)), off + Repr(m.elem).span)
+      case m: M.Blank[T]   => (m.copy(elem = f(off,m.elem)), off + Repr(m.elem).span)
+      case m: M.Var[T]     => (m.copy(elem = f(off,m.elem)), off + Repr(m.elem).span)
+      case m: M.Cons[T]    => (m.copy(elem = f(off,m.elem)), off + Repr(m.elem).span)
+      case m: M.Opr[T]     => (m.copy(elem = f(off,m.elem)), off + Repr(m.elem).span)
+      case m: M.Mod[T]     => (m.copy(elem = f(off,m.elem)), off + Repr(m.elem).span)
+      case m: M.Num[T]     => (m.copy(elem = f(off,m.elem)), off + Repr(m.elem).span)
+      case m: M.Text[T]    => (m.copy(elem = f(off,m.elem)), off + Repr(m.elem).span)
+      case m: M.Block[T]   => (m.copy(elem = f(off,m.elem)), off + Repr(m.elem).span)
+      case m: M.Macro[T]   => (m.copy(elem = f(off,m.elem)), off + Repr(m.elem).span)
+      case m: M.Invalid[T] => (m.copy(elem = f(off,m.elem)), off + Repr(m.elem).span)
       case m: Pattern.MatchOf[T] =>
         var loff = off
         val out  = m.mapStructShallow {p =>

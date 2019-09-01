@@ -13,11 +13,61 @@ import scala.annotation.tailrec
 //// Repr //////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////
 
+trait Repr[-T] {
+  def repr(a: T): Repr.Builder
+}
 object Repr {
 
-  def apply[T: Repr.Of](t: T): Builder = implicitly[Repr.Of[T]].of(t)
+  //// Smart Constructors ////
 
+  def apply[T: Repr](t: T): Builder = implicitly[Repr[T]].repr(t)
   val R = Repr.Builder.Empty()
+
+  //// Operations ////
+
+  implicit class ToReprOps[T: Repr](t: T) {
+    def repr: Builder = Repr(t)
+    def span: Int     = repr.span
+  }
+
+  ///// Instances ////
+
+  implicit def reprForUnit: Repr[Unit] =
+    _ => Repr.Builder.Empty()
+  implicit def reprForString: Repr[String] =
+    Repr.Builder.Text(_)
+  implicit def reprForInt: Repr[Int] = {
+    case 0 => R
+    case i => Repr.Builder.Space(i)
+  }
+  implicit def reprForChar: Repr[Char] =
+    Repr.Builder.Letter(_)
+  implicit def reprForTuple2[T1: Repr, T2: Repr]: Repr[(T1, T2)] =
+    t => Repr.Builder.Seq(Repr(t._1), Repr(t._2))
+  implicit def reprForProvider[T <: Repr.Provider]: Repr[T] =
+    _.repr
+  implicit def reprForList[T: Repr]: Repr[List[T]] =
+    _.map(_.repr).fold(R: Builder)(Repr.Builder.Seq(_, _))
+  implicit def reprForList1[T: Repr]: Repr[List1[T]] =
+    t => R + t.head + t.tail
+  implicit def reprForShifted[T: Repr]: Repr[Shifted[T]] =
+    t => R + t.off + t.el
+  implicit def reprForShiftedList1[T: Repr]: Repr[Shifted.List1[T]] =
+    t => R + t.head + t.tail
+  implicit def reprForOption[T: Repr]: Repr[Option[T]] =
+    _.map(_.repr).getOrElse(R)
+  implicit def reprForNone: Repr[None.type] =
+    _ => R
+  implicit def reprForSome[T: Repr]: Repr[Some[T]] =
+    _.map(_.repr).getOrElse(R)
+
+  //////////////////////////////////////////////////////////////////////////////
+  //// Provider ////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  trait Provider {
+    val repr: Builder
+  }
 
   //////////////////////////////////////////////////////////////////////////////
   //// Builder /////////////////////////////////////////////////////////////////
@@ -29,12 +79,8 @@ object Repr {
     val byteSpan: Int
     val span: Int
 
-    def +[T: Repr.Of](that: T): Builder =
-      Seq(this, implicitly[Repr.Of[T]].of(that))
-
-    def ++[T: Repr.Of](that: T): Builder =
-      this + " " + that
-
+    def +[T: Repr](that: T):  Builder = Seq(this, Repr(that))
+    def ++[T: Repr](that: T): Builder = this + " " + that
     def build(): String = {
       val bldr = new StringBuilder()
       @tailrec
@@ -54,6 +100,8 @@ object Repr {
     }
   }
   object Builder {
+
+    //// Constructors ////
 
     final case class Empty() extends Builder {
       val byteSpan = 0
@@ -76,6 +124,11 @@ object Repr {
     }
     object Seq { def apply(l: Builder, r: Builder): Builder = l |+| r }
 
+    //// Instances ////
+
+    implicit def fromString(a: String): Builder       = Repr(a)
+    implicit def fromChar(a: Char):     Builder       = Repr(a)
+    implicit def reprForBuilder:        Repr[Builder] = identity(_)
     implicit val monoidForBuilder: Monoid[Builder] = new Monoid[Builder] {
       def empty: Builder = R
       def combine(l: Builder, r: Builder): Builder = (l, r) match {
@@ -86,74 +139,4 @@ object Repr {
     }
   }
 
-  //// Provider ////
-
-  trait Provider {
-    val repr: Builder
-  }
-
-  //// Implicits ////
-
-  implicit def fromString(a: String): Builder = Repr(a)
-  implicit def fromChar(a: Char):     Builder = Repr(a)
-
-//  implicit def _Provider_[T: Repr.Of](t: T): Provider = of(t)
-
-  //// Instances ////
-
-  /////////////////////////////
-  ///// Repr.Of Type Class ////
-  /////////////////////////////
-
-  trait Of[-T] {
-    def of(a: T): Builder
-  }
-  object Of {
-    def apply[T: Of]: Of[T] = implicitly[Of[T]]
-  }
-  def of[T](t: T)(implicit ev: Repr.Of[T])   = ev.of(t)
-  def span[T](t: T)(implicit ev: Repr.Of[T]) = ev.of(t).span
-
-  implicit class ToReprOps[T: Repr.Of](t: T) {
-    def repr: Builder = Repr.of(t)
-    def span: Int     = repr.span
-  }
-
-  ///// Instances ////
-
-  implicit def _inst_0: Repr.Of[Unit]   = _ => Repr.Builder.Empty()
-  implicit def _inst_1: Repr.Of[String] = Repr.Builder.Text(_)
-  implicit def _inst_2: Repr.Of[Int] = {
-    case 0 => R
-    case i => Repr.Builder.Space(i)
-  }
-  implicit def _inst_3: Repr.Of[Char]    = Repr.Builder.Letter(_)
-  implicit def _inst_4: Repr.Of[Builder] = identity(_)
-
-  implicit def _inst_5[T1: Repr.Of, T2: Repr.Of]: Repr.Of[(T1, T2)] = {
-    case (t1, t2) => Repr.Builder.Seq(Repr.of(t1), Repr.of(t2))
-  }
-
-  implicit def _inst_6[T <: Repr.Provider]: Repr.Of[T] = _.repr
-
-  implicit def _inst_7[T: Repr.Of]: Repr.Of[List[T]] =
-    _.map(_.repr).fold(R: Builder)(Repr.Builder.Seq(_, _))
-
-  implicit def _inst_8[T: Repr.Of]: Repr.Of[List1[T]] =
-    t => R + t.head + t.tail
-
-  implicit def _inst_9[T: Repr.Of]: Repr.Of[Shifted[T]] =
-    t => R + t.off + t.el
-
-  implicit def _inst_10[T: Repr.Of]: Repr.Of[Shifted.List1[T]] =
-    t => R + t.head + t.tail
-
-  implicit def _inst_11[T: Repr.Of]: Repr.Of[Option[T]] =
-    _.map(_.repr).getOrElse(R)
-
-  implicit def _inst_12: Repr.Of[None.type] =
-    _ => R
-
-  implicit def _inst_13[T: Repr.Of]: Repr.Of[Some[T]] =
-    _.map(_.repr).getOrElse(R)
 }

@@ -1098,7 +1098,7 @@ object AST {
     val repr = {
       val lastRepr = if (name.length - args.length > 0) List(R) else List()
       val argsRepr = args.toList.map(R + " " + _) ++ lastRepr
-      val nameRepr = name.toList.map(Repr.of(_))
+      val nameRepr = name.toList.map(Repr(_))
       R + (nameRepr, argsRepr).zipped.map(_ + _)
     }
     def setID(newID: ID)                 = copy(id = Some(newID))
