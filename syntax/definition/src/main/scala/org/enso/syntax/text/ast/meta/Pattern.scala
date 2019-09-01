@@ -398,22 +398,29 @@ sealed trait Pattern {
       def retIf(b: Boolean)(m: Match, s: Stream) = Option.when(b)(out(m, s))
       def retIf_(b: Boolean)(m: Match)           = retIf(b)(m, stream)
 
-      def matchByCls_[T](
+      def matchByCls_[T: AST.UnapplyByType](
         spaced: Pattern.Spaced,
         f: Shifted[T] => Match
-      )(implicit tag: ClassTag[T]) = matchByCls[T](spaced)(a => Some(f(a)))
+      ) = matchByCls[T](spaced)(a => Some(f(a)))
 
       def matchByCls[T](spaced: Pattern.Spaced)(
         f: Shifted[T] => Option[Match]
-      )(implicit tag: ClassTag[T]): Option[Match.Result] = stream match {
-        case Shifted(off, tag(t)) :: ss =>
-          val ok = spaced match {
-            case None    => true
-            case Some(s) => (s == (off > 0)) && (!t.isInstanceOf[AST.Block])
-          }
-          if (ok) f(Shifted(off, t)).map(out(_, ss)) else None
-        case _ => None
-      }
+      )(implicit pat: AST.UnapplyByType[T]): Option[Match.Result] =
+        stream match {
+          case Shifted(off, pat(t)) :: ss =>
+            val ok = spaced match {
+              case None => true
+              case Some(s) => {
+                val isBlock = t match {
+                  case AST.Block.any(_) => true
+                  case _                => false
+                }
+                (s == (off > 0)) && (!isBlock)
+              }
+            }
+            if (ok) f(Shifted(off, t)).map(out(_, ss)) else None
+          case _ => None
+        }
 
       p match {
 

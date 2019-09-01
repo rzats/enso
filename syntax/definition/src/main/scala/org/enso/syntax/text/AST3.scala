@@ -1017,8 +1017,13 @@ object AST {
 
     object MatchOf {
       implicit def ftor:      Functor[MatchOf]      = semi.functor
-      implicit def repr[T]:   Repr[MatchOf[T]]      = _ => R + "???"
       implicit def offZip[T]: OffsetZip[MatchOf, T] = ???
+      implicit def repr[T]: Repr[MatchOf[T]] = t => {
+        val pfxStream = t.pfx.map(_.toStream.reverse).getOrElse(List())
+        val pfxRepr   = pfxStream.map(t => R + t.el + t.off)
+        val segsRepr  = t.segs.map(_.repr)
+        R + pfxRepr + segsRepr
+      }
     }
 
     object Match {

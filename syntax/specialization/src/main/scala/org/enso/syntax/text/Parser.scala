@@ -315,7 +315,7 @@ object Main extends App {
   //val inp = "(a) b = c"
   //val inp = "a = b -> c"
   //val inp = "a = b -> c d"
-  val inp = "++"
+  val inp = "a -> b"
   //  val inp = "x(x[a))"
   // 48
 
