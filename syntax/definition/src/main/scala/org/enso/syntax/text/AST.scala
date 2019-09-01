@@ -822,7 +822,19 @@ object AST {
         )
       }
 
-      def mapWithOff(f: (Int, AST) => AST) = this
+      def mapWithOff(f: (Int, AST) => AST) = {
+        val segs2 = segs.map(
+          _.map(
+            m => {
+              Pattern.MatchOf.mapWithOff(m) {
+                case (i, Shifted(off, t)) =>
+                  Shifted(off, f(i, t))
+              }
+            }
+          )
+        )
+        this.copy(segs = segs2)
+      }
       def path(): List1[AST] = segs.toList1().map(_.el.head)
     }
     object Match {

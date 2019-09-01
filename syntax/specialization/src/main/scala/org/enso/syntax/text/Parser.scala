@@ -152,36 +152,30 @@ class Parser {
   def run(input: Reader, idMap: Map[(Int, Int), AST.ID]): AST.Module =
     engine.run(input).map(Macro.run) match {
       case flexer.Parser.Result(_, flexer.Parser.Result.Success(mod)) => {
-        val mod2_ = mod.traverseWithOff { (off, ast) =>
-          idMap.get((off, ast.span)) match {
-            case Some(id) => ast.setID(id)
-            case None =>
-              ast match {
-                case _: AST.Macro.Match => ast.withNewID()
-                case _                  => ast
-              }
-          }
-        }
-
-        // FIXME: This should not be needed if traverseWithOff could travel
-        //        Macro Matches
-        // vvvvvvvvvvvvv
-        def go(t: AST): AST = t match {
-          case ast: AST.Macro.Match =>
-            val nast = if (ast.id.isEmpty) ast.withNewID() else ast
-            nast.map(go)
-          case ast => ast.map(go)
-        }
-        val mod3_ = go(mod2_)
-        // ^^^^^^^^^^^^^
-
-        // FIXME: The following line will be removed with new AST
-        val mod3 = mod3_.asInstanceOf[AST.Module]
-        resolveMacros(mod3)
-//        mod3
+        val mod2 = annotateModule(idMap, mod)
+        resolveMacros(mod2)
+//        mod2
       }
       case _ => throw ParsingFailed
     }
+
+  def annotateModule(
+    idMap: Map[(Int, Int), AST.ID],
+    mod: AST.Module
+  ): AST.Module = {
+    val mod2 = mod.traverseWithOff { (off, ast) =>
+      idMap.get((off, ast.span)) match {
+        case Some(id) => ast.setID(id)
+        case None =>
+          ast match {
+            case _: AST.Macro.Match => ast.withNewID()
+            case _                  => ast
+          }
+      }
+    }
+    // FIXME: The following line will be removed with new AST
+    mod2.asInstanceOf[AST.Module]
+  }
 
   /** Although this function does not use any Parser-specific API now, it will
     * use such in the future when the interpreter will provide information about
@@ -318,7 +312,7 @@ object Main extends App {
 //val inp = "(a) b = c"
 //val inp = "a = b -> c"
 //val inp = "a = b -> c d"
-  val inp = "test = foreign Python3\n a"
+  val inp = "((a))"
 //  val inp = "x(x[a))"
   // 48
 
@@ -331,7 +325,7 @@ object Main extends App {
 //  pprint.pprintln(mod, width = 50, height = 10000)
 
   println(pretty(mod.toString))
-  println(pretty(parser.dropMacroMeta(mod).toString))
+//  println(pretty(parser.dropMacroMeta(mod).toString))
 //  val rmod = parser.resolveMacros(mod)
 //  if (mod != rmod) {
 //    println("\n---\n")
@@ -343,10 +337,10 @@ object Main extends App {
   println(mod.show())
   println("------")
 
-  mod.traverseWithOff { (off, ast) =>
-    println(s">> $off - ${off + ast.span}: $ast")
-    ast
-  }
+//  mod.traverseWithOff { (off, ast) =>
+//    println(s">> $off - ${off + ast.span}: $ast")
+//    ast
+//  }
 
   println()
 

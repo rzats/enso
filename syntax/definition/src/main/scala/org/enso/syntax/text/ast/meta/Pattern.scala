@@ -9,6 +9,7 @@ import scala.annotation.tailrec
 import scala.reflect.ClassTag
 import org.enso.data.Shifted
 import org.enso.syntax.text.ast.Repr
+import org.enso.syntax.text.v2.AST.OffsetZip
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Pattern ///////////////////////////////////////////////////////////////////
@@ -19,7 +20,6 @@ object Pattern {
   import cats.Foldable
   import cats.Traverse
   import cats.derived._
-//  import cats.implicits._
 
   type P      = Pattern
   type Spaced = Option[Boolean]
@@ -167,29 +167,29 @@ object Pattern {
 
     /** Structural Matches */
     final case class Nothing [T](pat:P.Nothing)                     extends M[T]
-    final case class Seq     [T](pat:P.Seq   , elems:(M[T], M[T]))  extends M[T]
-    final case class Or      [T](pat:P.Or    , elem :Switch[M[T]])  extends M[T]
-    final case class Many    [T](pat:P.Many  , elems:List[M[T]])    extends M[T]
-    final case class Except  [T](pat:P.Except, elem :M[T])          extends M[T]
+    final case class Seq     [T](pat:P.Seq   , elem:(M[T], M[T]))   extends M[T]
+    final case class Or      [T](pat:P.Or    , elem:Switch[M[T]])   extends M[T]
+    final case class Many    [T](pat:P.Many  , elem:List[M[T]])     extends M[T]
+    final case class Except  [T](pat:P.Except, elem:M[T])           extends M[T]
 
     /** Meta Matches */
-    final case class Build [T](pat:P.Build , ast: T)                extends M[T]
-    final case class Err   [T](pat:P.Err   , ast: T)                extends M[T]
+    final case class Build [T](pat:P.Build , elem:T)                extends M[T]
+    final case class Err   [T](pat:P.Err   , elem:T)                extends M[T]
     final case class Tag   [T](pat:P.Tag   , elem:M[T])             extends M[T]
     final case class Cls   [T](pat:P.Cls   , elem:M[T])             extends M[T]
 
     /** Token Matches */
-    final case class Tok     [T](pat:P.Tok     , ast:T)               extends M[T]
-    final case class Blank   [T](pat:P.Blank   , ast:T)               extends M[T]
-    final case class Var     [T](pat:P.Var     , ast:T)               extends M[T]
-    final case class Cons    [T](pat:P.Cons    , ast:T)               extends M[T]
-    final case class Opr     [T](pat:P.Opr     , ast:T)               extends M[T]
-    final case class Mod     [T](pat:P.Mod     , ast:T)               extends M[T]
-    final case class Num     [T](pat:P.Num     , ast:T)               extends M[T]
-    final case class Text    [T](pat:P.Text    , ast:T)               extends M[T]
-    final case class Block   [T](pat:P.Block   , ast:T)               extends M[T]
-    final case class Macro   [T](pat:P.Macro   , ast:T)               extends M[T]
-    final case class Invalid [T](pat:P.Invalid , ast:T)               extends M[T]
+    final case class Tok     [T](pat:P.Tok     , elem:T)            extends M[T]
+    final case class Blank   [T](pat:P.Blank   , elem:T)            extends M[T]
+    final case class Var     [T](pat:P.Var     , elem:T)            extends M[T]
+    final case class Cons    [T](pat:P.Cons    , elem:T)            extends M[T]
+    final case class Opr     [T](pat:P.Opr     , elem:T)            extends M[T]
+    final case class Mod     [T](pat:P.Mod     , elem:T)            extends M[T]
+    final case class Num     [T](pat:P.Num     , elem:T)            extends M[T]
+    final case class Text    [T](pat:P.Text    , elem:T)            extends M[T]
+    final case class Block   [T](pat:P.Block   , elem:T)            extends M[T]
+    final case class Macro   [T](pat:P.Macro   , elem:T)            extends M[T]
+    final case class Invalid [T](pat:P.Invalid , elem:T)            extends M[T]
     // format: on
 
     //// Smart Constructors ////
@@ -214,40 +214,47 @@ object Pattern {
     val M = Match
     val pat: Pattern
 
-    override def toString = s"Match(${this.toStream})"
+    override def toString = s"Pattern.Match(${this.toStream})"
 
     def toStream: List[T] = this.map(List(_)).fold
-    def mapMatch(f: MatchOf[T] => MatchOf[T]): MatchOf[T] = this match {
-      case m: M.Begin[T]   => f(m)
-      case m: M.End[T]     => f(m)
-      case m: M.Nothing[T] => f(m)
-      case m: M.Seq[T]     => f(m.copy(elems = m.elems.map(_.mapMatch(f))))
-      case m: M.Or[T]      => f(m.copy(elem = m.elem.map(_.mapMatch(f))))
-      case m: M.Many[T]    => f(m.copy(elems = m.elems.map(_.mapMatch(f))))
-      case m: M.Except[T]  => f(m.copy(elem = f(m.elem)))
-      case m: M.Build[T]   => f(m)
-      case m: M.Err[T]     => f(m)
-      case m: M.Tag[T]     => f(m.copy(elem = f(m.elem)))
-      case m: M.Cls[T]     => f(m.copy(elem = f(m.elem)))
-      case m: M.Tok[T]     => f(m)
-      case m: M.Var[T]     => f(m)
-      case m: M.Cons[T]    => f(m)
-      case m: M.Opr[T]     => f(m)
-      case m: M.Num[T]     => f(m)
-      case m: M.Text[T]    => f(m)
-      case m: M.Block[T]   => f(m)
-      case m: M.Macro[T]   => f(m)
-    }
+
+    def mapStruct(f: MatchOf[T] => MatchOf[T]): MatchOf[T] =
+      f(this.mapStructShallow(_.mapStruct(f)))
+
+    def mapStructShallow(f: MatchOf[T] => MatchOf[T]): MatchOf[T] =
+      this match {
+        case m: M.Begin[T]   => m
+        case m: M.End[T]     => m
+        case m: M.Nothing[T] => m
+        case m: M.Seq[T]     => m.copy(elem = m.elem.bimap(f, f))
+        case m: M.Or[T]      => m.copy(elem = m.elem.bimap(f, f))
+        case m: M.Many[T]    => m.copy(elem = m.elem.map(f))
+        case m: M.Except[T]  => m.copy(elem = f(m.elem))
+        case m: M.Build[T]   => m
+        case m: M.Err[T]     => m
+        case m: M.Tag[T]     => m.copy(elem = f(m.elem))
+        case m: M.Cls[T]     => m.copy(elem = f(m.elem))
+        case m: M.Tok[T]     => m
+        case m: M.Blank[T]   => m
+        case m: M.Var[T]     => m
+        case m: M.Cons[T]    => m
+        case m: M.Opr[T]     => m
+        case m: M.Mod[T]     => m
+        case m: M.Num[T]     => m
+        case m: M.Text[T]    => m
+        case m: M.Block[T]   => m
+        case m: M.Macro[T]   => m
+        case m: M.Invalid[T] => m
+      }
 
     def isValid: Boolean = {
       var out = true
-      this.mapMatch {
+      this.mapStruct {
         case m: M.Err[_] => out = false; m
         case m           => m
       }
       out
     }
-
   }
   object MatchOf {
     import cats.implicits._
@@ -257,6 +264,38 @@ object Pattern {
     implicit def ftorMatch: Functor[MatchOf]  = _MatchOf.ftorMatch
     implicit def travMatch: Traverse[MatchOf] = _MatchOf.travMatch
     implicit def foldMatch: Foldable[MatchOf] = _MatchOf.foldMatch
+
+//    implicit def offZipMatch[T]: OffsetZip[MatchOf, T] = {}
+
+    val M = Match
+    // format: off
+    def mapWithOff[T:Repr.Of](self:MatchOf[T])(f: (Int,T) => T): MatchOf[T] =
+      mapWithOff_(self)(f,0)._1
+    
+    def mapWithOff_[T:Repr.Of](self:MatchOf[T])(f: (Int,T) => T, off:Int): (MatchOf[T], Int) = self match {
+      case m: M.Build[T]   => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
+      case m: M.Err[T]     => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
+      case m: M.Tok[T]     => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
+      case m: M.Blank[T]   => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
+      case m: M.Var[T]     => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
+      case m: M.Cons[T]    => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
+      case m: M.Opr[T]     => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
+      case m: M.Mod[T]     => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
+      case m: M.Num[T]     => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
+      case m: M.Text[T]    => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
+      case m: M.Block[T]   => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
+      case m: M.Macro[T]   => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
+      case m: M.Invalid[T] => (m.copy(elem = f(off,m.elem)), off + Repr.span(m.elem))
+      case m: Pattern.MatchOf[T] =>
+        var loff = off
+        val out  = m.mapStructShallow {p =>
+          val (nmatch, noff) = mapWithOff_(p)(f, loff)
+          loff = noff
+          nmatch
+        }
+        (out, loff)
+    }
+    // format: on
   }
   object _MatchOf {
     def ftorMatch: Functor[MatchOf]  = semi.functor
@@ -467,17 +506,3 @@ sealed trait Pattern {
     step(this, stream0)
   }
 }
-//object Test {
-//  import cats.Functor
-//  import cats.Foldable
-//  import cats.Traverse
-//  import cats.derived._
-////  import cats.implicits._
-//
-//  def functorForMatch: Functor[Pattern.MatchOf] = semi.functor
-//  def traversableForMatch: Traverse[Pattern.MatchOf] = semi.traverse[Pattern.MatchOf]
-//  def foldableForMatch: Foldable[Pattern.MatchOf] = {
-//    import cats.derived.auto.foldable._
-//    semi.foldable[Pattern.MatchOf]
-//  }
-//}
