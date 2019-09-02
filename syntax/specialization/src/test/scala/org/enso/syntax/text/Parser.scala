@@ -3,12 +3,8 @@ package org.enso.syntax.text
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.data.Tree
-import org.enso.flexer.Parser.Result
 import org.enso.flexer.Reader
-import org.enso.syntax.text.AST.Block.Line
 import org.enso.syntax.text.AST.Block.OptLine
-import org.enso.syntax.text.AST.Text.Segment.EOL
-import org.enso.syntax.text.AST.Text.Segment.Plain
 import org.enso.syntax.text.AST._
 import org.enso.syntax.text.AST.implicits._
 import org.enso.syntax.text.ast.DSL._

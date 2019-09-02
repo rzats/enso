@@ -26,8 +26,8 @@ object Pattern {
   def range(start: Char, end: Char): Range = Range(start.toInt, end.toInt)
   def range(start: Int, end: Int):   Range = Range(start, end)
   def range(end: Int):               Range = range(0, end)
-  def range(end: Char):              Range = range(0, end)
-  def char(char: Char):              Range = range(char, char)
+  def range(end: Char):              Range = range(0, end.toInt)
+  def char(char: Char):              Range = range(char.toInt, char.toInt)
   def char(char: Int):               Range = range(char, char)
 
   val never: Pattern = range(-1)
