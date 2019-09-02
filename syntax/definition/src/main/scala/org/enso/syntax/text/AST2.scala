@@ -142,6 +142,17 @@ object AST {
 
   //// Wrapper ////
 
+  /** The [[Node]] class wraps each AST node. The implementation is very similar
+    * to standard catamorphic Fix, however, it takes the head element into
+    * consideration. This way we can keep the info of the shape of the AST. For
+    * example, [[Var]] is just an alias to [[ Node[VarOf,ShapeOf] ]], and while
+    * [[ VarOf[T] <: ShapeOf[T] ]], also [[Var <: AST]].
+    *
+    * Another important role of [[Node]] is caching of [[Repr.Builder]] and
+    * allowing for fast method redirection. When [[Node]] is created, it
+    * remembers a bunch of stuff, which can be fast accessed even if we cast the
+    * type to generic [[AST]]
+    */
   case class Node[+H[_], F[_]](unFix: H[Node[F, F]], id: Option[ID] = None)(
     implicit ops: NodeOps[H, Node[F, F]]
   ) {
