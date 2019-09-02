@@ -181,7 +181,7 @@ object Builder {
             s"Internal error: template pattern segment was unmatched"
           )
         case Some(rr) =>
-          (Shifted(offset, Match.Segment(ast, rr.elem)), rr.stream)
+          (Shifted(offset, Match.SegmentOf(ast, rr.elem)), rr.stream)
       }
     }
 

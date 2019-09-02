@@ -922,6 +922,7 @@ object AST {
       implicit def reprModule[T: Repr]: Repr[ModuleOf[T]] =
         t => R + t.lines.head + t.lines.tail.map(newline + _)
       implicit def offZipModule[T]: OffsetZip[ModuleOf, T] = _.map((0, _))
+//        t => t.copy(lines = t.lines.map(OffsetZip(_)))
     }
     import implicits._
 
@@ -1043,22 +1044,23 @@ object AST {
     type Match = ASTOf[MatchOf]
     final case class MatchOf[T](
       pfx: Option[Pattern.Match],
-      segs: Shifted.List1[Match.Segment],
+      segs: Shifted.List1[Match.SegmentOf[T]],
       resolved: AST
     ) extends MacroOf[T] {
       def path(): List1[AST] = segs.toList1().map(_.el.head)
     }
 
     object MatchOf {
-      implicit def ftor:      Functor[MatchOf]      = semi.functor
-      implicit def offZip[T]: OffsetZip[MatchOf, T] = _.map((0, _))
-      implicit def repr[T]: Repr[MatchOf[T]] = t => {
+      implicit def xftor:      Functor[MatchOf]      = semi.functor
+      implicit def xoffZip[T]: OffsetZip[MatchOf, T] = _.map((0, _))
+      implicit def xrepr[T]: Repr[MatchOf[T]] = t => {
         val pfxStream = t.pfx.map(_.toStream.reverse).getOrElse(List())
         val pfxRepr   = pfxStream.map(t => R + t.el + t.off)
         val segsRepr  = t.segs.map(_.repr)
         R + pfxRepr + segsRepr
       }
     }
+    import MatchOf._
 
     object Match {
       val any = UnapplyByType[Match]
@@ -1068,15 +1070,22 @@ object AST {
         resolved: AST
       ): Match = MatchOf[AST](pfx, segs, resolved)
 
-      final case class Segment(head: Ident, body: Pattern.Match) {
-        val repr = R + head + body
+      type Segment = SegmentOf[AST]
+      final case class SegmentOf[T](
+        head: Ident,
+        body: Pattern.MatchOf[Shifted[T]]
+      ) {
+        val repr = R + "???" // ??? + head + body
         def toStream: AST.Stream = ??? // Shifted(head) :: body.toStream
         def isValid:  Boolean    = body.isValid
-        def map(f: Pattern.Match => Pattern.Match): Segment =
+        def map(
+          f: Pattern.MatchOf[Shifted[T]] => Pattern.MatchOf[Shifted[T]]
+        ): SegmentOf[T] =
           copy(body = f(body))
       }
-      object Segment {
-        def apply(head: Ident): Segment = Segment(head, Pattern.Match.Nothing())
+      object SegmentOf {
+        def apply[T](head: Ident): SegmentOf[T] =
+          SegmentOf(head, Pattern.Match.Nothing())
       }
     }
 
@@ -1103,11 +1112,19 @@ object AST {
 
     type Resolver = Resolver.Context => AST
     object Resolver {
-      final case class Context(
+      type Context = ContextOf[AST]
+      final case class ContextOf[T](
         prefix: Option[Pattern.Match],
-        body: List[Macro.Match.Segment],
+        body: List[Macro.Match.SegmentOf[T]],
         id: ID
       )
+      object Context {
+        def apply(
+          prefix: Option[Pattern.Match],
+          body: List[Macro.Match.Segment],
+          id: ID
+        ): Context = ContextOf(prefix, body, id)
+      }
     }
 
     //// Definition ////

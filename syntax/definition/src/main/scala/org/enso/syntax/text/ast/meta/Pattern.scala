@@ -265,7 +265,12 @@ object Pattern {
     implicit def travMatch: Traverse[MatchOf] = _MatchOf.travMatch
     implicit def foldMatch: Foldable[MatchOf] = _MatchOf.foldMatch
 
-//    implicit def offZipMatch[T]: OffsetZip[MatchOf, T] = {}
+    implicit def offZipMatch[T: Repr]: AST.OffsetZip[MatchOf, T] = t => {
+      val s  = t.map(Shifted(0, _))
+      val s2 = mapWithOff(s) { case (i, el) => Shifted(i, el.el) }
+      val s3 = s2.map(t => (t.off, t.el))
+      s3
+    }
 
     val M = Match
     // format: off

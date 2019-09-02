@@ -155,8 +155,8 @@ class Parser {
     engine.run(input).map(Macro.run) match {
       case flexer.Parser.Result(_, flexer.Parser.Result.Success(mod)) => {
         val mod2 = annotateModule(idMap, mod)
-        resolveMacros(mod2).asInstanceOf[AST.Module]
-//        mod2
+//        resolveMacros(mod2).asInstanceOf[AST.Module]
+        mod2
       }
       case _ => throw ParsingFailed
     }
@@ -165,6 +165,7 @@ class Parser {
     idMap: Map[(Int, Int), AST.ID],
     mod: AST.Module
   ): AST.Module = mod.traverseWithOff { (off, ast) =>
+    println(s">> $off (${ast.repr.span}): $ast")
     idMap.get((off, ast.repr.span)) match {
       case Some(id) => ast.setID(id)
       case None =>
@@ -309,7 +310,7 @@ object Main extends App {
   //val inp = "(a) b = c"
   //val inp = "a = b -> c"
   //val inp = "a = b -> c d"
-  val inp = "a -> b"
+  val inp = "a -> b -> c"
   //  val inp = "x(x[a))"
   // 48
 
@@ -317,12 +318,12 @@ object Main extends App {
 
   val mod = parser.run(
     new Reader(inp),
-    Map((0, 5) -> UUID.fromString("00000000-0000-0000-0000-000000000000"))
+    Map() // (0, 5) -> UUID.fromString("00000000-0000-0000-0000-000000000000"))
   )
   //  pprint.pprintln(mod, width = 50, height = 10000)
 
   println(pretty(mod.toString))
-  println(pretty(parser.dropMacroMeta(mod).toString))
+//  println(pretty(parser.dropMacroMeta(mod).toString))
 //  val rmod = parser.resolveMacros(mod)
 //  if (mod != rmod) {
 //    println("\n---\n")
