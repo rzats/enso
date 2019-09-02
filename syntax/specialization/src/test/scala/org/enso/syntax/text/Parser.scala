@@ -60,11 +60,8 @@ class ParserSpec extends FlatSpec with Matchers {
 
     def ?=(out: AST) = testBase in { assertExpr(input, out) }
     def ??=(out: Module) = testBase in { assertModule(input, out) }
-//    def ?#=(out: AST) = testBase in { assertExpr(input, out, markers) }
-    def testIdentity = testBase in { assertIdentity(input) }
+    def testIdentity     = testBase in { assertIdentity(input)    }
   }
-
-//  val markers = 0 to 100 map (offset => offset -> Marker(offset))
 
   //////////////////////////////////////////////////////////////////////////////
   //// Identifiers /////////////////////////////////////////////////////////////
@@ -146,16 +143,16 @@ class ParserSpec extends FlatSpec with Matchers {
   "a + b-> c = d"  ?= "a" $_ "+" $_ ("b" $_ "->" $_ ("c" $_ "=" $_ "d"))
   "a = b -> c = d" ?= "a" $_ "=" $_ ("b" $_ "->" $_ ("c" $_ "=" $_ "d"))
 
-//  //////////////////////////////////////////////////////////////////////////////
-//  //// Layout //////////////////////////////////////////////////////////////////
-//  //////////////////////////////////////////////////////////////////////////////
-//
-//  "" ??= Module(OptLine())
-//  "\n" ??= Module(OptLine(), OptLine())
-//  "  \n " ??= Module(OptLine(2), OptLine(1))
-//  "\n\n" ??= Module(OptLine(), OptLine(), OptLine())
-//  " \n  \n   " ??= Module(OptLine(1), OptLine(2), OptLine(3))
-//
+  //////////////////////////////////////////////////////////////////////////////
+  //// Layout //////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  "" ??= Module(OptLine())
+  "\n" ??= Module(OptLine(), OptLine())
+  "  \n " ??= Module(OptLine(2), OptLine(1))
+  "\n\n" ??= Module(OptLine(), OptLine(), OptLine())
+  " \n  \n   " ??= Module(OptLine(1), OptLine(2), OptLine(3))
+
   //////////////////////////////////////////////////////////////////////////////
   //// Numbers /////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
@@ -255,21 +252,6 @@ class ParserSpec extends FlatSpec with Matchers {
 ////  //
 //
 //  //////////////////////////////////////////////////////////////////////////////
-//  //// Markers /////////////////////////////////////////////////////////////////
-//  //////////////////////////////////////////////////////////////////////////////
-//
-////  "marked" ?#= Marked(Marker(0), Var("marked"))
-////  "Marked" ?#= Marked(Marker(0), Cons("Marked"))
-////  "111111" ?#= Marked(Marker(0), Number(111111))
-////  "'    '" ?#= Marked(Marker(0), Text("    "))
-////  "++++++" ?#= Marked(Marker(0), Opr("++++++"))
-////  "+++++=" ?#= Marked(Marker(0), Opr.Mod("+++++"))
-////  "a b  c" ?#= Marked(Marker(0), Var("a")) $_ Marked(Marker(2), Var("b")) $__ Marked(
-////    Marker(5),
-////    Var("c")
-////  )
-//
-//  //////////////////////////////////////////////////////////////////////////////
 //  //// Comments ////////////////////////////////////////////////////////////////
 //  //////////////////////////////////////////////////////////////////////////////
 //
@@ -292,85 +274,91 @@ class ParserSpec extends FlatSpec with Matchers {
   "x = skip ()"            ?= "x" $_ "=" $_ Group()
 //  "a = freeze b c" ?= "a" $_ "#=" $_ ("b" $_ "c") // freeze
 
-//  //////////////////////////////////////////////////////////////////////////////
-//  //// Mixfixes ////////////////////////////////////////////////////////////////
-//  //////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  //// Mixfixes ////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  def amb(head: AST, lst: List[List[AST]]): Macro.Ambiguous =
+    Macro.Ambiguous(
+      Shifted.List1(Macro.Ambiguous.Segment(head)),
+      Tree(lst.map(_ -> (())): _*)
+    )
+
+  def amb(head: AST, lst: List[List[AST]], body: SAST): Macro.Ambiguous =
+    Macro.Ambiguous(
+      Shifted.List1(Macro.Ambiguous.Segment(head, Some(body))),
+      Tree(lst.map(_ -> (())): _*)
+    )
+
+  def _amb_group_(i: Int)(t: AST): Macro.Ambiguous =
+    amb("(", List(List(")")), Shifted(i, t))
+
+  val amb_group   = _amb_group_(0)(_)
+  val amb_group_  = _amb_group_(1)(_)
+  val amb_group__ = _amb_group_(2)(_)
+  def group_(): Macro.Ambiguous = amb("(", List(List(")")))
+
+  def _amb_if(i: Int)(t: AST) =
+    amb("if", List(List("then"), List("then", "else")), Shifted(i, t))
+
+  val amb_if   = _amb_if(0)(_)
+  val amb_if_  = _amb_if(1)(_)
+  val amb_if__ = _amb_if(2)(_)
+
+  "()"          ?= Group()
+  "( )"         ?= Group()
+  "( (  )   )"  ?= Group(Group())
+  "(a)"         ?= Group("a")
+  "((a))"       ?= Group(Group("a"))
+  "(((a)))"     ?= Group(Group(Group("a")))
+  "( (  a   ))" ?= Group(Group("a"))
+  "(a) (b)"     ?= Group("a") $_ Group("b")
+  "("           ?= amb("(", List(List(")")))
+  "(("          ?= amb_group(group_())
+
+  "import Std .  Math  .Vector".stripMargin ?= Import("Std", "Math", "Vector")
+
+  """def Maybe a
+    |    def Just val:a
+    |    def Nothing""".stripMargin ?= {
+    val defJust    = Def("Just", List("val" $ ":" $ "a"))
+    val defNothing = Def("Nothing")
+    Def(
+      "Maybe",
+      List("a"),
+      Some(
+        Block(
+          Block.Continuous,
+          4,
+          Block.Line(defJust),
+          List(Block.Line(Some(defNothing)))
+        )
+      )
+    )
+  }
 //
-//  def amb(head: AST, lst: List[List[AST]]): Macro.Ambiguous =
-//    Macro.Ambiguous(
-//      Shifted.List1(Macro.Ambiguous.Segment(head)),
-//      Tree(lst.map(_ -> (())): _*)
-//    )
-//
-//  def amb(head: AST, lst: List[List[AST]], body: SAST): Macro.Ambiguous =
-//    Macro.Ambiguous(
-//      Shifted.List1(Macro.Ambiguous.Segment(head, Some(body))),
-//      Tree(lst.map(_ -> (())): _*)
-//    )
-//
-//  def _amb_group_(i: Int)(t: AST): Macro.Ambiguous =
-//    amb("(", List(List(")")), Shifted(i, t))
-//
-//  val amb_group   = _amb_group_(0)(_)
-//  val amb_group_  = _amb_group_(1)(_)
-//  val amb_group__ = _amb_group_(2)(_)
-//  def group_(): Macro.Ambiguous = amb("(", List(List(")")))
-//
-//  def _amb_if(i: Int)(t: AST) =
-//    amb("if", List(List("then"), List("then", "else")), Shifted(i, t))
-//
-//  val amb_if   = _amb_if(0)(_)
-//  val amb_if_  = _amb_if(1)(_)
-//  val amb_if__ = _amb_if(2)(_)
-//
-//  "()"          ?= Group()
-//  "( )"         ?= Group()
-//  "( (  )   )"  ?= Group(Group())
-//  "(a)"         ?= Group("a")
-//  "((a))"       ?= Group(Group("a"))
-//  "(((a)))"     ?= Group(Group(Group("a")))
-//  "( (  a   ))" ?= Group(Group("a"))
-//  "(a) (b)"     ?= Group("a") $_ Group("b")
-//  "("           ?= amb("(", List(List(")")))
-//  "(("          ?= amb_group(group_())
-//
-//  "import Std .  Math  .Vector".stripMargin ?= Import("Std", "Math", "Vector")
-//
-////  """def Maybe a
-////    |    def Just val:a
-////    |    def Nothing
-////    |""".stripMargin ?= {
-////    val defJust    = Def("Just", List("val" $ ":" $ "a"))
-////    val defNothing = Def("Nothing")
-////    Def(
-////      "Maybe",
-////      List("a"),
-////      Some(Block(Block.Continuous, 4, defJust, Some(defNothing), None))
-////    )
-////  }
-////
-////  """foo ->
-////    |    bar
-////    |""".stripMargin ?= "foo" $_ "->" $_ Block(
-////    Block.Discontinuous,
-////    4,
-////    "bar",
-////    None
-////  )
-//
-//  "if a then b" ?= Mixfix(
-//    List1[AST.Ident]("if", "then"),
-//    List1[AST]("a", "b")
-//  )
-//  "if a then b else c" ?= Mixfix(
-//    List1[AST.Ident]("if", "then", "else"),
-//    List1[AST]("a", "b", "c")
+//  """foo ->
+//    |    bar
+//    |""".stripMargin ?= "foo" $_ "->" $_ Block(
+//    Block.Discontinuous,
+//    4,
+//    "bar",
+//    None
 //  )
 //
-//  "if a"          ?= amb_if_("a": AST)
-//  "(if a) b"      ?= Group(amb_if_("a": AST)) $_ "b"
-//  "if (a then b " ?= amb_if_(amb_group("a" $_ "then" $_ "b"))
-//
+  "if a then b" ?= Mixfix(
+    List1[AST.Ident]("if", "then"),
+    List1[AST]("a", "b")
+  )
+  "if a then b else c" ?= Mixfix(
+    List1[AST.Ident]("if", "then", "else"),
+    List1[AST]("a", "b", "c")
+  )
+
+  "if a"          ?= amb_if_("a": AST)
+  "(if a) b"      ?= Group(amb_if_("a": AST)) $_ "b"
+  "if (a then b " ?= amb_if_(amb_group("a" $_ "then" $_ "b"))
+
 //  //////////////////////////////////////////////////////////////////////////////
 //  //// Foreign /////////////////////////////////////////////////////////////////
 //  //////////////////////////////////////////////////////////////////////////////
@@ -383,26 +371,26 @@ class ParserSpec extends FlatSpec with Matchers {
 //     |    $pyLine1
 //     |    $pyLine2""".stripMargin ?= ("validateEmail" $_ "address") $_ "=" $_
 //  Foreign(4, "Python3", List(pyLine1, pyLine2))
-//
-//  //////////////////////////////////////////////////////////////////////////////
-//  //// Large Input /////////////////////////////////////////////////////////////
-//  //////////////////////////////////////////////////////////////////////////////
-//
-//  ("(" * 10000).testIdentity
-//  ("OVERFLOW " * 2000).testIdentity
-//  ("\uD800\uDF1E " * 2000).testIdentity
-//
-//  //////////////////////////////////////////////////////////////////////////////
-//  //// OTHER (TO BE PARTITIONED)////////////////////////////////////////////////
-//  //////////////////////////////////////////////////////////////////////////////
-//
+
+  //////////////////////////////////////////////////////////////////////////////
+  //// Large Input /////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  ("(" * 10000).testIdentity
+  ("OVERFLOW " * 2000).testIdentity
+  ("\uD800\uDF1E " * 2000).testIdentity
+
+  //////////////////////////////////////////////////////////////////////////////
+  //// OTHER (TO BE PARTITIONED)////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
 //  "\na \nb \n".testIdentity
 //  "f =  \n\n\n".testIdentity
 //  "  \n\n\n f\nf".testIdentity
 //  "f =  \n\n  x ".testIdentity
 //  "  a\n   b\n  c".testIdentity
 //  "f =\n\n  x\n\n y".testIdentity
-//
+
 //  """
 //    a
 //     b
@@ -435,26 +423,21 @@ class ParserSpec extends FlatSpec with Matchers {
 //  pop1<>pop2<>pop3 . sorted . unique . take (length pop1) . pure
 //  """.testIdentity
 //
-//  ///////////////////////
-//  //// Preprocessing ////
-//  ///////////////////////
-//
-//  "\t" ??= Module(OptLine(4))
-//  "\r" ??= Module(OptLine(), OptLine())
-//  "\r\n" ??= Module(OptLine(), OptLine())
+  ///////////////////////
+  //// Preprocessing ////
+  ///////////////////////
 
-//  "a + b * g" ?#= Marked(Marker(0), Var("marked"))
+  "\t" ??= Module(OptLine(4))
+  "\r" ??= Module(OptLine(), OptLine())
+  "\r\n" ??= Module(OptLine(), OptLine())
 
 }
 ////////////////////////////////////////////////////////////////////////////////
 // TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO TODO //
 ////////////////////////////////////////////////////////////////////////////////
 
-// [ ] Some benchmarks are sometimes failing?
-// [ ] Benchmarks are slower now - readjust (maybe profile later)
 // [ ] operator blocks
 // [ ] warnings in scala code
-// [ ] Comments parsing
 // [ ] Undefined parsing
 // [ ] All block types
 // [ ] Unary minus

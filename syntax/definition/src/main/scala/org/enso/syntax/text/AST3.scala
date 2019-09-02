@@ -1140,12 +1140,19 @@ object AST {
       def apply(
         segs: Shifted.List1[Ambiguous.Segment],
         paths: Tree[AST, Unit]
-      ): Ambiguous = ??? // AmbiguousOf(segs, paths)
+      ): Ambiguous = Node(AmbiguousOf(segs, paths))
 
       final case class Segment(head: AST, body: Option[SAST])
       object Segment {
-        def apply(head: AST): Segment = Segment(head, None)
+        def apply(head: AST): Segment       = Segment(head, None)
+        implicit def repr:    Repr[Segment] = t => R + t.head + t.body
       }
+    }
+
+    object AmbiguousOf {
+      implicit def functor:   Functor[AmbiguousOf]      = semi.functor
+      implicit def repr[T]:   Repr[AmbiguousOf[T]]      = t => R + t.segs.map(Repr(_))
+      implicit def offZip[T]: OffsetZip[AmbiguousOf, T] = _.map((0, _))
     }
 
     //// Resolver ////
@@ -1403,7 +1410,8 @@ object AST {
       extends SpacelessASTOf[T]
 
   object Mixfix {
-    def apply(name: List1[Ident], args: List1[AST]): Mixfix = ???
+    def apply(name: List1[Ident], args: List1[AST]): Mixfix =
+      MixfixOf(name, args)
     object implicits extends implicits
     trait implicits {
       implicit def ftorMixfix[T]: Functor[MixfixOf] = semi.functor
