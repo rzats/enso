@@ -28,7 +28,7 @@ final case class StateManagerMock(var program: String) extends StateManager {
     if (module != StateManagerMock.mainModule)
       throw new Exception(s"no such module: $module")
 
-    this.program = ast.show()
+    this.program = ast.show
     this.ast     = ast
     println(s"New AST for module $module: $ast")
     println(s"New Program text for module $module:\n$program")
@@ -54,22 +54,61 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     program: String,
     f: DoubleRepresentation => R
   ): (R, AST.Module) = {
-    val state                = StateManagerMock(program)
-    val notificationConsumer = NotificationSinkMock()
-    val result               = f(DoubleRepresentation(state, notificationConsumer))
+    val state    = StateManagerMock(program)
+    val notifier = NotificationSinkMock()
+    val result   = f(DoubleRepresentation(state, notifier))
     (result, state.ast)
+  }
+
+  def checkOutput[R](
+    program: String,
+    expectedOutput: R,
+    action: DoubleRepresentation => R
+  ): R = {
+    val state    = StateManagerMock(program)
+    val notifier = NotificationSinkMock()
+    val result   = action(DoubleRepresentation(state, notifier))
+    expectedOutput should be(result)
+    result
   }
 
   def checkThatTransforms[R](
     initialProgram: String,
-    expectedFinalProgram: String,
+    expectedProgram: String,
     action: DoubleRepresentation => R
   ): R = {
     val (result, finalAst) = withDR(initialProgram, action)
-    val actualFinalProgram = finalAst.show()
-    actualFinalProgram should be(expectedFinalProgram)
+    finalAst.show should be(expectedProgram)
     result
   }
+
+  def checkTextModifications(program: String): Unit = {
+    val prefix = program.takeWhile(_ != '»').dropRight(1)
+    val suffix = program.dropWhile(_ != '«').drop(2)
+    val middle = program.dropWhile(_ != '»').drop(1).takeWhile(_ != '«')
+    checkThatTransforms(
+      prefix + suffix,
+      prefix + middle + suffix,
+      _.insertText(mockModule, TextPosition(prefix.length), middle)
+    )
+    checkThatTransforms(
+      prefix + middle + suffix,
+      prefix + suffix,
+      _.eraseText(
+        mockModule,
+        TextSpan(TextPosition(prefix.length), middle.length)
+      )
+    )
+    checkOutput(
+      prefix + middle + suffix,
+      middle,
+      _.copyText(
+        mockModule,
+        TextSpan(TextPosition(prefix.length), middle.length)
+      )
+    )
+  }
+
   def expectTransformationError[E: ClassTag](
     initialProgram: String,
     action: DoubleRepresentation => Unit
@@ -90,6 +129,16 @@ class Tests extends FunSuite with org.scalatest.Matchers {
         action(graph.nodes.head)
       }
     )._1
+  }
+
+  test("text modifications") {
+    List(
+      "a (»«) c",
+      "a (»1 2«) c",
+      "'text(»'«)",
+      "if a then b(» then x«) else c",
+      "((( a (»+ b«) )))"
+    ).foreach(checkTextModifications)
   }
 
   test("recognizing lack of imports") {
