@@ -155,8 +155,8 @@ class Parser {
     engine.run(input).map(Macro.run) match {
       case flexer.Parser.Result(_, flexer.Parser.Result.Success(mod)) => {
         val mod2 = annotateModule(idMap, mod)
-//        resolveMacros(mod2).asInstanceOf[AST.Module]
-        mod2
+        resolveMacros(mod2).asInstanceOf[AST.Module]
+//        mod2
       }
       case _ => throw ParsingFailed
     }
@@ -165,7 +165,11 @@ class Parser {
     idMap: Map[(Int, Int), AST.ID],
     mod: AST.Module
   ): AST.Module = mod.traverseWithOff { (off, ast) =>
-    println(s">> $off (${ast.repr.span}): $ast")
+//    println()
+//    println("----------")
+//    println(s">> $off (${ast.repr.span})")
+//    println(ast.repr)
+//    println(Main.pretty(ast.toString))
     idMap.get((off, ast.repr.span)) match {
       case Some(id) => ast.setID(id)
       case None =>
@@ -190,14 +194,14 @@ class Parser {
         Builtin.registry.get(resolvedAST.path) match {
           case None => throw MissingMacroDefinition
           case Some(spec) =>
-            val id       = resolvedAST.id.getOrElse(throw new Error("Missing ID"))
+            val id       = resolvedAST.id.getOrElse(throw new Error(s"Missing ID"))
             val segments = resolvedAST.segs.toList().map(_.el)
             val ctx      = AST.Macro.Resolver.Context(resolvedAST.pfx, segments, id)
-            resolvedAST.unFix.copy[AST](resolved = {
+            resolvedAST.copy(unFix = resolvedAST.unFix.copy[AST](resolved = {
               //              println("SPEC RESOLVER")
               //              println(spec)
               resolveMacros(spec.resolver(ctx))
-            })
+            }))
         }
       case _ => ast.map(resolveMacros)
     }
@@ -310,7 +314,7 @@ object Main extends App {
   //val inp = "(a) b = c"
   //val inp = "a = b -> c"
   //val inp = "a = b -> c d"
-  val inp = "a -> b -> c"
+  val inp = "((a))"
   //  val inp = "x(x[a))"
   // 48
 
@@ -323,12 +327,14 @@ object Main extends App {
   //  pprint.pprintln(mod, width = 50, height = 10000)
 
   println(pretty(mod.toString))
-//  println(pretty(parser.dropMacroMeta(mod).toString))
-//  val rmod = parser.resolveMacros(mod)
-//  if (mod != rmod) {
-//    println("\n---\n")
-//    println(pretty(rmod.toString))
-//  }
+
+  println("=========================")
+  println(pretty(parser.dropMacroMeta(mod).toString))
+  val rmod = parser.resolveMacros(mod)
+  if (mod != rmod) {
+    println("\n---\n")
+    println(pretty(rmod.toString))
+  }
   println("------")
   println(mod.show() == inp)
   println("------")

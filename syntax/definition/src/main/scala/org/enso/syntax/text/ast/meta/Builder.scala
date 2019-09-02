@@ -116,7 +116,7 @@ class Builder(
 
   def buildAsModule(): AST = {
     build(List())._2.el match {
-      case m: Macro.Match =>
+      case Macro.Match.any(m) =>
         m.segs.head.body.toStream match {
           case s :: Nil => s.el
           case _        => throw new scala.Error("Impossible happened.")

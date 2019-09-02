@@ -167,11 +167,12 @@ object Builtin {
               def go(t: AST): AST = t match {
                 case AST.App.Prefix(_, arg)    => arg
                 case AST.App.Infix(self, _, _) => go(self)
-                case m: AST.Macro.Match        => go(m.resolved)
+                case AST.Macro.Match.any(m)    => go(m.resolved)
                 case AST.Group(None)           => t
                 case AST.Group(Some(s))        => go(s)
                 case _                         => t
               }
+
               go(body)
             case _ => internalError
           }

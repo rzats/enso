@@ -211,8 +211,9 @@ object AST {
   //// Wrapper ////
 
   case class Node[+H[_], F[_]](unFix: H[Node[F, F]], id: Option[ID] = None)(
-    implicit ops: NodeOps[H[Node[F, F]]]
+    implicit ops: NodeOps[H, Node[F, F]]
   ) {
+    override def toString  = s"Node($id,$unFix)"
     val repr: Repr.Builder = ops.repr(unFix)
     def show():           String     = repr.build()
     def setID(newID: ID): Node[H, F] = copy(id = Some(newID))
@@ -222,12 +223,13 @@ object AST {
       copy(unFix = ops.mapWithOff(unFix)(f))
     def traverseWithOff(f: (Int, AST) => AST): Node[H, F] =
       copy(unFix = ops.traverseWithOff(unFix)(f))
+    def zipWithOffset(): H[(Int, Node[F, F])] = ops.zipWithOffset(unFix)
   }
   object Node {
     object implicits extends implicits
     trait implicits {
       implicit def toNode[T[_]](t: T[AST])(
-        implicit ev: NodeOps[T[AST]]
+        implicit ev: NodeOps[T, AST]
       ):                                        ASTOf[T]         = Node(t)
       implicit def fromNode[T[_]](t: ASTOf[T]): T[AST]           = t.unFix
       implicit def reprNode[H[_], T[_]]:        Repr[Node[H, T]] = _.repr
@@ -236,21 +238,22 @@ object AST {
 
   //// Ops ////
 
-  trait NodeOps[T] {
-    def repr(t: T): Repr.Builder
-    def map(t: T)(f: AST => AST): T
-    def mapWithOff(t: T)(f: (Int, AST) => AST): T
-    def traverseWithOff(t: T)(f: (Int, AST) => AST): T
+  trait NodeOps[T[_], S] {
+    def repr(t: T[S]): Repr.Builder
+    def map(t: T[S])(f: AST => AST): T[S]
+    def mapWithOff(t: T[S])(f: (Int, AST) => AST): T[S]
+    def traverseWithOff(t: T[S])(f: (Int, AST) => AST): T[S]
+    def zipWithOffset(t: T[S]): T[(Int, S)]
   }
   object NodeOps {
-    def apply[T: NodeOps]: NodeOps[T] = implicitly[NodeOps[T]]
+    def apply[T[_], S](implicit ev: NodeOps[T, S]): NodeOps[T, S] = ev
     implicit def instance[T[_]](
       implicit
       evRepr: Repr[T[AST]],
       evFtor: Functor[T],
       evOZip: OffsetZip[T, AST]
-    ): NodeOps[T[AST]] =
-      new NodeOps[T[AST]] {
+    ): NodeOps[T, AST] =
+      new NodeOps[T, AST] {
         def repr(t: T[AST]):               Repr.Builder = evRepr.repr(t)
         def map(t: T[AST])(f: AST => AST): T[AST]       = Functor[T].map(t)(f)
         def mapWithOff(t: T[AST])(f: (Int, AST) => AST): T[AST] =
@@ -267,6 +270,7 @@ object AST {
             go(off, f(off, ast))
           }
         }
+        def zipWithOffset(t: T[AST]): T[(Int, AST)] = OffsetZip(t)
       }
   }
 
@@ -888,6 +892,7 @@ object AST {
       def toOptional: LineOf[Option[T]] = copy(elem = Some(elem))
     }
     object LineOf {
+      implicit def ftorLine:          Functor[LineOf] = semi.functor
       implicit def reprLine[T: Repr]: Repr[LineOf[T]] = t => R + t.elem + t.off
     }
     object Line {
@@ -913,6 +918,16 @@ object AST {
 
   object Module {
     import Block._
+
+    def traverseWithOff(m: Module)(f: (Int, AST) => AST): Module = {
+      val lines2 = m.lines.map { line: OptLine =>
+        LineOf.ftorLine.map(line) { ast =>
+          ast.map(_.traverseWithOff(f))
+
+        }
+      }
+      m.unFix.copy(lines = lines2)
+    }
 
     //// Instances ////
 
@@ -974,11 +989,15 @@ object AST {
 
     println(vx.repr)
 
-    v2.mapWithOff {
+    val voff  = App.Infix(Var("x"), 1, Opr("+"), 2, Var("y"))
+    val voff2 = voff: AST
+    voff.traverseWithOff {
       case (i, t) =>
         println(s"> $i = $t")
         t
     }
+
+    println(voff2.zipWithOffset())
 
 //
 //    val foo = Var("foo")
@@ -1051,12 +1070,21 @@ object AST {
     }
 
     object MatchOf {
-      implicit def xftor:      Functor[MatchOf]      = semi.functor
-      implicit def xoffZip[T]: OffsetZip[MatchOf, T] = _.map((0, _))
-      implicit def xrepr[T]: Repr[MatchOf[T]] = t => {
+      implicit def xftor: Functor[MatchOf] = semi.functor
+      implicit def xoffZip[T: Repr]: OffsetZip[MatchOf, T] = t => {
+        var off = 0
+        t.copy(segs = t.segs.map { seg =>
+          OffsetZip(seg).map(_.map(_.map(s => {
+            val loff = off
+            off = Repr(s._2).span
+            (s._1 + loff, s._2)
+          })))
+        })
+      }
+      implicit def xrepr[T: Repr]: Repr[MatchOf[T]] = t => {
         val pfxStream = t.pfx.map(_.toStream.reverse).getOrElse(List())
         val pfxRepr   = pfxStream.map(t => R + t.el + t.off)
-        val segsRepr  = t.segs.map(_.repr)
+        val segsRepr  = t.segs.map(s => R + s.head + s.body) // FIXME: We should be able to use here the repr instance of segment
         R + pfxRepr + segsRepr
       }
     }
@@ -1075,9 +1103,7 @@ object AST {
         head: Ident,
         body: Pattern.MatchOf[Shifted[T]]
       ) {
-        val repr = R + "???" // ??? + head + body
-        def toStream: AST.Stream = ??? // Shifted(head) :: body.toStream
-        def isValid:  Boolean    = body.isValid
+        def isValid: Boolean = body.isValid
         def map(
           f: Pattern.MatchOf[Shifted[T]] => Pattern.MatchOf[Shifted[T]]
         ): SegmentOf[T] =
@@ -1086,7 +1112,21 @@ object AST {
       object SegmentOf {
         def apply[T](head: Ident): SegmentOf[T] =
           SegmentOf(head, Pattern.Match.Nothing())
+
+        //// Instances ////
+        implicit def repr[T: Repr]: Repr[SegmentOf[T]] =
+          t => R + t.head + t.body
+
+        implicit def offZip[T: Repr]: OffsetZip[SegmentOf, T] = t => {
+          t.copy(body = OffsetZip(t.body).map {
+            case (i, s) => s.map((i, _))
+          })
+        }
       }
+      implicit class SegmentOps(t: Segment) {
+        def toStream: AST.Stream = Shifted(t.head) :: t.body.toStream
+      }
+
     }
 
     //// Ambiguous ////
@@ -1229,8 +1269,7 @@ object AST {
           val pfxStream  = ctx.prefix.map(_.toStream).getOrElse(List())
           val segsStream = ctx.body.flatMap(_.toStream)
           val stream     = pfxStream ++ segsStream
-//          AST.Unexpected(msg, stream)
-          ???
+          AST.Invalid.Unexpected(msg, stream)
         }
 
         def resolverWithChecks(ctx: Resolver.Context) = {
@@ -1403,7 +1442,7 @@ object AST {
 
     val any             = UnapplyByType[Group]
     def unapply(t: AST) = Unapply[Group].run(_.body)(t)
-    def apply(body: Option[AST]): Group = Group(body)
+    def apply(body: Option[AST]): Group = GroupOf(body)
     def apply(body: AST):         Group = Group(Some(body))
     def apply(body: SAST):        Group = Group(body.el)
     def apply():                  Group = Group(None)
