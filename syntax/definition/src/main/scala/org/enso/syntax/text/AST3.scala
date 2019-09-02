@@ -93,42 +93,44 @@ object AST {
 ////        }
 //      }
 
-      implicit class ShapeOps[T[_]](ast: T[AST]) {
-        def repr:     Repr.Builder = ast.repr
-        def span:     Int          = repr.span
-        def byteSpan: Int          = repr.byteSpan
-
-        def map(f: AST => AST)(
-          implicit
-          ftorT: Functor[T],
-          reprT: Repr[T[AST]]
-        ): T[AST] = Functor[T].map(ast)(f)
-
-        def mapWithOff(f: (Int, AST) => AST)(
-          implicit
-          ftorT: Functor[T],
-          offZipT: OffsetZip[T, AST],
-          reprT: Repr[T[AST]]
-        ): T[AST] = Functor[T].map(OffsetZip(ast))(f.tupled)
-
-        def traverseWithOff(f: (Int, AST) => AST)(
-          implicit
-          ftorT: Functor[T],
-          offZipT: OffsetZip[T, AST],
-          reprT: Repr[T[AST]]
-        ): T[AST] = ??? //{
-        //      def go(i: Int, t: AST): AST = {
-        //        val newStruct = mapWithOff { (j, ast) =>
-        //          val off = i + j
-        //          go(off, f(off, ast))
-        //        }
-        //        t.copy(struct = newStruct)
-        //      }
-        //      mapWithOff { (off, ast) =>
-        //        go(off, f(off, ast))
-        //      }
-        //    }
-      }
+//      implicit class ShapeOps[T[_]](ast: ASTOf[T]) {
+////        def repr:     Repr.Builder = ast.repr
+////        def span:     Int          = repr.span
+////        def byteSpan: Int          = repr.byteSpan
+//
+//        def repr(t: T)(implicit ev: Repr[T]): Repr.Builder = Repr(t)
+//
+//        def map(f: AST => AST)(
+//          implicit
+//          ftorT: Functor[T],
+//          reprT: Repr[T[AST]]
+//        ): ASTOf[T] = Functor[T].map(ast)(f)
+//
+////        def mapWithOff(f: (Int, AST) => AST)(
+////          implicit
+////          ftorT: Functor[T],
+////          offZipT: OffsetZip[T, AST],
+////          reprT: Repr[T[AST]]
+////        ): T[AST] = Functor[T].map(OffsetZip(ast))(f.tupled)
+////
+////        def traverseWithOff(f: (Int, AST) => AST)(
+////          implicit
+////          ftorT: Functor[T],
+////          offZipT: OffsetZip[T, AST],
+////          reprT: Repr[T[AST]]
+////        ): T[AST] = ??? //{
+////        //      def go(i: Int, t: AST): AST = {
+////        //        val newStruct = mapWithOff { (j, ast) =>
+////        //          val off = i + j
+////        //          go(off, f(off, ast))
+////        //        }
+////        //        t.copy(struct = newStruct)
+////        //      }
+////        //      mapWithOff { (off, ast) =>
+////        //        go(off, f(off, ast))
+////        //      }
+////        //    }
+//      }
     }
 
   }
@@ -212,9 +214,14 @@ object AST {
     implicit ops: NodeOps[H[Node[F, F]]]
   ) {
     val repr: Repr.Builder = ops.repr(unFix)
-    def show(): String = repr.build()
+    def show():           String     = repr.build()
+    def setID(newID: ID): Node[H, F] = copy(id = Some(newID))
     def withNewID() = copy(id = Some(UUID.randomUUID()))
-    def map(f: AST => AST): Node[H, F] = Node(ops.map(unFix)(f))
+    def map(f: AST => AST): Node[H, F] = copy(unFix = ops.map(unFix)(f))
+    def mapWithOff(f: (Int, AST) => AST): Node[H, F] =
+      copy(unFix = ops.mapWithOff(unFix)(f))
+    def traverseWithOff(f: (Int, AST) => AST): Node[H, F] =
+      copy(unFix = ops.traverseWithOff(unFix)(f))
   }
   object Node {
     object implicits extends implicits
@@ -232,17 +239,34 @@ object AST {
   trait NodeOps[T] {
     def repr(t: T): Repr.Builder
     def map(t: T)(f: AST => AST): T
+    def mapWithOff(t: T)(f: (Int, AST) => AST): T
+    def traverseWithOff(t: T)(f: (Int, AST) => AST): T
   }
   object NodeOps {
     def apply[T: NodeOps]: NodeOps[T] = implicitly[NodeOps[T]]
     implicit def instance[T[_]](
       implicit
       evRepr: Repr[T[AST]],
-      evFtor: Functor[T]
+      evFtor: Functor[T],
+      evOZip: OffsetZip[T, AST]
     ): NodeOps[T[AST]] =
       new NodeOps[T[AST]] {
         def repr(t: T[AST]):               Repr.Builder = evRepr.repr(t)
         def map(t: T[AST])(f: AST => AST): T[AST]       = Functor[T].map(t)(f)
+        def mapWithOff(t: T[AST])(f: (Int, AST) => AST): T[AST] =
+          Functor[T].map(OffsetZip(t))(f.tupled)
+
+        def traverseWithOff(t: T[AST])(f: (Int, AST) => AST): T[AST] = {
+          def go(i: Int, x: AST): AST = {
+            x.mapWithOff { (j, ast) =>
+              val off = i + j
+              go(off, f(off, ast))
+            }
+          }
+          mapWithOff(t) { (off, ast) =>
+            go(off, f(off, ast))
+          }
+        }
       }
   }
 
@@ -819,7 +843,7 @@ object AST {
           }
           R + emptyLinesRepr + firstLineRepr + linesRepr
         }
-      implicit def offZipBlock[T]: OffsetZip[BlockOf, T] = ???
+      implicit def offZipBlock[T]: OffsetZip[BlockOf, T] = _.map((0, _))
     }
     import implicits._
 
@@ -897,7 +921,7 @@ object AST {
       implicit def ftorModule: Functor[ModuleOf] = semi.functor
       implicit def reprModule[T: Repr]: Repr[ModuleOf[T]] =
         t => R + t.lines.head + t.lines.tail.map(newline + _)
-      implicit def offZipModule[T]: OffsetZip[ModuleOf, T] = ???
+      implicit def offZipModule[T]: OffsetZip[ModuleOf, T] = _.map((0, _))
     }
     import implicits._
 
@@ -939,12 +963,22 @@ object AST {
 
     val str1 = "foo": AST
 
-    val vx = v2: AST
+    val fff = fff4.map(a => a)
+    val vx  = v2: AST
     vx match {
       case Ident.Blank.any(v) => println(s"blank: $v")
       case Ident.Var.any(v)   => println(s"var: $v")
       case App.Prefix.any(v)  => println(s"app.prefix: $v")
     }
+
+    println(vx.repr)
+
+    v2.mapWithOff {
+      case (i, t) =>
+        println(s"> $i = $t")
+        t
+    }
+
 //
 //    val foo = Var("foo")
 //    val bar = Var("foo")
@@ -1017,7 +1051,7 @@ object AST {
 
     object MatchOf {
       implicit def ftor:      Functor[MatchOf]      = semi.functor
-      implicit def offZip[T]: OffsetZip[MatchOf, T] = ???
+      implicit def offZip[T]: OffsetZip[MatchOf, T] = _.map((0, _))
       implicit def repr[T]: Repr[MatchOf[T]] = t => {
         val pfxStream = t.pfx.map(_.toStream.reverse).getOrElse(List())
         val pfxRepr   = pfxStream.map(t => R + t.el + t.off)
@@ -1027,6 +1061,7 @@ object AST {
     }
 
     object Match {
+      val any = UnapplyByType[Match]
       def apply(
         pfx: Option[Pattern.Match],
         segs: Shifted.List1[Match.Segment],
@@ -1266,6 +1301,11 @@ object AST {
         }
         R + symbol + symbol + commentBlock
       }
+
+      // FIXME: How to make it automatic for non-spaced AST?
+      implicit def offZipCmmDis[T]: OffsetZip[DisableOf, T]    = _.map((0, _))
+      implicit def offZipCmmSL[T]:  OffsetZip[SingleLineOf, T] = _.map((0, _))
+      implicit def offZipCmmML[T]:  OffsetZip[MultiLineOf, T]  = _.map((0, _))
     }
   }
 
@@ -1284,6 +1324,9 @@ object AST {
       implicit def ftorImport[T]: Functor[ImportOf] = semi.functor
       implicit def reprImport[T]: Repr[ImportOf[T]] =
         t => R + ("import " + t.path.map(_.repr.build()).toList.mkString("."))
+
+      // FIXME: How to make it automatic for non-spaced AST?
+      implicit def offZipImport[T]: OffsetZip[ImportOf, T] = _.map((0, _))
     }
     import implicits._
 
@@ -1314,6 +1357,8 @@ object AST {
         val nameRepr = t.name.toList.map(Repr(_))
         R + (nameRepr, argsRepr).zipped.map(_ + _)
       }
+      // FIXME: How to make it automatic for non-spaced AST?
+      implicit def offZipMixfix[T]: OffsetZip[MixfixOf, T] = _.map((0, _))
     }
   }
 
@@ -1332,6 +1377,8 @@ object AST {
       implicit def ftorGrp[T]: Functor[GroupOf] = semi.functor
       implicit def reprGrp[T: Repr]: Repr[GroupOf[T]] =
         R + "(" + _.body + ")"
+      // FIXME: How to make it automatic for non-spaced AST?
+      implicit def offZipGroup[T]: OffsetZip[GroupOf, T] = _.map((0, _))
     }
     import implicits._
 
@@ -1363,6 +1410,8 @@ object AST {
       implicit def ftorDef[T]: Functor[DefOf] = semi.functor
       implicit def reprDef[T: Repr]: Repr[DefOf[T]] =
         t => R + symbol ++ t.name + t.args.map(R ++ _) + t.body
+      // FIXME: How to make it automatic for non-spaced AST?
+      implicit def offZipDef[T]: OffsetZip[DefOf, T] = _.map((0, _))
     }
     import implicits._
 
@@ -1392,6 +1441,8 @@ object AST {
         val code2 = t.code.map(R + t.indent + _).mkString("\n")
         R + "foreign " + t.lang + "\n" + code2
       }
+      // FIXME: How to make it automatic for non-spaced AST?
+      implicit def offZipForeign[T]: OffsetZip[ForeignOf, T] = _.map((0, _))
     }
     import implicits._
 

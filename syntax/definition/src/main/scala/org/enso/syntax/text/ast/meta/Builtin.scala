@@ -204,7 +204,7 @@ object Builtin {
       ctx.body match {
         case List(s1) =>
           val stream = s1.body.toStream
-          val text   = stream.map(_.repr.build()).mkString("")
+          val text   = stream.map(_.el.repr.build()).mkString("")
           val lines  = text.split("\n").toList
           lines match {
             case List(l) => AST.Comment.SingleLine(text)

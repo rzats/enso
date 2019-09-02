@@ -13,6 +13,7 @@ import org.enso.syntax.text.ast.opr.Prec
 //import org.enso.syntax.text.v2
 //import org.enso.syntax.text.v3
 import java.util.UUID
+import AST.implicits._
 
 import scala.annotation.tailrec
 
@@ -154,8 +155,8 @@ class Parser {
     engine.run(input).map(Macro.run) match {
       case flexer.Parser.Result(_, flexer.Parser.Result.Success(mod)) => {
         val mod2 = annotateModule(idMap, mod)
-//        resolveMacros(mod2)
-        mod2
+        resolveMacros(mod2).asInstanceOf[AST.Module]
+//        mod2
       }
       case _ => throw ParsingFailed
     }
@@ -163,20 +164,15 @@ class Parser {
   def annotateModule(
     idMap: Map[(Int, Int), AST.ID],
     mod: AST.Module
-  ): AST.Module = {
-//    val mod2 = mod.traverseWithOff { (off, ast) =>
-//      idMap.get((off, ast.span)) match {
-//        case Some(id) => ast.setID(id)
-//        case None =>
-//          ast match {
-//            case _: AST.Macro.Match => ast.withNewID()
-//            case _                  => ast
-//          }
-//      }
-//    }
-//    // FIXME: The following line will be removed with new AST
-//    mod2.asInstanceOf[AST.Module]
-    mod
+  ): AST.Module = mod.traverseWithOff { (off, ast) =>
+    idMap.get((off, ast.repr.span)) match {
+      case Some(id) => ast.setID(id)
+      case None =>
+        ast match {
+          case AST.Macro.Match.any(_) => ast.withNewID()
+          case _                      => ast
+        }
+    }
   }
 
 //  /** Although this function does not use any Parser-specific API now, it will
@@ -186,37 +182,35 @@ class Parser {
 //  def resolveMacros(ast: AST.Module): AST.Module =
 //    ast.map(resolveMacros)
 
-  def resolveMacros(ast: AST): AST = ast // {
-//    ast match {
-//      case ast: AST.Macro.Match =>
-//        val resolvedAST = ast.map(resolveMacros)
-//        Builtin.registry.get(resolvedAST.path) match {
-//          case None => throw MissingMacroDefinition
-//          case Some(spec) =>
-//            val id       = resolvedAST.id.getOrElse(throw new Error("Missing ID"))
-//            val segments = resolvedAST.segs.toList().map(_.el)
-//            val ctx      = AST.Macro.Resolver.Context(resolvedAST.pfx, segments, id)
-//            resolvedAST.copy(resolved = {
-//              //              println("SPEC RESOLVER")
-//              //              println(spec)
-//              resolveMacros(spec.resolver(ctx))
-//            })
-//        }
-//      case _ => ast.map(resolveMacros)
-//    }
-//  }
+  def resolveMacros(ast: AST): AST =
+    ast match {
+      case AST.Macro.Match.any(ast) =>
+        val resolvedAST = ast.map(resolveMacros)
+        Builtin.registry.get(resolvedAST.path) match {
+          case None => throw MissingMacroDefinition
+          case Some(spec) =>
+            val id       = resolvedAST.id.getOrElse(throw new Error("Missing ID"))
+            val segments = resolvedAST.segs.toList().map(_.el)
+            val ctx      = AST.Macro.Resolver.Context(resolvedAST.pfx, segments, id)
+            resolvedAST.unFix.copy[AST](resolved = {
+              //              println("SPEC RESOLVER")
+              //              println(spec)
+              resolveMacros(spec.resolver(ctx))
+            })
+        }
+      case _ => ast.map(resolveMacros)
+    }
 
   /** Drops macros metadata keeping only resolved macros in the AST. Please
     * remember that this operation drops the information about AST spacing as
     * well.
     */
   def dropMacroMeta(ast: AST.Module): AST.Module = {
-//    def go: AST => AST = {
-//      case t: AST.Macro.Match => go(t.resolved)
-//      case t                  => t.map(go)
-//    }
-//    ast.map(go)
-    ast
+    def go: AST => AST = {
+      case AST.Macro.Match.any(t) => go(t.resolved)
+      case t                      => t.map(go)
+    }
+    ast.map(go)
   }
 
 }
@@ -328,12 +322,12 @@ object Main extends App {
   //  pprint.pprintln(mod, width = 50, height = 10000)
 
   println(pretty(mod.toString))
-//  println(pretty(parser.dropMacroMeta(mod).toString))
-  //  val rmod = parser.resolveMacros(mod)
-  //  if (mod != rmod) {
-  //    println("\n---\n")
-  //    println(pretty(rmod.toString))
-  //  }
+  println(pretty(parser.dropMacroMeta(mod).toString))
+//  val rmod = parser.resolveMacros(mod)
+//  if (mod != rmod) {
+//    println("\n---\n")
+//    println(pretty(rmod.toString))
+//  }
   println("------")
   println(mod.show() == inp)
   println("------")
@@ -347,7 +341,7 @@ object Main extends App {
 
   println()
 
-//  v2.AST.main()
+  AST.main()
 //  v3.AST.main()
 
 }
