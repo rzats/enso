@@ -204,7 +204,7 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
     }
 
     def onMod(): Unit = logger.trace {
-      val opr = AST.Opr.Mod(unwrap(ident.current).asInstanceOf[AST.Opr].name)
+      val opr = AST.Mod(unwrap(ident.current).asInstanceOf[AST.Opr].name)
       ident.current = Some(opr)
     }
 

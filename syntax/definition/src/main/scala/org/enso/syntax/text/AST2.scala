@@ -272,31 +272,28 @@ object AST {
   //// Ident ///////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  type Ident = ASTOf[IdentOf]
-  sealed trait IdentOf[T] extends ShapeOf[T] with Phantom { val name: String }
+  //// Reexports ////
 
-  // FIXME: Compatibility mode
   type Blank = Ident.Blank
   type Var   = Ident.Var
   type Cons  = Ident.Cons
   type Opr   = Ident.Opr
   type Mod   = Ident.Mod
 
-  // FIXME: Compatibility mode
   val Blank = Ident.Blank
   val Var   = Ident.Var
   val Cons  = Ident.Cons
   val Opr   = Ident.Opr
   val Mod   = Ident.Mod
 
+  //// Definition ////
+
+  type Ident = ASTOf[IdentOf]
+  sealed trait IdentOf[T] extends ShapeOf[T] with Phantom { val name: String }
   object IdentOf {
     implicit def functor: Functor[IdentOf] = semi.functor
   }
-
   object Ident {
-
-    //// Definition ////
-
     type Blank = ASTOf[BlankOf]
     type Var   = ASTOf[VarOf]
     type Cons  = ASTOf[ConsOf]
@@ -367,33 +364,26 @@ object AST {
       def unapply(t: AST) = Unapply[Blank].run(_ => true)(t)
       def apply(): Blank = BlankOf[AST]()
     }
-
     object Var {
       val any             = UnapplyByType[Var]
       def unapply(t: AST) = Unapply[Var].run(_.name)(t)
       def apply(name: String): Var = VarOf[AST](name)
     }
-
     object Cons {
       val any             = UnapplyByType[Cons]
       def unapply(t: AST) = Unapply[Cons].run(_.name)(t)
       def apply(name: String): Cons = ConsOf[AST](name)
     }
-
     object Mod {
       val any             = UnapplyByType[Mod]
       def unapply(t: AST) = Unapply[Mod].run(_.name)(t)
       def apply(name: String): Mod = ModOf[AST](name)
     }
-
     object Opr {
       val app             = Opr(" ")
       val any             = UnapplyByType[Opr]
       def unapply(t: AST) = Unapply[Opr].run(_.name)(t)
       def apply(name: String): Opr = OprOf[AST](name)
-
-      type Mod = Ident.Mod // FIXME: Compatibility mode
-      val Mod = Ident.Mod // FIXME: Compatibility mode
     }
 
     ///////////////////////
@@ -421,13 +411,14 @@ object AST {
   //// Literal /////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  // FIXME: Compatibility mode
-  type Number = Literal.Number
-  val Number = Literal.Number
+  //// Reexports ////
 
-  // FIXME: Compatibility mode
-  type Text = Literal.Text
-  val Text = Literal.Text
+  type Number = Literal.Number
+  type Text   = Literal.Text
+  val Number = Literal.Number
+  val Text   = Literal.Text
+
+  //// Definition ////
 
   type Literal = LiteralOf[AST]
   sealed trait LiteralOf[T] extends ShapeOf[T]

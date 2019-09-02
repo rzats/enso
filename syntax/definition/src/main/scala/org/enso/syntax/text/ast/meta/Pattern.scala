@@ -507,7 +507,7 @@ sealed trait Pattern {
           matchByCls[AST.Opr](spaced) { sast =>
             Option.when(maxPrec.forall(_ >= sast.el.prec))(M.Opr(p, sast))
           }
-        case p @ P.Mod(spaced) => matchByCls_[AST.Opr.Mod](spaced, M.Mod(p, _))
+        case p @ P.Mod(spaced) => matchByCls_[AST.Mod](spaced, M.Mod(p, _))
 
         case p @ P.Macro(spaced) =>
           matchByCls_[AST.Macro](spaced, M.Macro(p, _))
