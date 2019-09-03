@@ -5,7 +5,6 @@ import java.util.UUID
 import org.enso.data.List1
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Cons
-import org.enso.syntax.text.AST.Marker
 
 /** Layer over Double Representation and other backend services. Directly under
   * GUI. */
@@ -243,7 +242,7 @@ object API {
       output: Port.Info,
       flags: Set[Flag],
       stats: Option[Stats],
-      marker: Marker
+      marker: Any
     )
   }
 

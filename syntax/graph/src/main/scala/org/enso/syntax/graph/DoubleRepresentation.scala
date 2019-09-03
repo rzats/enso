@@ -1,23 +1,15 @@
 package org.enso.syntax.graph
 
-import java.util.UUID
-
 import org.enso.data.List1
-import org.enso.data.Shifted
 import org.enso.syntax.graph.API._
 import org.enso.data.List1._
-import org.enso.flexer.Parser.Result
 import org.enso.flexer.Reader
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Import
-import org.enso.syntax.text.AST.SAST
 import org.enso.syntax.text.Parser
 import org.enso.syntax.text.AST.App.Infix
 import org.enso.syntax.text.AST.Block.Line
 import org.enso.syntax.text.AST.Block.OptLine
-import org.enso.syntax.text.AST.Macro.Match.Segment
-import org.enso.syntax.text.ast.meta
-import org.enso.syntax.text.ast.meta.Pattern
 
 import scala.collection.GenTraversableOnce
 import scala.reflect.ClassTag
@@ -179,15 +171,15 @@ object Extensions {
     def flatTraverse[B](f: AST => GenTraversableOnce[B]): List[B] =
       module.lines.toList.flatMap(_.elem).flatMap(f(_))
 
-    def insert(index: Int, addedLine: Line): AST.Module = {
+    def insert(index: Int, addedLine: OptLine): AST.Module = {
       val moduleIsEmpty = module.lines.size == 1 && module.lines.head.elem.isEmpty
       val newLines =
         if (moduleIsEmpty) List1(addedLine)
         else module.lines.insert(index, addedLine)
-      Module(newLines)
+      AST.Module(newLines)
     }
     def insert(index: Int, addedLineAst: AST): AST.Module =
-      insert(index, Line(addedLineAst))
+      insert(index, OptLine(addedLineAst))
 
     def removeAt(index: Int): AST.Module = {
       val newLines = List1(module.lines.removeAt(index)) match {
@@ -195,7 +187,7 @@ object Extensions {
         // if we removed the last line, restore an empty one
         case None => List1(Line(None))
       }
-      Module(newLines)
+      AST.Module(newLines)
     }
 
     /** Calls function f on each line,
@@ -212,7 +204,7 @@ object Extensions {
             case Some(lines) => lines ++ ls
           }
       }
-      Module(List1(go(module.lines.toList)).get)
+      AST.Module(List1(go(module.lines.toList)).get)
     }
   }
 }
