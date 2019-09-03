@@ -1,7 +1,5 @@
 package org.enso.syntax.text
 
-import java.util.UUID
-
 import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.data.Tree
