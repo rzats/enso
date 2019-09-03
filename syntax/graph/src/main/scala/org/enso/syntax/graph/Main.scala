@@ -7,7 +7,7 @@ object Main extends App {
   println(AST.Number("fpo", 50).show())
 
   println(
-    s"Show app: ${AST.App(AST.Var("inc"), AST.Number(50)).show()}"
+    s"Show app: ${AST.App.Prefix(AST.Var("inc"), AST.Number(50)).show()}"
   )
   println(
     s"Show import: ${AST.Import(AST.Cons("Foo"), AST.Cons("Bar")).show()}"

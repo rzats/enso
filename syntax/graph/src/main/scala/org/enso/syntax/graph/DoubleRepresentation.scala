@@ -14,10 +14,12 @@ import org.enso.syntax.text.AST.SAST
 import org.enso.syntax.text.Parser
 import org.enso.syntax.text.AST.App.Infix
 import org.enso.syntax.text.AST.Block.Line
+import org.enso.syntax.text.AST.Block.OptLine
 import org.enso.syntax.text.AST.Macro.Match.Segment
 import org.enso.syntax.text.ast.meta
 import org.enso.syntax.text.ast.meta.Pattern
 
+import scala.collection.GenTraversableOnce
 import scala.reflect.ClassTag
 
 object KnownOperators {
@@ -51,14 +53,14 @@ object Extensions {
     /** ID is required for all definitions (enterable functions) and nodes. */
     def requiresId: Boolean = {
       ast match {
-        case _: AST.Var       => true
-        case _: AST.App       => true
-        case _: AST.App.Left  => true
-        case _: AST.App.Right => true
-        case _: AST.App.Infix => true
-        case _: AST.App.Sides => true
-        case _: AST.Number    => true
-        case _                => false
+        case _: AST.Var => true
+        case _: AST.App => true
+//        case _: AST.App.Section.Left  => true
+//        case _: AST.App.Section.Right => true
+//        case _: AST.App.Infix         => true
+//        case _: AST.App.Section.Sides => true
+        case _: AST.Number => true
+        case _             => false
       }
     }
 
@@ -66,11 +68,10 @@ object Extensions {
       ast.asImport.exists(_.path == module)
     }
 
-    def asNode: Option[Node.Info] = ast.as[AST.Marked].flatMap { marked =>
-      val nodeAst = marked.ast
-      val (lhs, rhs) = nodeAst.asAssignment match {
+    def asNode: Option[Node.Info] = {
+      val (lhs, rhs) = ast.asAssignment match {
         case Some(Infix(l, _, r)) => (Some(l), r)
-        case None                 => (None, nodeAst)
+        case None                 => (None, ast)
       }
 
       val assignment = lhs.map(AssignmentInfo(_, rhs))
@@ -80,7 +81,11 @@ object Extensions {
       if (assignment.exists(_.inputAsts.nonEmpty))
         return None
 
-      val id       = marked.marker.id
+      val id = ast.id.getOrElse(
+        throw new Exception(
+          s"missing id for node with expression ${ast.show()}"
+        )
+      )
       val spanTree = API.SpanTree() // TODO
       val expr     = Expr(rhs.show(), spanTree)
 
@@ -91,20 +96,20 @@ object Extensions {
       val output           = Port.Info(None, outputName, Seq())
       val flags: Set[Flag] = Set.empty // TODO
       val stats            = None
-      val metadata         = marked.marker
+      val metadata         = null // TODO
 
       val node = Node.Info(id, expr, inputs, output, flags, stats, metadata)
       Some(node)
     }
 
     def flattenApps: List1[AST] = ast match {
-      // TODO: provisionally deal with macros resolving to Group, like parens,
-      //       as if code was directly grouped
-      case AST.Macro.Match(_, _, _, group @ AST.Group(body)) =>
-        body match {
-          case Some(groupedAst) => groupedAst.flattenApps
-          case _                => List1(group)
-        }
+//      // TODO: provisionally deal with macros resolving to Group, like parens,
+//      //       as if code was directly grouped
+//      case AST.Macro.Match(_, _, _, group @ AST.Group(body)) =>
+//        body match {
+//          case Some(groupedAst) => groupedAst.flattenApps
+//          case _                => List1(group)
+//        }
 //      case AST.Macro.Match(
 //          marker,
 //          None,
@@ -131,18 +136,18 @@ object Extensions {
 //        null
 //      }
       // lhs rhs
-      case AST.App(lhs, rhs) => lhs.flattenApps :+ rhs
-      case nonAppAst         => List1(nonAppAst)
+      case AST.App.Prefix(lhs, rhs) => lhs.flattenApps :+ rhs
+      case nonAppAst                => List1(nonAppAst)
     }
 
     def groupTopInputs: Seq[AST] = ast match {
-      case _: AST.App       => ast.flattenApps.tail
-      case _: AST.App.Sides => Seq(AST.Blank, AST.Blank)
+      case _: AST.App               => ast.flattenApps.tail
+      case _: AST.App.Section.Sides => Seq(AST.Blank(), AST.Blank())
       // TODO special case below for unary minus, until parser handles it
-      case AST.App.Right(KnownOperators.Minus, rhs) => Seq(rhs)
-      case AST.App.Right(_, rhs)                    => Seq(AST.Blank, rhs)
-      case AST.App.Left(lhs, _)                     => Seq(lhs, AST.Blank)
-      case AST.App.Infix(lhs, _, rhs)               => Seq(lhs, rhs)
+      case AST.App.Section.Right(KnownOperators.Minus, rhs) => Seq(rhs)
+      case AST.App.Section.Right(_, rhs)                    => Seq(AST.Blank(), rhs)
+      case AST.App.Section.Left(lhs, _)                     => Seq(lhs, AST.Blank())
+      case AST.App.Infix(lhs, _, rhs)                       => Seq(lhs, rhs)
 //      case _: AST.Var                 => Seq()
 //      case _: AST.Literal             => Seq()
 //      case _: AST.Number              => Seq()
@@ -169,6 +174,46 @@ object Extensions {
     def lineIndexWhere(p: AST => Boolean): Option[Int] = {
       module.lines.indexWhere(_.elem.exists(p))
     }
+
+    /** flatMaps non-empty lines ASTs. */
+    def flatTraverse[B](f: AST => GenTraversableOnce[B]): List[B] =
+      module.lines.toList.flatMap(_.elem).flatMap(f(_))
+
+    def insert(index: Int, addedLine: Line): AST.Module = {
+      val moduleIsEmpty = module.lines.size == 1 && module.lines.head.elem.isEmpty
+      val newLines =
+        if (moduleIsEmpty) List1(addedLine)
+        else module.lines.insert(index, addedLine)
+      Module(newLines)
+    }
+    def insert(index: Int, addedLineAst: AST): AST.Module =
+      insert(index, Line(addedLineAst))
+
+    def removeAt(index: Int): AST.Module = {
+      val newLines = List1(module.lines.removeAt(index)) match {
+        case Some(list1) => list1
+        // if we removed the last line, restore an empty one
+        case None => List1(Line(None))
+      }
+      Module(newLines)
+    }
+
+    /** Calls function f on each line,
+      *   - if f returns None, line is kept as it was,
+      *   - if f returns Some, line is replaced with f
+      *        and all further lines are kept as they were
+      */
+    def findAndReplace(f: OptLine => Option[List[OptLine]]): AST.Module = {
+      def go(lines: List[OptLine]): List[OptLine] = lines match {
+        case Nil => Nil
+        case l +: ls =>
+          f(l) match {
+            case None        => l +: go(ls)
+            case Some(lines) => lines ++ ls
+          }
+      }
+      Module(List1(go(module.lines.toList)).get)
+    }
   }
 }
 
@@ -190,34 +235,27 @@ case class AssignmentInfo(lhs: AST, rhs: AST) {
 //}
 
 object ParserUtils {
-  def expectAst(result: Parser.Result[AST.Module]): AST.Module = {
-    result match {
-      case Result(_, Result.Success(ret)) => ret
-      case _ =>
-        throw new Exception("Parsing failed: " + result.toString)
-    }
-  }
   def prettyPrint(ast: AST.Module): Unit = {
     println("------")
     println(org.enso.syntax.text.Main.pretty(ast.toString))
     println("------")
     println(ast.show())
   }
-  def parse(program: String, markers: Parser.Markers = Seq()): AST.Module = {
+  def parse(program: String): AST.Module = {
     val parser = new Parser()
-    val result = parser.run(new Reader(program), markers)
-    val ast    = expectAst(result)
+    val ast    = parser.run(new Reader(program))
 
-    var counter = 0
-    ast.map(astNode => {
-      // unmarked node asts should get their markers
-      if (astNode.requiresId) {
-        val markedAst = AST.Marked(AST.Marker(counter), astNode)
-        counter += 1
-        markedAst
-      } else
-        astNode
-    })
+//    var counter = 0
+//    ast.map(astNode => {
+//      // unmarked node asts should get their markers
+//      if (astNode.requiresId) {
+//        val markedAst = AST.Marked(AST.Marker(counter), astNode)
+//        counter += 1
+//        markedAst
+//      } else
+//        astNode
+//    })
+    ast
   }
 }
 
