@@ -7,6 +7,9 @@ import org.enso.syntax.text.AST
 import org.enso.syntax.graph.API._
 import org.enso.syntax.text.AST.Cons
 import org.scalatest._
+import matchers._
+import org.scalatest.LoneElement._
+import org.scalatest.matchers.MatchResult
 
 import scala.reflect.ClassTag
 
@@ -67,7 +70,7 @@ class Tests extends FunSuite with org.scalatest.Matchers {
   ): R = {
     val (result, finalAst) = withDR(initialProgram, action)
     val actualFinalProgram = finalAst.show()
-    actualFinalProgram should be(expectedFinalProgram)
+    actualFinalProgram should be(expectedFinalProgram.replace("\r\n", "\n"))
     result
   }
   def expectTransformationError[E: ClassTag](
@@ -92,6 +95,21 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     )._1
   }
 
+  def expectImports(
+    value: Seq[Module.Name],
+    expected: Module.Name*
+  ): Unit = {
+    if (value.size != expected.size)
+      fail(
+        s"Imports list $value has ${value.size} elements"
+        + s" while expected ${expected.size}"
+      )
+
+    value.zip(expected).foreach {
+      case (lhs, rhs) => lhs.nameAsString() shouldEqual rhs.nameAsString()
+    }
+  }
+
   test("recognizing lack of imports") {
     withDR(
       "",
@@ -106,8 +124,7 @@ class Tests extends FunSuite with org.scalatest.Matchers {
       "import Foo.Baz",
       dr => {
         val imports = dr.importedModules(mockModule)
-        imports should have length 1
-        imports should contain(Module.Name("Foo.Baz"))
+        expectImports(imports, Module.Name("Foo.Baz"))
       }
     )
   }

@@ -916,6 +916,8 @@ object AST {
 
     object Match {
       val any = UnapplyByType[Match]
+      def unapply(t: AST) =
+        Unapply[Match].run(t => (t.pfx, t.segs, t.resolved))(t)
       def apply(
         pfx: Option[Pattern.Match],
         segs: Shifted.List1[Match.Segment],
@@ -1206,6 +1208,7 @@ object AST {
   type Import = ASTOf[ImportOf]
   case class ImportOf[T](path: List1[Cons]) extends SpacelessASTOf[T]
   object Import {
+    val any = UnapplyByType[Import]
     def apply(path: List1[Cons]):            Import = ImportOf[AST](path)
     def apply(head: Cons):                   Import = Import(head, List())
     def apply(head: Cons, tail: List[Cons]): Import = Import(List1(head, tail))

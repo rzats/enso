@@ -5,7 +5,9 @@ import org.enso.syntax.graph.API._
 import org.enso.data.List1._
 import org.enso.flexer.Reader
 import org.enso.syntax.text.AST
+import org.enso.syntax.text.AST.Macro.Match
 import org.enso.syntax.text.AST.Import
+import org.enso.syntax.text.AST.UnapplyByType
 import org.enso.syntax.text.Parser
 import org.enso.syntax.text.AST.App.Infix
 import org.enso.syntax.text.AST.Block.Line
@@ -13,6 +15,11 @@ import org.enso.syntax.text.AST.Block.OptLine
 
 import scala.collection.GenTraversableOnce
 import scala.reflect.ClassTag
+
+case class MissingIdException(ast: AST) extends Exception {
+  override def getMessage: String =
+    s"missing id for node with expression `${ast.show()}`"
+}
 
 object KnownOperators {
   val Assignment = AST.Opr("=")
@@ -25,13 +32,10 @@ object Extensions {
   }
 
   implicit class Ast_ops(ast: AST) {
-    def as[T: ClassTag]: Option[T] = {
-      val tag = implicitly[ClassTag[T]]
-      ast match {
-        case tag(t) => Some(t)
-        case _      => None
-      }
-    }
+    def getId: AST.ID =
+      ast.id.getOrElse(throw MissingIdException(ast))
+
+    def as[T: UnapplyByType]: Option[T] = UnapplyByType[T].unapply(ast)
 
     // TODO: name should be more different from as[Import]
     def asImport: Option[AST.Import] =
@@ -42,22 +46,8 @@ object Extensions {
 
     def getName: Option[String] = ast.as[AST.Var].map(_.name)
 
-    /** ID is required for all definitions (enterable functions) and nodes. */
-    def requiresId: Boolean = {
-      ast match {
-        case _: AST.Var => true
-        case _: AST.App => true
-//        case _: AST.App.Section.Left  => true
-//        case _: AST.App.Section.Right => true
-//        case _: AST.App.Infix         => true
-//        case _: AST.App.Section.Sides => true
-        case _: AST.Number => true
-        case _             => false
-      }
-    }
-
     def imports(module: Module.Name): Boolean = {
-      ast.asImport.exists(_.path == module)
+      ast.asImport.exists(_.path sameTarget module)
     }
 
     def asNode: Option[Node.Info] = {
@@ -73,11 +63,7 @@ object Extensions {
       if (assignment.exists(_.inputAsts.nonEmpty))
         return None
 
-      val id = ast.id.getOrElse(
-        throw new Exception(
-          s"missing id for node with expression ${ast.show()}"
-        )
-      )
+      val id       = ast.getId
       val spanTree = API.SpanTree() // TODO
       val expr     = Expr(rhs.show(), spanTree)
 
@@ -95,13 +81,13 @@ object Extensions {
     }
 
     def flattenApps: List1[AST] = ast match {
-//      // TODO: provisionally deal with macros resolving to Group, like parens,
-//      //       as if code was directly grouped
-//      case AST.Macro.Match(_, _, _, group @ AST.Group(body)) =>
-//        body match {
-//          case Some(groupedAst) => groupedAst.flattenApps
-//          case _                => List1(group)
-//        }
+      // TODO: provisionally deal with macros resolving to Group, like parens,
+      //       as if code was directly grouped
+      case AST.Macro.Match(_, _, group @ AST.Group(body)) =>
+        body match {
+          case Some(groupedAst) => groupedAst.flattenApps
+          case _                => List1(group)
+        }
 //      case AST.Macro.Match(
 //          marker,
 //          None,
@@ -133,8 +119,8 @@ object Extensions {
     }
 
     def groupTopInputs: Seq[AST] = ast match {
-      case _: AST.App               => ast.flattenApps.tail
-      case _: AST.App.Section.Sides => Seq(AST.Blank(), AST.Blank())
+      case AST.App.Prefix.any(ast)      => ast.flattenApps.tail
+      case AST.App.Section.Sides.any(_) => Seq(AST.Blank(), AST.Blank())
       // TODO special case below for unary minus, until parser handles it
       case AST.App.Section.Right(KnownOperators.Minus, rhs) => Seq(rhs)
       case AST.App.Section.Right(_, rhs)                    => Seq(AST.Blank(), rhs)
@@ -157,6 +143,12 @@ object Extensions {
 //      line.elem.exists(_.imports(module))
     // def asAssignment: Option[Infix]     = line.elem.flatMap(_.asAssignment)
     // def asNode: Option[Node.Info] = line.elem.flatMap(_.asNode)
+  }
+
+  implicit class ModuleName_ops(moduleName: API.Module.Name) {
+    def nameAsString(): String = moduleName.toList.map(_.name).mkString(".")
+    def sameTarget(rhs: API.Module.Name): Boolean =
+      moduleName.map(_.unFix) == rhs.map(_.unFix)
   }
 
   implicit class Module_ops(module: AST.Module) {
@@ -285,8 +277,10 @@ final case class DoubleRepresentation(
   def removeConnection(graph: Port.Context, from: Output.Id, to: Input.Id) = ???
 
   override def importedModules(module: Module.Location): Seq[Module.Name] = {
-    val ast = state.getModule(module)
-    ast.imports.map(_.path)
+    val ast     = state.getModule(module)
+    val imports = ast.imports
+    val paths   = imports.map(_.path)
+    paths
   }
 
   override def importModule(context: Module.Id, importee: Module.Name): Unit = {

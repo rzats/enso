@@ -172,11 +172,11 @@ class Parser {
 //    println(Main.pretty(ast.toString))
     idMap.get((off, ast.repr.span)) match {
       case Some(id) => ast.setID(id)
-      case None =>
-        ast match {
-          case AST.Macro.Match.any(_) => ast.withNewID()
-          case _                      => ast
-        }
+      case None     => ast.withNewID()
+//        ast match {
+//          case AST.Macro.Match.any(_) => ast.withNewID()
+//          case _                      => ast
+//        }
     }
   }
 
