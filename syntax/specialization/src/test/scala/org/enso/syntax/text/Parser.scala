@@ -17,7 +17,7 @@ class ParserSpec extends FlatSpec with Matchers {
     val module  = parser.run(new Reader(input))
     val rmodule = parser.dropMacroMeta(module)
     assert(rmodule == result)
-    assert(module.show() == new Reader(input).toString())
+    assert(module.show == new Reader(input).toString())
   }
 
   def assertExpr(input: String, result: AST): Assertion = {
@@ -31,14 +31,14 @@ class ParserSpec extends FlatSpec with Matchers {
         case None => fail("Empty expression")
         case Some(e) =>
           assert(e == result)
-          assert(module.show() == new Reader(input).toString())
+          assert(module.show == new Reader(input).toString())
       }
     }
   }
 
   def assertIdentity(input: String): Assertion = {
     val module = Parser().run(new Reader(input))
-    assert(module.show() == new Reader(input).toString())
+    assert(module.show == new Reader(input).toString())
   }
 
   implicit class TestString(input: String) {

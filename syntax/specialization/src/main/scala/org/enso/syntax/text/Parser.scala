@@ -336,9 +336,9 @@ object Main extends App {
     println(pretty(rmod.toString))
   }
   println("------")
-  println(mod.show() == inp)
+  println(mod.show == inp)
   println("------")
-  println(mod.show())
+  println(mod.show)
   println("------")
 
   //  mod.traverseWithOff { (off, ast) =>

@@ -1,5 +1,13 @@
 package org.enso.syntax.graph
 
+import java.awt.Toolkit
+import java.awt.datatransfer.Clipboard
+import java.awt.datatransfer.ClipboardOwner
+import java.awt.datatransfer.DataFlavor
+import java.awt.datatransfer.StringSelection
+import java.awt.datatransfer.Transferable
+import java.util.UUID
+
 import org.enso.data.List1
 import org.enso.syntax.graph.API._
 import org.enso.data.List1._
@@ -13,12 +21,13 @@ import org.enso.syntax.text.AST.App.Infix
 import org.enso.syntax.text.AST.Block.Line
 import org.enso.syntax.text.AST.Block.OptLine
 
+import scala.annotation.tailrec
 import scala.collection.GenTraversableOnce
 import scala.reflect.ClassTag
 
 case class MissingIdException(ast: AST) extends Exception {
   override def getMessage: String =
-    s"missing id for node with expression `${ast.show()}`"
+    s"missing id for node with expression `${ast.show}`"
 }
 
 object KnownOperators {
@@ -65,7 +74,7 @@ object Extensions {
 
       val id       = ast.getId
       val spanTree = API.SpanTree() // TODO
-      val expr     = Expr(rhs.show(), spanTree)
+      val expr     = Expr(rhs.show, spanTree)
 
       val inputAsts = rhs.groupTopInputs
       // TODO subports
@@ -163,6 +172,24 @@ object Extensions {
     def flatTraverse[B](f: AST => GenTraversableOnce[B]): List[B] =
       module.lines.toList.flatMap(_.elem).flatMap(f(_))
 
+    /** Calls function f on each line,
+      *   - if f returns None, line is kept as it was,
+      *   - if f returns Some, line is replaced with f
+      *        and all further lines are kept as they were
+      */
+    def findAndReplace(f: Line => Option[List[OptLine]]): AST.Module = {
+      def go(lines: List[OptLine]): List[OptLine] = lines match {
+        case Nil => Nil
+        case l +: ls =>
+          f(l) match {
+            case None        => l +: go(ls)
+            case Some(lines) => lines ++ ls
+          }
+      }
+
+      Module(List1(go(module.lines.toList)).get)
+    }
+
     def insert(index: Int, addedLine: OptLine): AST.Module = {
       val moduleIsEmpty = module.lines.size == 1 && module.lines.head.elem.isEmpty
       val newLines =
@@ -223,7 +250,7 @@ object ParserUtils {
     println("------")
     println(org.enso.syntax.text.Main.pretty(ast.toString))
     println("------")
-    println(ast.show())
+    println(ast.show)
   }
   def parse(program: String): AST.Module = {
     val parser = new Parser()
@@ -246,7 +273,49 @@ object ParserUtils {
 final case class DoubleRepresentation(
   state: StateManager,
   notifier: NotificationSink
-) extends GraphAPI {
+) extends GraphAPI
+    with TextAPI {
+
+  protected def findAndReplace(loc: Module.Location, pos: TextPosition)(
+    fun: (TextPosition, AST.Block.OptLine) => List[AST.Block.OptLine]
+  ) = {
+    var span = 0
+    val module = state.getModule(loc).findAndReplace { line =>
+      span += line.span
+      if (span < pos.index) None
+      else Some(fun(TextPosition(span - line.span), line))
+    }
+    state.setModule(loc, module)
+  }
+
+  def getText(loc: Module.Location): String = state.getModule(loc).show
+
+  def insertText(loc: Module.Location, cursor: TextPosition, text: String) =
+    findAndReplace(loc, cursor) { (pos, line) =>
+      val (prefix, suffix) = line.show.splitAt(pos.index + cursor.index)
+      val result           = Parser().run(new Reader(prefix + text + suffix))
+      result.unwrap.lines.toList
+    }
+
+  def eraseText(loc: Module.Location, span: TextSpan) =
+    findAndReplace(loc, span.start) { (pos, line) =>
+      val (line1, line2) = line.show.splitAt(pos.index + span.start.index)
+      val result         = Parser().run(new Reader(line1 + line2.drop(span.length)))
+      result.unwrap.lines.toList
+    }
+
+  def copyText(loc: Module.Location, span: TextSpan): String = {
+    var text = ""
+    findAndReplace(loc, span.start) { (pos, line) =>
+      val start = pos.index + span.start.index
+      text = line.show.substring(start, start + span.length)
+      List(line)
+    }
+    text
+  }
+
+  def pasteText(loc: Module.Location, cursor: TextPosition, clipboard: String) =
+    insertText(loc, cursor, clipboard)
 
   def getGraph(loc: API.Definition.Graph.Location): Definition.Graph.Info = ???
   def getGraph(loc: Module.Graph.Location): Module.Graph.Info = {

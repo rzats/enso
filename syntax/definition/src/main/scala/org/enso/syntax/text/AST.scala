@@ -98,7 +98,7 @@ package org.enso.syntax.text
 //  sealed trait Symbol extends Repr.Provider {
 //    def byteSpan: Int    = repr.byteSpan
 //    def span:     Int    = repr.span
-//    def show():   String = repr.build()
+//    def show:   String = repr.build()
 //  }
 //
 ////  implicit def reprForAST: Repr.Of[AST] = _.repr

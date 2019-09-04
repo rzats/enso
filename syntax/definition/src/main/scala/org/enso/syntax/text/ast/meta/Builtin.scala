@@ -141,8 +141,8 @@ object Builtin {
           s1.body.toStream match {
             case List(langAST, Shifted(_, bodyAST: AST.Block)) =>
               val indent     = bodyAST.indent
-              val lang       = langAST.el.show()
-              val body       = bodyAST.show()
+              val lang       = langAST.el.show
+              val body       = bodyAST.show
               val bodyLines  = body.split("\\r?\\n").toList.drop(1)
               val bodyLines2 = bodyLines.map(_.drop(indent))
               AST.Foreign(indent, lang, bodyLines2)

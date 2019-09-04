@@ -158,7 +158,7 @@ object AST {
   ) {
     override def toString  = s"Node($id,$unFix)"
     val repr: Repr.Builder = ops.repr(unFix)
-    def show():             String     = repr.build()
+    def show:               String     = repr.build()
     def setID(newID: ID):   Node[H, F] = copy(id = Some(newID))
     def withNewID():        Node[H, F] = copy(id = Some(UUID.randomUUID()))
     def map(f: AST => AST): Node[H, F] = copy(unFix = ops.map(unFix)(f))
