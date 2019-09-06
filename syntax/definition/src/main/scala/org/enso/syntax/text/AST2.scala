@@ -449,6 +449,9 @@ object AST {
 
     object Number {
 
+      val any             = UnapplyByType[Number]
+      def unapply(t: AST) = Unapply[Number].run(t => (t.base, t.int))(t)
+
       //// Smart Constructors ////
 
       def apply(i: String):            Number = Number(None, i)
@@ -853,6 +856,10 @@ object AST {
 
   object Module {
     import Block._
+
+    val any             = UnapplyByType[Module]
+    def unapply(t: AST) = Unapply[Module].run(t => (t.lines))(t)
+
     def apply(ls: List1[OptLine]):            Module = ModuleOf(ls)
     def apply(l: OptLine):                    Module = Module(List1(l))
     def apply(l: OptLine, ls: OptLine*):      Module = Module(List1(l, ls.to[List]))

@@ -5,6 +5,7 @@ import java.util.UUID
 import org.enso.data.List1
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Cons
+import org.enso.syntax.text.AST.Opr
 
 /** Layer over Double Representation and other backend services. Directly under
   * GUI. */
@@ -237,7 +238,7 @@ object API {
     final case class Stats() // progress, debug, profiling - TODO
     final case class Info(
       id: Id,
-      expr: Expr,
+      expr: SpanTree,
       inputs: Seq[Port.Info],
       output: Port.Info,
       flags: Set[Flag],
@@ -251,10 +252,105 @@ object API {
 
   final case class Type(tp: TODO)
 
-  final case class SpanTree() extends TODO {}
+  object SpanTree {
 
-  // TODO [MWU] as discussed, most likely we should pass the whole AST
-  final case class Expr(text: String, spanTree: SpanTree)
+//    object Operations {
+//      def replace(node: Node)                   = Unit // each node can be replaced
+//      def insert(node: Application, index: Int) = Unit
+//      def erase(node: Application, index: Int)  = Unit
+//    }
+
+    case class AstNodeInfo(
+      textPosition: TextPosition,
+      ast: AST,
+      children: Seq[Node]
+    ) {}
+
+    sealed trait Flag
+    object Self extends Flag
+
+    sealed trait Node {
+      def textPosition: TextPosition
+      def text: String
+      def span: TextSpan
+      def children: Seq[Node]
+
+      // TODO below is rather GUI concern, now here for tests
+      def visibleChildren: Seq[SpanTree.Node] = children
+    }
+
+    /** Node with an empty span -- it is not paired with any particular AST,
+      * but it has been recognized as potential operation location.
+      *
+      * E.g. `+` is operator with two empty endpoints.
+      **/
+    case class EmptyEndpoint(textPosition: TextPosition) extends Node {
+      def text:     String       = ""
+      def span:     API.TextSpan = TextSpan(textPosition, 0)
+      def children: Seq[Node]    = Seq()
+    }
+
+    sealed trait AstNode extends Node {
+      val info: AstNodeInfo
+      def textPosition: TextPosition = info.textPosition
+      def ast:          AST          = info.ast
+      def children:     Seq[Node]    = info.children
+      def text:         String       = ast.show()
+      def span:         TextSpan     = TextSpan(textPosition, ast.repr.span)
+    }
+
+//    /** The root element in node expressions's span tree. */
+//    case class NodeExpression(ast: AST, children: Seq[Node]) extends Node {
+//      val textPosition = 0
+//    }
+
+    /** Also apps with no arguments (like `foo` or `15`) and flattened chains
+      * of applications
+      * */
+    abstract class ApplicationLike extends AstNode
+
+    /** E.g. `a + b + c` flattened to a single 5-child node.
+      *
+      * First child is a "self" port.
+      * Every second child is an operator.
+      * All operators in the chain are expected to be the same.
+      **/
+    case class OperatorChain(info: AstNodeInfo, opr: Opr)
+        extends ApplicationLike {
+      override def visibleChildren: Seq[Node] = children.filter {
+        case _: Operator => false
+        case _           => true
+      }
+    }
+
+    /** E.g. `foo bar baz` flattened to a single 3-child node.
+      *
+      * The first child is a function name (calleee).
+      * The second child is a "self" port.
+      * Any additional children are flattened further arguments.
+      **/
+    case class ApplicationChain(info: AstNodeInfo) extends ApplicationLike {
+      override def visibleChildren: Seq[Node] = children.drop(1)
+    }
+
+    /** Left-hand side of a prefix application or the operator. */
+    abstract class Callee extends AstNode
+
+    /** E.g. `+` from `a+b` */
+    case class Operator(info: AstNodeInfo) extends Callee
+    object Operator {
+      def apply(pos: TextPosition, ast: Opr): SpanTree.Operator = {
+        Operator(AstNodeInfo(pos, ast, Seq()))
+      }
+    }
+
+    case class Leaf(info: AstNodeInfo) extends AstNode
+    object Leaf {
+      def apply(textPosition: TextPosition, ast: AST): SpanTree.Leaf =
+        Leaf(AstNodeInfo(textPosition, ast, Seq()))
+    }
+  }
+  type SpanTree = SpanTree.Node
 
   sealed trait Port
   object Port {
@@ -361,8 +457,22 @@ object API {
     ////////////////////////////////////////////////////////////////////////////
   }
 
-  case class TextPosition(index: Int)
-  case class TextSpan(start: TextPosition, length: Int)
+  case class TextPosition(index: Int) {
+    def +(offset: Int) = TextPosition(index + offset)
+  }
+  object TextPosition {
+    val Start = TextPosition(0)
+  }
+  case class TextSpan(begin: TextPosition, length: Int) {
+
+    /** Index of the first character past the span */
+    def end: TextPosition = begin + length
+  }
+
+  implicit class String_Span_ops(text: String) {
+    def substring(span: TextSpan): String =
+      text.substring(span.begin.index, span.end.index)
+  }
 
   /***** Exceptions */
   final case class ImportAlreadyExistsException(name: Module.Name)

@@ -155,7 +155,8 @@ class Parser {
     engine.run(input).map(Macro.run) match {
       case flexer.Parser.Result(_, flexer.Parser.Result.Success(mod)) => {
         val mod2 = annotateModule(idMap, mod)
-        resolveMacros(mod2).asInstanceOf[AST.Module]
+        val mod3 = addMissingIds(mod2)
+        resolveMacros(mod3).asInstanceOf[AST.Module]
 //        mod2
       }
       case _ => throw ParsingFailed
@@ -172,12 +173,46 @@ class Parser {
 //    println(Main.pretty(ast.toString))
     idMap.get((off, ast.repr.span)) match {
       case Some(id) => ast.setID(id)
-      case None     => ast.withNewID()
-//        ast match {
-//          case AST.Macro.Match.any(_) => ast.withNewID()
-//          case _                      => ast
-//        }
+      case None =>
+        ast match {
+          case AST.Macro.Match.any(_) => ast.withNewID()
+          case _                      => ast
+        }
     }
+  }
+
+  /** All [[AST]] elements that are definitions (i.e. can be entered into in
+    * GUI) or are nodes in graph representation are required to bear [[AST.ID]].
+    * This method adds IDs on such AST elements if they are missing it.
+    */
+  def addMissingIds(ast: AST): AST = {
+    sealed trait Scope
+    object Scope {
+      trait RequiringIds extends Scope
+      object Module      extends RequiringIds
+      object Block       extends RequiringIds
+      object Other       extends Scope
+    }
+
+    def introducedScope(ast: AST): Scope = ast match {
+      case AST.Module.any(_) => Scope.Module
+      case AST.Block.any(_)  => Scope.Block
+      case _                 => Scope.Other
+    }
+
+    def go(ast: AST, scope: Scope): AST = {
+      val needsId = scope.isInstanceOf[Scope.RequiringIds]
+      // TODO also check for other cases of AST requiring IDs -- basically all
+      //  cases other than being a node, i.e. detect enterable definitions
+
+      val withFixedChildren = ast.map(child => go(child, introducedScope(ast)))
+      if (needsId && withFixedChildren.id.isEmpty)
+        withFixedChildren.withNewID()
+      else
+        withFixedChildren
+    }
+
+    go(ast, Scope.Other)
   }
 
 //  /** Although this function does not use any Parser-specific API now, it will

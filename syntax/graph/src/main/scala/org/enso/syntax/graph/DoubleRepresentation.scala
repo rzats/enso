@@ -1,6 +1,7 @@
 package org.enso.syntax.graph
 
 import org.enso.data.List1
+import org.enso.data.Shifted
 import org.enso.syntax.graph.API._
 import org.enso.data.List1._
 import org.enso.flexer.Reader
@@ -31,6 +32,44 @@ object Extensions {
     def isAssignment: Boolean = opr == KnownOperators.Assignment
   }
 
+  case class GeneralizedInfixOperator(
+    leftArg: Option[AST],
+    leftSpace: Int,
+    operator: AST.Opr,
+    rightSpace: Int,
+    rightArg: Option[AST]
+  ) {
+    def name:                   String = operator.name
+    def span(ast: Option[AST]): Int    = ast.map(_.repr.span).getOrElse(0)
+
+    def oprPos:      Int = span(leftArg) + leftSpace
+    def rightArgPos: Int = oprPos + operator.repr.span + rightSpace
+  }
+  object GeneralizedInfixOperator {
+    def apply(ast: AST): Option[GeneralizedInfixOperator] = ast match {
+      case AST.App.Infix.any(ast) =>
+        Some(
+          GeneralizedInfixOperator(
+            Some(ast.larg),
+            ast.loff,
+            ast.opr,
+            ast.roff,
+            Some(ast.rarg)
+          )
+        )
+      case AST.App.Section.Left.any(ast) =>
+        Some(
+          GeneralizedInfixOperator(Some(ast.arg), ast.off, ast.opr, 0, None)
+        )
+      case AST.App.Section.Right.any(ast) =>
+        Some(GeneralizedInfixOperator(None, 0, ast.opr, ast.off, Some(ast.arg)))
+      case AST.App.Section.Sides(opr) =>
+        Some(GeneralizedInfixOperator(None, 0, opr, 0, None))
+      case _ =>
+        None
+    }
+  }
+
   implicit class Ast_ops(ast: AST) {
     def getId: AST.ID =
       ast.id.getOrElse(throw MissingIdException(ast))
@@ -50,6 +89,80 @@ object Extensions {
       ast.asImport.exists(_.path sameTarget module)
     }
 
+    def flattenPrefix(
+      pos: TextPosition,
+      ast: AST.App.Prefix
+    ): Seq[(TextPosition, AST)] = {
+      val init = ast.fn match {
+        case AST.App.Prefix.any(lhsApp) => flattenPrefix(pos, lhsApp)
+        case nonAppAst                  => Seq(pos -> nonAppAst)
+      }
+      val rhsPos = pos + ast.fn.repr.span + ast.off
+      val last   = rhsPos -> ast.arg
+      init :+ last
+    }
+
+    def usedInfixOperator: Option[AST.Opr] =
+      GeneralizedInfixOperator(ast).map(_.operator)
+
+    def isInfixOperatorUsage: Boolean =
+      ast.usedInfixOperator.nonEmpty
+
+    def isInfixOperatorUsage(oprName: String): Boolean =
+      ast.usedInfixOperator.exists(_.name == oprName)
+
+    def flattenInfix(
+      pos: TextPosition,
+      ast: AST
+    ): Seq[(TextPosition, Option[AST])] = {
+      println("flattening on " + ast.show())
+      GeneralizedInfixOperator(ast) match {
+        case None =>
+          Seq(pos -> Some(ast))
+        case Some(info @ GeneralizedInfixOperator(lhs, _, opr, _, rhs)) =>
+          val init = lhs match {
+            case Some(lhsAst) if lhsAst.isInfixOperatorUsage(opr.name) =>
+              flattenInfix(pos, lhsAst)
+            case _ =>
+              Seq(pos -> lhs)
+          }
+
+          // TODO support right-associative operators
+          val preLast = pos + info.oprPos      -> Some(info.operator)
+          val last    = pos + info.rightArgPos -> info.rightArg
+          init :+ preLast :+ last
+      }
+    }
+
+    def spanTreeNode(pos: TextPosition): API.SpanTree.Node = ast match {
+      case AST.Opr.any(opr)          => SpanTree.Operator(pos, opr)
+      case AST.Blank.any(_)          => SpanTree.Leaf(pos, ast)
+      case AST.Literal.Number.any(_) => SpanTree.Leaf(pos, ast)
+      case AST.Var.any(_)            => SpanTree.Leaf(pos, ast)
+      case AST.App.Prefix.any(app) =>
+        val childrenAsts = flattenPrefix(pos, app)
+        val childrenNodes = childrenAsts.map {
+          case (childPos, childAst) =>
+            childAst.spanTreeNode(childPos)
+        }
+        SpanTree.ApplicationChain(SpanTree.AstNodeInfo(pos, ast, childrenNodes))
+      case ast if ast.isInfixOperatorUsage =>
+        val childrenAsts = flattenInfix(pos, ast)
+        val childrenNodes = childrenAsts.map {
+          case (childPos, childAst) =>
+            childAst
+              .map(_.spanTreeNode(childPos))
+              .getOrElse(SpanTree.EmptyEndpoint(childPos))
+        }
+        val info = SpanTree.AstNodeInfo(pos, ast, childrenNodes)
+        SpanTree.OperatorChain(info, ast.usedInfixOperator.get) // FIXME
+      case _ =>
+        println("failed to generate span tree node for " + ast.show())
+        println(ast.toString())
+        null
+    }
+    def spanTree: API.SpanTree = ast.spanTreeNode(TextPosition.Start)
+
     def asNode: Option[Node.Info] = {
       val (lhs, rhs) = ast.asAssignment match {
         case Some(Infix(l, _, r)) => (Some(l), r)
@@ -64,8 +177,7 @@ object Extensions {
         return None
 
       val id       = ast.getId
-      val spanTree = API.SpanTree() // TODO
-      val expr     = Expr(rhs.show(), spanTree)
+      val spanTree = rhs.spanTree
 
       val inputAsts = rhs.groupTopInputs
       // TODO subports
@@ -76,7 +188,7 @@ object Extensions {
       val stats            = None
       val metadata         = null // TODO
 
-      val node = Node.Info(id, expr, inputs, output, flags, stats, metadata)
+      val node = Node.Info(id, spanTree, inputs, output, flags, stats, metadata)
       Some(node)
     }
 
@@ -88,32 +200,6 @@ object Extensions {
           case Some(groupedAst) => groupedAst.flattenApps
           case _                => List1(group)
         }
-//      case AST.Macro.Match(
-//          marker,
-//          None,
-//          Shifted.List1(
-//            AST.Macro.Match
-//              .Segment(AST.Opr("("), mmm),
-//            Shifted(
-//              _,
-//              AST.Macro.Match
-//                .Segment(
-//                  AST.Opr(")"),
-//                  Pattern.Match.Of(aa, ee)
-//                )
-//            ) :: Nil
-//          ),
-//          res
-//          ) => {
-//        mmm match {
-//          case Pattern.Match.Of(Pattern.Build(ppp), el) => {
-//            println(ppp.toString + el.toString)
-//            null
-//          }
-//        }
-//        null
-//      }
-      // lhs rhs
       case AST.App.Prefix(lhs, rhs) => lhs.flattenApps :+ rhs
       case nonAppAst                => List1(nonAppAst)
     }

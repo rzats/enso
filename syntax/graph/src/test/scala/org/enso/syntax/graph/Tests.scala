@@ -7,9 +7,6 @@ import org.enso.syntax.text.AST
 import org.enso.syntax.graph.API._
 import org.enso.syntax.text.AST.Cons
 import org.scalatest._
-import matchers._
-import org.scalatest.LoneElement._
-import org.scalatest.matchers.MatchResult
 
 import scala.reflect.ClassTag
 
@@ -81,9 +78,8 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     ()
   }
   def checkModuleSingleNodeGraph[R](
-    program: String,
-    action: API.Node.Info => R
-  ): R = {
+    program: String
+  )(action: API.Node.Info => R): R = {
     withDR(
       program,
       dr => {
@@ -94,6 +90,17 @@ class Tests extends FunSuite with org.scalatest.Matchers {
       }
     )._1
   }
+  def checkJustExpressionSpanTree[R](
+    program: String
+  )(action: API.SpanTree => R): R =
+    checkModuleSingleNodeGraph(program) { node =>
+      // make sure that span covers the whole expression
+      val expectedSpan = TextSpan(TextPosition.Start, program.length)
+      node.expr.span shouldEqual expectedSpan
+
+      verifyTreeIndices(node.expr)
+      action(node.expr)
+    }
 
   def expectImports(
     value: Seq[Module.Name],
@@ -218,15 +225,12 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     )
   }
   test("node trivial literal") {
-    checkModuleSingleNodeGraph(
-      "15",
-      node => {
-        node.expr.text should equal("15")
-        node.inputs should have size 0
-        node.output.name should equal(None)
-        node.flags shouldBe empty
-      }
-    )
+    checkModuleSingleNodeGraph("15") { node =>
+      node.expr.text should equal("15")
+      node.inputs should have size 0
+      node.output.name should equal(None)
+      node.flags shouldBe empty
+    }
   }
 //  test("node literal in parens") {
 //    checkModuleSingleNodeGraph(
@@ -240,119 +244,187 @@ class Tests extends FunSuite with org.scalatest.Matchers {
 //    )
 //  }
   test("node trivial var") {
-    checkModuleSingleNodeGraph(
-      "foo",
-      node => {
-        node.expr.text should equal("foo")
-        node.inputs should have size 0
-        node.output.name should equal(None)
-        node.flags shouldBe empty
-      }
-    )
-  }
-  test("node trivial infix operator") {
-    checkModuleSingleNodeGraph(
-      "+",
-      node => {
-        node.expr.text should equal("+")
-        node.inputs should have size 2
-        node.inputs should equal(Seq(Port.Empty, Port.Empty))
-        node.flags shouldBe empty
-      }
-    )
-  }
-  test("node single arg app") {
-    checkModuleSingleNodeGraph(
-      "foo 4",
-      node => {
-        node.expr.text should equal("foo 4")
-        node.inputs should have size 1
-        node.inputs should equal(Seq(Port.Empty))
-        node.flags shouldBe empty
-      }
-    )
+    checkModuleSingleNodeGraph("foo") { node =>
+      node.expr.text should equal("foo")
+      node.inputs should have size 0
+      node.output.name should equal(None)
+      node.flags shouldBe empty
+    }
   }
   test("node single paren arg app") {
-    checkModuleSingleNodeGraph(
-      "foo (4)",
-      node => {
-        node.expr.text should equal("foo (4)")
-        node.inputs should have size 1
-        node.inputs should equal(Seq(Port.Empty))
-        node.flags shouldBe empty
-      }
-    )
-  }
-  test("node unary minus number") {
-    checkModuleSingleNodeGraph(
-      "-5",
-      node => {
-        node.expr.text should equal("-5")
-        node.inputs should equal(Port.Empty(1))
-        node.flags shouldBe empty
-      }
-    )
-  }
-  test("node number plus") {
-    checkModuleSingleNodeGraph(
-      "+5",
-      node => {
-        node.expr.text should equal("+5")
-        node.inputs should equal(Port.Empty(2))
-        node.flags shouldBe empty
-      }
-    )
-  }
-  test("node plus number") {
-    checkModuleSingleNodeGraph(
-      "5+",
-      node => {
-        node.expr.text should equal("5+")
-        node.inputs should equal(Port.Empty(2))
-        node.flags shouldBe empty
-      }
-    )
-  }
-  test("node two arg app") {
-    checkModuleSingleNodeGraph(
-      "foo a _",
-      node => {
-        node.expr.text should equal("foo a _")
-        node.inputs should equal(Port.Empty(2))
-        node.flags shouldBe empty
-      }
-    )
+    checkModuleSingleNodeGraph("foo (4)") { node =>
+      node.expr.text should equal("foo (4)")
+      node.inputs should have size 1
+      node.inputs should equal(Seq(Port.Empty))
+      node.flags shouldBe empty
+    }
   }
   test("node two arg app with paren") {
-    checkModuleSingleNodeGraph(
-      "(foo a) _",
-      node => {
-        node.expr.text should equal("(foo a) _")
-        node.inputs should equal(Port.Empty(2))
-        node.flags shouldBe empty
-      }
-    )
+    checkModuleSingleNodeGraph("(foo a) _") { node =>
+      node.expr.text should equal("(foo a) _")
+      node.inputs should equal(Port.Empty(2))
+      node.flags shouldBe empty
+    }
   }
   test("get trivial named node") {
-    checkModuleSingleNodeGraph(
-      "a = 15",
-      node => {
-        node.expr.text should equal("15")
-        node.inputs should have size 0
-        node.output.name should equal(Some("a"))
-        node.flags shouldBe empty
-      }
-    )
+    checkModuleSingleNodeGraph("a = 15") { node =>
+      node.expr.text should equal("15")
+      node.inputs should have size 0
+      node.output.name should equal(Some("a"))
+      node.flags shouldBe empty
+    }
+  }
+//  // TODO support unary minus
+//  test("node unary minus number") {
+//    checkJustExpressionSpanTree("-5") { root =>
+//      root.visibleChildren.map(_.text) shouldEqual Seq("5")
+//    }
+//  }
+  test("app single arg") {
+    checkJustExpressionSpanTree("foo 4") { root =>
+      root.visibleChildren.map(_.text) shouldEqual Seq("4")
+    }
+  }
+  test("app two args") {
+    checkJustExpressionSpanTree("foo a _") { root =>
+      root.visibleChildren.map(_.text) shouldEqual Seq("a", "_")
+    }
+  }
+  test("infix with blank sides") {
+    checkJustExpressionSpanTree("+") { root =>
+      root.visibleChildren.map(_.text) shouldEqual Seq("", "")
+    }
+  }
+  test("infix with blank left") {
+    checkJustExpressionSpanTree("+5") { root =>
+      root.visibleChildren.map(_.text) shouldEqual Seq("", "5")
+    }
+  }
+  test("infix with blank right") {
+    checkJustExpressionSpanTree("5+") { root =>
+      root.visibleChildren.map(_.text) shouldEqual Seq("5", "")
+    }
+  }
+  test("infix chain with blank right") {
+    checkJustExpressionSpanTree("a+b+") { root =>
+      root.visibleChildren.map(_.text) shouldEqual Seq("a", "b", "")
+    }
+  }
+  test("infix chain with blank left middle right") {
+    checkJustExpressionSpanTree("+ +") { root =>
+      root.visibleChildren.map(_.text) shouldEqual Seq("", "", "")
+    }
+  }
+  test("infix chain with blank left") {
+    checkJustExpressionSpanTree("+b+c") { root =>
+      root.visibleChildren.map(_.text) shouldEqual Seq("", "b", "c")
+    }
+  }
+  test("infix chain with blank sides") {
+    checkJustExpressionSpanTree("+a+b+") { root =>
+      root.visibleChildren.map(_.text) shouldEqual Seq("", "a", "b", "")
+    }
   }
   test("get infix node") {
-    checkModuleSingleNodeGraph(
-      "a+2",
-      node => {
-        node.expr.text should equal("a+2")
-        node.inputs should have size 2
-        node.inputs should equal(Port.Empty(2))
-        node.flags shouldBe empty
+    checkJustExpressionSpanTree("a+2") { root =>
+      root.visibleChildren.map(_.text) shouldEqual Seq("a", "2")
+    }
+  }
+
+  /** Traverses SpanTree and checks that text obtained by taking node span's
+    * part of node text expressions is the same as pretty-printing of the node.
+    */
+  def verifyTreeIndices(tree: API.SpanTree): Unit = {
+    def verifyNode(node: SpanTree.Node): Unit = node match {
+      case node: SpanTree.AstNode =>
+        val textFromSpan    = tree.text.substring(node.span)
+        val textFromShowing = node.ast.show()
+        textFromSpan shouldEqual textFromShowing
+        node.children.foreach(verifyNode)
+      case node: SpanTree.EmptyEndpoint =>
+        node.span.length shouldEqual 0
+        node.children.foreach(verifyNode)
+    }
+    verifyNode(tree)
+  }
+  def verifyTreeIndices(node: Node.Info): Unit = verifyTreeIndices(node.expr)
+
+  test("flattening prefix application") {
+    checkJustExpressionSpanTree("a b c 4") { root =>
+      root.children match {
+        case Seq(a, b, c, d) =>
+          a.text shouldEqual "a"
+          b.text shouldEqual "b"
+          c.text shouldEqual "c"
+          d.text shouldEqual "4"
+        case _ =>
+          fail("span tree children are not 4-elem sequence")
       }
-    )
+      root.children.foreach(_.children should have size 0)
+    }
+  }
+  test("flattening infix application") {
+    checkJustExpressionSpanTree("a+b+c+4") { root =>
+      root.children match {
+        case Seq(a, opr, b, opr2, c, opr3, d) =>
+          a.text shouldEqual "a"
+          opr.text shouldEqual "+"
+          b.text shouldEqual "b"
+          opr2.text shouldEqual "+"
+          c.text shouldEqual "c"
+          opr3.text shouldEqual "+"
+          d.text shouldEqual "4"
+        case _ =>
+          fail("wrong element count")
+      }
+      root.children.foreach(_.children should have size 0)
+    }
+  }
+  test("flattening infix -> application") {
+    checkJustExpressionSpanTree("a , b , c , 4") { root =>
+      root.children match {
+        case Seq(a, opr, b, opr2, c, opr3, d) =>
+          a.text shouldEqual "a"
+          opr.text shouldEqual ","
+          b.text shouldEqual "b"
+          opr2.text shouldEqual ","
+          c.text shouldEqual "c"
+          opr3.text shouldEqual ","
+          d.text shouldEqual "4"
+        case _ =>
+          fail("wrong element count")
+      }
+      root.children.foreach(_.children should have size 0)
+    }
+  }
+  test("flattening infix application2") {
+    checkJustExpressionSpanTree("a +  b *  c + d") { root =>
+      root.children match {
+        case Seq(a, opr, bTimesC, opr2, d) =>
+          a.text shouldEqual "a"
+          opr.text shouldEqual "+"
+          bTimesC.text shouldEqual "b *  c"
+          opr2.text shouldEqual "+"
+          d.text shouldEqual "d"
+
+//          bTimesC shouldBe a[SpanTree.OperatorChain]
+          bTimesC.asInstanceOf[SpanTree.OperatorChain].opr.name shouldEqual "*"
+          bTimesC.children match {
+            case Seq(b, times, c) =>
+//              b shouldBe a[SpanTree.Leaf]
+              b.text shouldEqual "b"
+
+//              times shouldBe a[SpanTree.Operator]
+              times.text shouldEqual "*"
+
+//              b shouldBe a[SpanTree.Leaf]
+              c.text shouldEqual "c"
+            case _ => fail(s"wrong children count for ${bTimesC.text}")
+          }
+
+        case _ =>
+          fail("wrong element count")
+      }
+    }
   }
 }
