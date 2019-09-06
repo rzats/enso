@@ -2,7 +2,7 @@ package org.enso.syntax.graph
 
 import org.enso.data.List1
 import org.enso.syntax.graph
-import org.enso.syntax.graph.Extensions._
+import org.enso.syntax.graph.AstOps._
 import org.enso.syntax.text.AST
 import org.enso.syntax.graph.API._
 import org.enso.syntax.text.AST.Cons
@@ -92,7 +92,7 @@ class Tests extends FunSuite with org.scalatest.Matchers {
   }
   def checkJustExpressionSpanTree[R](
     program: String
-  )(action: API.SpanTree => R): R =
+  )(action: SpanTree.Node => R): R =
     checkModuleSingleNodeGraph(program) { node =>
       // make sure that span covers the whole expression
       val expectedSpan = TextSpan(TextPosition.Start, program.length)
@@ -310,6 +310,13 @@ class Tests extends FunSuite with org.scalatest.Matchers {
       root.visibleChildren.map(_.text) shouldEqual Seq("a", "b", "")
     }
   }
+  // TODO: `a+ b` works same as `a + b` but not `a +b`
+  //  to be considered how span tree should behave in such conditions
+//  test("infix chain with left-attached operator") {
+//    checkJustExpressionSpanTree("a+ b + c") { root =>
+//      root.visibleChildren.map(_.text) shouldEqual Seq("a", "b", "c")
+//    }
+//  }
   test("infix chain with blank left middle right") {
     checkJustExpressionSpanTree("+ +") { root =>
       root.visibleChildren.map(_.text) shouldEqual Seq("", "", "")
@@ -333,8 +340,10 @@ class Tests extends FunSuite with org.scalatest.Matchers {
 
   /** Traverses SpanTree and checks that text obtained by taking node span's
     * part of node text expressions is the same as pretty-printing of the node.
+    *
+    * @param tree A root node of the span tree.
     */
-  def verifyTreeIndices(tree: API.SpanTree): Unit = {
+  def verifyTreeIndices(tree: SpanTree.Node): Unit = {
     def verifyNode(node: SpanTree.Node): Unit = node match {
       case node: SpanTree.AstNode =>
         val textFromSpan    = tree.text.substring(node.span)
@@ -363,7 +372,7 @@ class Tests extends FunSuite with org.scalatest.Matchers {
       root.children.foreach(_.children should have size 0)
     }
   }
-  test("flattening infix application") {
+  test("flattening infix chain") {
     checkJustExpressionSpanTree("a+b+c+4") { root =>
       root.children match {
         case Seq(a, opr, b, opr2, c, opr3, d) =>
@@ -380,8 +389,8 @@ class Tests extends FunSuite with org.scalatest.Matchers {
       root.children.foreach(_.children should have size 0)
     }
   }
-  test("flattening infix -> application") {
-    checkJustExpressionSpanTree("a , b , c , 4") { root =>
+  test("flattening right-associative infix chain") {
+    checkJustExpressionSpanTree("a , b , c") { root =>
       root.children match {
         case Seq(a, opr, b, opr2, c, opr3, d) =>
           a.text shouldEqual "a"
@@ -426,5 +435,13 @@ class Tests extends FunSuite with org.scalatest.Matchers {
           fail("wrong element count")
       }
     }
+  }
+
+  test("foo") {
+    val ast  = ParserUtils.parse("1,2")
+    val ast2 = ParserUtils.parse("1, 2")
+    val ast3 = ParserUtils.parse("1 ,2")
+    val ast4 = ParserUtils.parse("1 , 2")
+    println(ast.toString)
   }
 }
