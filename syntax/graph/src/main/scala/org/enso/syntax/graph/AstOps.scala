@@ -128,7 +128,7 @@ object AstOps {
       }
     }
 
-    def spanTreeNode(pos: TextPosition): SpanTree.Node = ast match {
+    def spanTreeNode(pos: TextPosition): SpanTree = ast match {
       case AST.Opr.any(opr)          => SpanTree.Atom(pos, opr)
       case AST.Blank.any(_)          => SpanTree.Atom(pos, ast)
       case AST.Literal.Number.any(_) => SpanTree.Atom(pos, ast)
@@ -155,7 +155,7 @@ object AstOps {
         println(ast.toString())
         null
     }
-    def spanTree: SpanTree.Node = ast.spanTreeNode(TextPosition.Start)
+    def spanTree: SpanTree = ast.spanTreeNode(TextPosition.Start)
 
     def asNode: Option[Node.Info] = {
       val (lhs, rhs) = ast.asAssignment match {

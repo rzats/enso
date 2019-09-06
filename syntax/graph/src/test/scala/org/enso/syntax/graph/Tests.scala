@@ -92,7 +92,7 @@ class Tests extends FunSuite with org.scalatest.Matchers {
   }
   def checkJustExpressionSpanTree[R](
     program: String
-  )(action: SpanTree.Node => R): R =
+  )(action: SpanTree => R): R =
     checkModuleSingleNodeGraph(program) { node =>
       // make sure that span covers the whole expression
       val expectedSpan = TextSpan(TextPosition.Start, program.length)
@@ -343,8 +343,8 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     *
     * @param tree A root node of the span tree.
     */
-  def verifyTreeIndices(tree: SpanTree.Node): Unit = {
-    def verifyNode(node: SpanTree.Node): Unit = node match {
+  def verifyTreeIndices(tree: SpanTree): Unit = {
+    def verifyNode(node: SpanTree): Unit = node match {
       case node: SpanTree.AstNode =>
         val textFromSpan    = tree.text.substring(node.span)
         val textFromShowing = node.ast.show()

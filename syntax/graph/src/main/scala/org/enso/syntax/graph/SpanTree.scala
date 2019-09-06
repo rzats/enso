@@ -5,6 +5,21 @@ import org.enso.syntax.graph.API.TextSpan
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Opr
 
+sealed trait SpanTree {
+  import SpanTree._
+  def textPosition: TextPosition
+  def text: String
+  def span: TextSpan
+  def children: Seq[SpanTree]
+
+  def supports(op: Operation): Boolean =
+    // All nodes support setting. If node support more, it should override.
+    op == Operation.Set
+
+  // TODO below is rather GUI concern, now here for tests
+  def visibleChildren: Seq[SpanTree] = children
+}
+
 object SpanTree {
   trait Operation
   object Operation {
@@ -16,25 +31,11 @@ object SpanTree {
   case class AstNodeInfo(
     textPosition: TextPosition,
     ast: AST,
-    children: Seq[Node]
+    children: Seq[SpanTree]
   ) {}
 
   sealed trait Flag
   object Self extends Flag
-
-  sealed trait Node {
-    def textPosition: TextPosition
-    def text: String
-    def span: TextSpan
-    def children: Seq[Node]
-
-    def supports(op: Operation): Boolean =
-      // All nodes support setting. If node support more, it should override.
-      op == Operation.Set
-
-    // TODO below is rather GUI concern, now here for tests
-    def visibleChildren: Seq[SpanTree.Node] = children
-  }
 
   /** Node denoting a location that could contain some value but currently is
     * empty. Its span has length zero and it is not paired with any
@@ -42,27 +43,27 @@ object SpanTree {
     *
     * E.g. `+` is an operator with two empty endpoints.
     **/
-  case class EmptyEndpoint(textPosition: TextPosition) extends Node {
-    def text:     String       = ""
-    def span:     API.TextSpan = TextSpan(textPosition, 0)
-    def children: Seq[Node]    = Seq()
+  case class EmptyEndpoint(textPosition: TextPosition) extends SpanTree {
+    def text:     String        = ""
+    def span:     API.TextSpan  = TextSpan(textPosition, 0)
+    def children: Seq[SpanTree] = Seq()
   }
 
   /** Node describing certain AST subtree, has non-zero span. */
-  sealed trait AstNode extends Node {
+  sealed trait AstNode extends SpanTree {
     val info: AstNodeInfo
-    def textPosition: TextPosition = info.textPosition
-    def ast:          AST          = info.ast
-    def children:     Seq[Node]    = info.children
-    def text:         String       = ast.show()
-    def span:         TextSpan     = TextSpan(textPosition, ast.repr.span)
+    def textPosition: TextPosition  = info.textPosition
+    def ast:          AST           = info.ast
+    def children:     Seq[SpanTree] = info.children
+    def text:         String        = ast.show()
+    def span:         TextSpan      = TextSpan(textPosition, ast.repr.span)
   }
 
   /** Node with variable number of children. New one can be inserted on
     * after-last index. Existing ones can be erased.
     **/
   sealed trait InsertErase {
-    this: Node =>
+    this: SpanTree =>
     override def supports(op: Operation): Boolean =
       this.supports(op) || op == Operation.Insert || op == Operation.Erase
   }
@@ -80,7 +81,7 @@ object SpanTree {
     **/
   case class OperatorChain(info: AstNodeInfo, opr: Opr)
       extends ApplicationLike {
-    override def visibleChildren: Seq[Node] = children.filter {
+    override def visibleChildren: Seq[SpanTree] = children.filter {
       case astNode: AstNode =>
         astNode.ast match {
           case AST.Opr.any(childOpr) => childOpr.name != opr.name
@@ -99,7 +100,7 @@ object SpanTree {
   case class ApplicationChain(info: AstNodeInfo) extends ApplicationLike {
 
     /** Omits the function name child. */
-    override def visibleChildren: Seq[Node] = children.drop(1)
+    override def visibleChildren: Seq[SpanTree] = children.drop(1)
   }
 
   /** A leaf representing an AST element that cannot be decomposed any

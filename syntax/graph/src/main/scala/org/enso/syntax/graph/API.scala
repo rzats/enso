@@ -237,7 +237,7 @@ object API {
     final case class Stats() // progress, debug, profiling - TODO
     final case class Info(
       id: Id,
-      expr: SpanTree.Node,
+      expr: SpanTree,
       inputs: Seq[Port.Info],
       output: Port.Info,
       flags: Set[Flag],
