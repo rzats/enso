@@ -390,7 +390,7 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     }
   }
   test("flattening right-associative infix chain") {
-    checkJustExpressionSpanTree("a , b , c") { root =>
+    checkJustExpressionSpanTree("a , b , c , 4") { root =>
       root.children match {
         case Seq(a, opr, b, opr2, c, opr3, d) =>
           a.text shouldEqual "a"

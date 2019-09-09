@@ -2,6 +2,7 @@ package org.enso.syntax.graph
 
 import org.enso.syntax.graph.API.TextPosition
 import org.enso.syntax.graph.API.TextSpan
+import org.enso.syntax.graph.Utils._
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Opr
 
@@ -12,20 +13,25 @@ sealed trait SpanTree {
   def span: TextSpan
   def children: Seq[SpanTree]
 
-  def supports(op: Operation): Boolean =
-    // All nodes support setting. If node support more, it should override.
-    op == Operation.Set
+  /** */
+  def allowedConnectActions: Seq[SpanTree.Action] =
+    setAction.toList ++ insertEraseActions
+
+  def setAction:          Option[SpanTree.Action] = None
+  def insertEraseActions: Seq[SpanTree.Action]    = Seq()
 
   // TODO below is rather GUI concern, now here for tests
   def visibleChildren: Seq[SpanTree] = children
 }
 
 object SpanTree {
-  trait Operation
-  object Operation {
-    object Insert extends Operation
-    object Erase  extends Operation
-    object Set    extends Operation
+  sealed trait Action {
+    def span: TextSpan
+  }
+  object Action {
+    case class Insert(span: TextSpan) extends Action
+    case class Erase(span: TextSpan)  extends Action
+    case class Set(span: TextSpan)    extends Action
   }
 
   case class AstNodeInfo(
@@ -42,7 +48,7 @@ object SpanTree {
     * AST.
     *
     * E.g. `+` is an operator with two empty endpoints.
-    **/
+    */
   case class EmptyEndpoint(textPosition: TextPosition) extends SpanTree {
     def text:     String        = ""
     def span:     API.TextSpan  = TextSpan(textPosition, 0)
@@ -50,28 +56,25 @@ object SpanTree {
   }
 
   /** Node describing certain AST subtree, has non-zero span. */
-  sealed trait AstNode extends SpanTree {
+  sealed trait AstNode extends SpanTree with Settable {
     val info: AstNodeInfo
     def textPosition: TextPosition  = info.textPosition
     def ast:          AST           = info.ast
     def children:     Seq[SpanTree] = info.children
     def text:         String        = ast.show()
     def span:         TextSpan      = TextSpan(textPosition, ast.repr.span)
+
   }
 
-  /** Node with variable number of children. New one can be inserted on
-    * after-last index. Existing ones can be erased.
-    **/
-  sealed trait InsertErase {
+  sealed trait Settable {
     this: SpanTree =>
-    override def supports(op: Operation): Boolean =
-      this.supports(op) || op == Operation.Insert || op == Operation.Erase
+    def setAction: Option[SpanTree.Action] = Some(Action Set span)
   }
 
   /** Also apps with no arguments (like `foo` or `15`) and flattened chains
     * of applications
-    * */
-  abstract class ApplicationLike extends AstNode with InsertErase
+    */
+  abstract class ApplicationLike extends AstNode {}
 
   /** E.g. `a + b + c` flattened to a single 5-child node.
     *
@@ -101,6 +104,26 @@ object SpanTree {
 
     /** Omits the function name child. */
     override def visibleChildren: Seq[SpanTree] = children.drop(1)
+
+    override def insertEraseActions: Seq[SpanTree.Action] = {
+      val erasures = this.children.map(Action Erase _.span)
+      val insertFirst = children.headOption.map(
+        firstChild =>
+          Action Insert TextSpan(this.textPosition, firstChild.textPosition)
+      )
+      val insertLast = children.lastOption match {
+        case Some(lastChildren) =>
+          Action Insert TextSpan(lastChildren.span.end, span.end)
+        case None =>
+          Action Insert span
+      }
+
+      val insertBetween = children.mapPairs { (leftChild, rightChild) =>
+        Action Insert TextSpan(leftChild.span.end, rightChild.span.begin)
+      }
+
+      erasures ++ insertFirst ++ Seq(insertLast) ++ insertBetween
+    }
   }
 
   /** A leaf representing an AST element that cannot be decomposed any

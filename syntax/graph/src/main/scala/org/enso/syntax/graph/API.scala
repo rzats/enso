@@ -356,8 +356,12 @@ object API {
     ////////////////////////////////////////////////////////////////////////////
   }
 
-  case class TextPosition(index: Int) {
+  case class TextPosition(index: Int)
+      extends AnyVal
+      with Ordered[TextPosition] {
     def +(offset: Int) = TextPosition(index + offset)
+
+    def compare(rhs: TextPosition): Int = index compare rhs.index
   }
   object TextPosition {
     val Start = TextPosition(0)
@@ -366,6 +370,13 @@ object API {
 
     /** Index of the first character past the span */
     def end: TextPosition = begin + length
+  }
+  object TextSpan {
+
+    /** Span between two text positions. */
+    def apply(pos1: TextPosition, pos2: TextPosition): TextSpan =
+      if (pos1 > pos2) TextSpan(pos2, pos1)
+      else TextSpan(pos1, pos2.index - pos1.index)
   }
 
   implicit class String_Span_ops(text: String) {

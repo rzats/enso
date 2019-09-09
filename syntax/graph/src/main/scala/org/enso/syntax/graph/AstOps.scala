@@ -13,6 +13,7 @@ import org.enso.syntax.text.AST.Block.Line
 import org.enso.syntax.text.AST.Block.OptLine
 import org.enso.syntax.text.AST.Import
 import org.enso.syntax.text.AST.UnapplyByType
+import org.enso.syntax.text.ast.opr.Assoc
 
 import scala.collection.GenTraversableOnce
 
@@ -26,7 +27,15 @@ object AstOps {
     def isAssignment: Boolean = opr == KnownOperators.Assignment
   }
 
-  case class GeneralizedInfixOperator(
+  case class ExpressionPart(pos: TextPosition, ast: Option[AST])
+  object ExpressionPart {
+    def apply(pos: TextPosition, ast: AST): ExpressionPart =
+      ExpressionPart(pos, Some(ast))
+  }
+
+  /** A helper type to abstract away differences between infix operator applied
+    * to a different number of arguments. */
+  case class GeneralizedInfix(
     leftArg: Option[AST],
     leftSpace: Int,
     operator: AST.Opr,
@@ -38,12 +47,22 @@ object AstOps {
 
     def oprPos:      Int = span(leftArg) + leftSpace
     def rightArgPos: Int = oprPos + operator.repr.span + rightSpace
+    def usesSameOperator(ast: Option[AST]): Boolean =
+      ast.exists(_.isInfixOperatorUsage(operator.name))
+
+    def parts(offset: TextPosition) = {
+      (
+        ExpressionPart(offset, leftArg),
+        ExpressionPart(offset + oprPos, operator),
+        ExpressionPart(offset + rightArgPos, rightArg)
+      )
+    }
   }
-  object GeneralizedInfixOperator {
-    def apply(ast: AST): Option[GeneralizedInfixOperator] = ast match {
+  object GeneralizedInfix {
+    def apply(ast: AST): Option[GeneralizedInfix] = ast match {
       case AST.App.Infix.any(ast) =>
         Some(
-          GeneralizedInfixOperator(
+          GeneralizedInfix(
             Some(ast.larg),
             ast.loff,
             ast.opr,
@@ -53,12 +72,12 @@ object AstOps {
         )
       case AST.App.Section.Left.any(ast) =>
         Some(
-          GeneralizedInfixOperator(Some(ast.arg), ast.off, ast.opr, 0, None)
+          GeneralizedInfix(Some(ast.arg), ast.off, ast.opr, 0, None)
         )
       case AST.App.Section.Right.any(ast) =>
-        Some(GeneralizedInfixOperator(None, 0, ast.opr, ast.off, Some(ast.arg)))
+        Some(GeneralizedInfix(None, 0, ast.opr, ast.off, Some(ast.arg)))
       case AST.App.Section.Sides(opr) =>
-        Some(GeneralizedInfixOperator(None, 0, opr, 0, None))
+        Some(GeneralizedInfix(None, 0, opr, 0, None))
       case _ =>
         None
     }
@@ -97,7 +116,7 @@ object AstOps {
     }
 
     def usedInfixOperator: Option[AST.Opr] =
-      GeneralizedInfixOperator(ast).map(_.operator)
+      GeneralizedInfix(ast).map(_.operator)
 
     def isInfixOperatorUsage: Boolean =
       ast.usedInfixOperator.nonEmpty
@@ -108,23 +127,26 @@ object AstOps {
     def flattenInfix(
       pos: TextPosition,
       ast: AST
-    ): Seq[(TextPosition, Option[AST])] = {
+    ): Seq[ExpressionPart] = {
       println("flattening on " + ast.show())
-      GeneralizedInfixOperator(ast) match {
+      GeneralizedInfix(ast) match {
         case None =>
-          Seq(pos -> Some(ast))
-        case Some(info @ GeneralizedInfixOperator(lhs, _, opr, _, rhs)) =>
-          val init = lhs match {
-            case Some(lhsAst) if lhsAst.isInfixOperatorUsage(opr.name) =>
-              flattenInfix(pos, lhsAst)
-            case _ =>
-              Seq(pos -> lhs)
-          }
+          Seq(ExpressionPart(pos, ast))
+        case Some(info) =>
+          def flatten(child: ExpressionPart) =
+            if (info.usesSameOperator(child.ast))
+              flattenInfix(child.pos, child.ast.get)
+            else
+              Seq(child)
 
-          // TODO support right-associative operators
-          val preLast = pos + info.oprPos      -> Some(info.operator)
-          val last    = pos + info.rightArgPos -> info.rightArg
-          init :+ preLast :+ last
+          info.parts(pos) match {
+            case (lhs, opr, rhs) =>
+              Assoc.of(info.operator.name) match {
+                case Assoc.Left  => flatten(lhs) :+ opr :+ rhs
+                case Assoc.Right => lhs +: opr +: flatten(rhs)
+              }
+            case _ => throw new Exception("impossible happened")
+          }
       }
     }
 
@@ -142,11 +164,10 @@ object AstOps {
         SpanTree.ApplicationChain(SpanTree.AstNodeInfo(pos, ast, childrenNodes))
       case ast if ast.isInfixOperatorUsage =>
         val childrenAsts = flattenInfix(pos, ast)
-        val childrenNodes = childrenAsts.map {
-          case (childPos, childAst) =>
-            childAst
-              .map(_.spanTreeNode(childPos))
-              .getOrElse(SpanTree.EmptyEndpoint(childPos))
+        val childrenNodes = childrenAsts.map { part =>
+          part.ast
+            .map(_.spanTreeNode(part.pos))
+            .getOrElse(SpanTree.EmptyEndpoint(part.pos))
         }
         val info = SpanTree.AstNodeInfo(pos, ast, childrenNodes)
         SpanTree.OperatorChain(info, ast.usedInfixOperator.get) // FIXME
