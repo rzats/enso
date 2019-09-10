@@ -62,7 +62,6 @@ object AstOps {
     def flattenInfix(
       pos: TextPosition
     ): Seq[ExpressionPart] = {
-//      println("flattening on " + ast.show())
       def flatten(child: ExpressionPart) =
         if (usesSameOperator(child.ast))
           child.ast.get.flattenInfix(child.pos)
@@ -109,6 +108,8 @@ object AstOps {
       ast.id.getOrElse(throw MissingIdException(ast))
 
     def as[T: UnapplyByType]: Option[T] = UnapplyByType[T].unapply(ast)
+    def is[T: UnapplyByType]: Boolean =
+      UnapplyByType[T].unapply(ast).isDefined
 
     // TODO: name should be more different from as[Import]
     def asImport: Option[AST.Import] =
@@ -158,11 +159,12 @@ object AstOps {
     }
 
     def spanTreeNode(pos: TextPosition): SpanTree = ast match {
-      case AST.Opr.any(opr)          => SpanTree.Atom(pos, opr)
+      case AST.Opr.any(opr)          => SpanTree.FunctionName(pos, opr)
       case AST.Blank.any(_)          => SpanTree.Atom(pos, ast)
       case AST.Literal.Number.any(_) => SpanTree.Atom(pos, ast)
       case AST.Var.any(_)            => SpanTree.Atom(pos, ast)
       case AST.App.Prefix.any(app) =>
+        val info         = SpanTree.AstNodeInfo(pos, ast)
         val childrenAsts = flattenPrefix(pos, app)
         val childrenNodes = childrenAsts.map {
           case (childPos, childAst) =>
@@ -170,11 +172,18 @@ object AstOps {
         }
         childrenNodes match {
           case callee :: args =>
-            SpanTree
-              .ApplicationChain(SpanTree.AstNodeInfo(pos, ast), callee, args)
+            callee match {
+              case calleeAtom: SpanTree.Atom =>
+                val functionName = SpanTree.FunctionName(calleeAtom)
+                SpanTree.ApplicationChain(info, functionName, args)
+              case _ =>
+                throw new Exception(
+                  s"The application target $callee was not an atom"
+                )
+            }
           case _ =>
             // app prefix always has two children, flattening can only add more
-            throw new Exception("impossible happened")
+            throw new Exception("impossible: failed to find application target")
         }
 
       case _ =>
@@ -223,18 +232,16 @@ object AstOps {
       val id       = ast.getId
       val spanTree = rhs.spanTree
 
-      val inputAsts = rhs.groupTopInputs
-      // TODO subports
-      val inputs           = inputAsts.map(_.asPort)
       val output           = lhs.map(_.spanTree)
       val flags: Set[Flag] = Set.empty // TODO
       val stats            = None
       val metadata         = null // TODO
 
-      val node = Node.Info(id, spanTree, inputs, output, flags, stats, metadata)
+      val node = Node.Info(id, spanTree, output, flags, stats, metadata)
       Some(node)
     }
 
+    // TODO replace using span tree machinery
     def flattenApps: List1[AST] = ast match {
       // TODO: provisionally deal with macros resolving to Group, like parens,
       //       as if code was directly grouped
@@ -247,31 +254,9 @@ object AstOps {
       case nonAppAst                => List1(nonAppAst)
     }
 
-    def groupTopInputs: Seq[AST] = ast match {
-      case AST.App.Prefix.any(ast)      => ast.flattenApps.tail
-      case AST.App.Section.Sides.any(_) => Seq(AST.Blank(), AST.Blank())
-      // TODO special case below for unary minus, until parser handles it
-      case AST.App.Section.Right(KnownOperators.Minus, rhs) => Seq(rhs)
-      case AST.App.Section.Right(_, rhs)                    => Seq(AST.Blank(), rhs)
-      case AST.App.Section.Left(lhs, _)                     => Seq(lhs, AST.Blank())
-      case AST.App.Infix(lhs, _, rhs)                       => Seq(lhs, rhs)
-      //      case _: AST.Var                 => Seq()
-      //      case _: AST.Literal             => Seq()
-      //      case _: AST.Number              => Seq()
-      case _ => Seq()
-    }
-
     def asPort: Port.Info = ast match {
       case _ => Port.Empty
     }
-  }
-
-  implicit class Line_ops(line: Line) {
-    //    def asImport: Option[Import] = line.elem.flatMap(_.as[Import])
-    //    def imports(module: Module.Name): Boolean =
-    //      line.elem.exists(_.imports(module))
-    // def asAssignment: Option[Infix]     = line.elem.flatMap(_.asAssignment)
-    // def asNode: Option[Node.Info] = line.elem.flatMap(_.asNode)
   }
 
   implicit class ModuleName_ops(moduleName: API.Module.Name) {

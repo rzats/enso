@@ -48,10 +48,13 @@ object StateManagerMock {
 }
 
 class Tests extends FunSuite with org.scalatest.Matchers {
+
+  type ProgramText = String
+
   val mockModule = StateManagerMock.mainModule
 
   def withDR[R](
-    program: String,
+    program: ProgramText,
     f: DoubleRepresentation => R
   ): (R, AST.Module) = {
     val state                = StateManagerMock(program)
@@ -78,7 +81,7 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     ()
   }
   def checkModuleSingleNodeGraph[R](
-    program: String
+    program: ProgramText
   )(action: API.Node.Info => R): R = {
     withDR(
       program,
@@ -91,7 +94,7 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     )._1
   }
   def checkJustExpressionSpanTree[R](
-    program: String
+    program: ProgramText
   )(action: SpanTree => R): R =
     checkModuleSingleNodeGraph(program) { node =>
       // make sure that span covers the whole expression
@@ -224,11 +227,20 @@ class Tests extends FunSuite with org.scalatest.Matchers {
       }
     )
   }
+  test("no nodes from operator def") {
+    withDR(
+      "+ a b = a + b",
+      dr => {
+        val graph = dr.getGraph(Module.Graph.Location(mockModule))
+        graph.nodes should have size 0
+        graph.links should have size 0
+      }
+    )
+  }
   test("node trivial literal") {
     checkModuleSingleNodeGraph("15") { node =>
       node.expr.text should equal("15")
-      node.inputs should have size 0
-      node.outputInfo shouldEqual Some(AnonymousOutput)
+      node.inputs shouldEqual None
       node.flags shouldBe empty
     }
   }
@@ -246,31 +258,29 @@ class Tests extends FunSuite with org.scalatest.Matchers {
   test("node trivial var") {
     checkModuleSingleNodeGraph("foo") { node =>
       node.expr.text should equal("foo")
-      node.inputs should have size 0
-      node.outputInfo shouldEqual Some(AnonymousOutput)
+      node.inputs shouldEqual None
       node.flags shouldBe empty
     }
   }
-  test("node single paren arg app") {
-    checkModuleSingleNodeGraph("foo (4)") { node =>
-      node.expr.text should equal("foo (4)")
-      node.inputs should have size 1
-      node.inputs should equal(Seq(Port.Empty))
-      node.flags shouldBe empty
-    }
-  }
-  test("node two arg app with paren") {
-    checkModuleSingleNodeGraph("(foo a) _") { node =>
-      node.expr.text should equal("(foo a) _")
-      node.inputs should equal(Port.Empty(2))
-      node.flags shouldBe empty
-    }
-  }
+//  test("node single paren arg app") {
+//    checkModuleSingleNodeGraph("foo (4)") { node =>
+//      node.expr.text should equal("foo (4)")
+//      node.inputs should have size 1
+//      node.inputs should equal(Seq(Port.Empty))
+//      node.flags shouldBe empty
+//    }
+//  }
+//  test("node two arg app with paren") {
+//    checkModuleSingleNodeGraph("(foo a) _") { node =>
+//      node.expr.text should equal("(foo a) _")
+//      node.inputs should equal(Port.Empty(2))
+//      node.flags shouldBe empty
+//    }
+//  }
   test("get trivial named node") {
     checkModuleSingleNodeGraph("a = 15") { node =>
       node.expr.text should equal("15")
-      node.inputs should have size 0
-      node.outputInfo shouldEqual Some(OutputVar("a"))
+      node.inputs shouldEqual None
       node.flags shouldBe empty
     }
   }
@@ -282,32 +292,32 @@ class Tests extends FunSuite with org.scalatest.Matchers {
 //  }
   test("app single arg") {
     checkJustExpressionSpanTree("foo 4") { root =>
-      root.visibleChildren.map(_.text) shouldEqual Seq("4")
+      root.settableChildren.map(_.text) shouldEqual Seq("4")
     }
   }
   test("app two args") {
     checkJustExpressionSpanTree("foo a _") { root =>
-      root.visibleChildren.map(_.text) shouldEqual Seq("a", "_")
+      root.settableChildren.map(_.text) shouldEqual Seq("a", "_")
     }
   }
   test("infix with blank sides") {
     checkJustExpressionSpanTree("+") { root =>
-      root.visibleChildren.map(_.text) shouldEqual Seq("", "")
+      root.settableChildren.map(_.text) shouldEqual Seq("", "")
     }
   }
   test("infix with blank left") {
     checkJustExpressionSpanTree("+5") { root =>
-      root.visibleChildren.map(_.text) shouldEqual Seq("", "5")
+      root.settableChildren.map(_.text) shouldEqual Seq("", "5")
     }
   }
   test("infix with blank right") {
     checkJustExpressionSpanTree("5+") { root =>
-      root.visibleChildren.map(_.text) shouldEqual Seq("5", "")
+      root.settableChildren.map(_.text) shouldEqual Seq("5", "")
     }
   }
   test("infix chain with blank right") {
     checkJustExpressionSpanTree("a+b+") { root =>
-      root.visibleChildren.map(_.text) shouldEqual Seq("a", "b", "")
+      root.settableChildren.map(_.text) shouldEqual Seq("a", "b", "")
     }
   }
   // TODO: `a+ b` works same as `a + b` but not `a +b`
@@ -319,22 +329,22 @@ class Tests extends FunSuite with org.scalatest.Matchers {
 //  }
   test("infix chain with blank left middle right") {
     checkJustExpressionSpanTree("+ +") { root =>
-      root.visibleChildren.map(_.text) shouldEqual Seq("", "", "")
+      root.settableChildren.map(_.text) shouldEqual Seq("", "", "")
     }
   }
   test("infix chain with blank left") {
     checkJustExpressionSpanTree("+b+c") { root =>
-      root.visibleChildren.map(_.text) shouldEqual Seq("", "b", "c")
+      root.settableChildren.map(_.text) shouldEqual Seq("", "b", "c")
     }
   }
   test("infix chain with blank sides") {
     checkJustExpressionSpanTree("+a+b+") { root =>
-      root.visibleChildren.map(_.text) shouldEqual Seq("", "a", "b", "")
+      root.settableChildren.map(_.text) shouldEqual Seq("", "a", "b", "")
     }
   }
   test("get infix node") {
     checkJustExpressionSpanTree("a+2") { root =>
-      root.visibleChildren.map(_.text) shouldEqual Seq("a", "2")
+      root.settableChildren.map(_.text) shouldEqual Seq("a", "2")
     }
   }
 
@@ -434,6 +444,70 @@ class Tests extends FunSuite with org.scalatest.Matchers {
         case _ =>
           fail("wrong element count")
       }
+    }
+  }
+
+  /////////////////////////////////
+  def checkNodeHasNoOutputs(program: ProgramText): Unit =
+    checkNodeOutputs(program)(_ shouldEqual OutputTree.Anonymous)
+
+  def checkNodeOutputs[A](program: ProgramText)(f: OutputTree => A): A = {
+    checkModuleSingleNodeGraph(program) { node =>
+      node.outputs match {
+        case Some(output) => f(output)
+        case None =>
+          fail(s"missing output information for `$program`")
+      }
+    }
+  }
+  test("no node outputs when no assignment") {
+    val programs =
+      Seq("15", "foo", "_", "20+79 * aa", "foo.bar.baz", "import Base")
+    programs foreach checkNodeHasNoOutputs
+  }
+  test("node outputs on single var assignment") {
+    type ExpectedVarName = String
+    val cases: Seq[(ProgramText, ExpectedVarName)] =
+      Seq("a = 15" -> "a", "bar = baz" -> "bar")
+    cases.foreach {
+      case (program, expectedVar) =>
+        checkNodeOutputs(program)(_ shouldEqual OutputTree.Var(expectedVar))
+    }
+  }
+  test("nodes with multiple outputs") {
+    type ExpectedVarName = String
+    val cases: Seq[(ProgramText, Seq[ExpectedVarName])] = Seq(
+      "a,b = foo"   -> Seq("a", "b"),
+      "a,b,c = foo" -> Seq("a", "b", "c")
+    )
+    cases.foreach {
+      case (program, expectedVars) =>
+        val expectedSubPorts = expectedVars.map(OutputTree.Var(_))
+        val expectedPort     = OutputTree.PortGroup(expectedSubPorts)
+        checkNodeOutputs(program)(_ shouldEqual expectedPort)
+    }
+
+    // , a b = ...
+  }
+
+  /////////////////////////////////////////////////////////////////////
+
+  def checkNodeInputs[A](program: ProgramText)(f: InputTree => A): A = {
+    checkModuleSingleNodeGraph(program) { node =>
+      node.inputs match {
+        case Some(output) => f(output)
+        case None =>
+          fail(s"missing intput information for `$program`")
+      }
+    }
+  }
+
+  test("inputs: foo bar baz") {
+    checkNodeInputs("foo bar baz") {
+      case InputGroup(Seq(), _, Seq(a, b, c, d, e)) =>
+        println("ha!")
+      case otherInputs =>
+        fail(s"wrong inputs: $otherInputs")
     }
   }
 

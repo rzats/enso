@@ -74,11 +74,13 @@ final case class DoubleRepresentation(
     context: Node.Context,
     node: Set[Node.Id]
   ): Definition.Id = ???
-  def setPortName(port: Graph.Port.Location, name: String)                 = ???
-  def addPort(port: Graph.Port.Location, name: String, tp: Option[Type])   = ???
-  def removePort(port: Graph.Port.Location)                                = ???
-  def addConnection(graph: Port.Context, from: Output.Id, to: Input.Id)    = ???
-  def removeConnection(graph: Port.Context, from: Output.Id, to: Input.Id) = ???
+  def setPortName(port: Graph.Port.Location, name: String)               = ???
+  def addPort(port: Graph.Port.Location, name: String, tp: Option[Type]) = ???
+  def removePort(port: Graph.Port.Location)                              = ???
+  def addConnection(graph: Port.Context, from: Output.Id, to: Input.Id) =
+    ???
+  def removeConnection(graph: Port.Context, from: Output.Id, to: Input.Id) =
+    ???
 
   override def importedModules(module: Module.Location): Seq[Module.Name] = {
     val ast     = state.getModule(module)

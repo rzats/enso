@@ -238,13 +238,13 @@ object API {
     final case class Info(
       id: Id,
       expr: SpanTree,
-      inputs: Seq[Port.Info],
-      output: Option[SpanTree], // TODO rename
+      leftSide: Option[SpanTree], // TODO rename
       flags: Set[Flag],
       stats: Option[Stats],
       marker: Any
     ) {
-      def outputInfo = OutputInfo(output)
+      def inputs:  Option[InputTree]  = InputTree(expr)
+      def outputs: Option[OutputTree] = OutputTree(leftSide)
     }
   }
 
@@ -360,16 +360,20 @@ object API {
 
   case class TextPosition(index: Int) extends Ordered[TextPosition] {
     def +(offset: Int) = TextPosition(index + offset)
-
-    def compare(rhs: TextPosition): Int = index compare rhs.index
+    def <->(that: TextPosition):    TextSpan = TextSpan(this, that)
+    def compare(rhs: TextPosition): Int      = index compare rhs.index
   }
   object TextPosition {
     val Start = TextPosition(0)
   }
-  case class TextSpan(begin: TextPosition, length: Int) {
+  case class TextSpan(begin: TextPosition, length: Int)
+      extends Ordered[TextSpan] {
 
     /** Index of the first character past the span */
     def end: TextPosition = begin + length
+
+    override def compare(that: TextSpan): Int =
+      (begin -> length).compare(that.begin -> that.length)
   }
   object TextSpan {
 
