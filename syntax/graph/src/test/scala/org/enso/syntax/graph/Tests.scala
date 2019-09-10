@@ -228,7 +228,7 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     checkModuleSingleNodeGraph("15") { node =>
       node.expr.text should equal("15")
       node.inputs should have size 0
-      node.output.name should equal(None)
+      node.outputInfo shouldEqual Some(AnonymousOutput)
       node.flags shouldBe empty
     }
   }
@@ -247,7 +247,7 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     checkModuleSingleNodeGraph("foo") { node =>
       node.expr.text should equal("foo")
       node.inputs should have size 0
-      node.output.name should equal(None)
+      node.outputInfo shouldEqual Some(AnonymousOutput)
       node.flags shouldBe empty
     }
   }
@@ -270,7 +270,7 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     checkModuleSingleNodeGraph("a = 15") { node =>
       node.expr.text should equal("15")
       node.inputs should have size 0
-      node.output.name should equal(Some("a"))
+      node.outputInfo shouldEqual Some(OutputVar("a"))
       node.flags shouldBe empty
     }
   }

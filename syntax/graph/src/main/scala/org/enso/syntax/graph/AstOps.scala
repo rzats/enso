@@ -19,6 +19,7 @@ import scala.collection.GenTraversableOnce
 
 object KnownOperators {
   val Assignment = AST.Opr("=")
+  val Access     = AST.Opr(".")
   val Minus      = AST.Opr("-")
 }
 
@@ -56,6 +57,26 @@ object AstOps {
         ExpressionPart(offset + oprPos, operator),
         ExpressionPart(offset + rightArgPos, rightArg)
       )
+    }
+
+    def flattenInfix(
+      pos: TextPosition
+    ): Seq[ExpressionPart] = {
+//      println("flattening on " + ast.show())
+      def flatten(child: ExpressionPart) =
+        if (usesSameOperator(child.ast))
+          child.ast.get.flattenInfix(child.pos)
+        else
+          Seq(child)
+
+      parts(pos) match {
+        case (lhs, opr, rhs) =>
+          Assoc.of(operator.name) match {
+            case Assoc.Left  => flatten(lhs) :+ opr :+ rhs
+            case Assoc.Right => lhs +: opr +: flatten(rhs)
+          }
+        case _ => throw new Exception("impossible happened")
+      }
     }
   }
   object GeneralizedInfix {
@@ -125,28 +146,14 @@ object AstOps {
       ast.usedInfixOperator.exists(_.name == oprName)
 
     def flattenInfix(
-      pos: TextPosition,
-      ast: AST
+      pos: TextPosition
     ): Seq[ExpressionPart] = {
       println("flattening on " + ast.show())
       GeneralizedInfix(ast) match {
         case None =>
           Seq(ExpressionPart(pos, ast))
         case Some(info) =>
-          def flatten(child: ExpressionPart) =
-            if (info.usesSameOperator(child.ast))
-              flattenInfix(child.pos, child.ast.get)
-            else
-              Seq(child)
-
-          info.parts(pos) match {
-            case (lhs, opr, rhs) =>
-              Assoc.of(info.operator.name) match {
-                case Assoc.Left  => flatten(lhs) :+ opr :+ rhs
-                case Assoc.Right => lhs +: opr +: flatten(rhs)
-              }
-            case _ => throw new Exception("impossible happened")
-          }
+          info.flattenInfix(pos)
       }
     }
 
@@ -161,20 +168,42 @@ object AstOps {
           case (childPos, childAst) =>
             childAst.spanTreeNode(childPos)
         }
-        SpanTree.ApplicationChain(SpanTree.AstNodeInfo(pos, ast, childrenNodes))
-      case ast if ast.isInfixOperatorUsage =>
-        val childrenAsts = flattenInfix(pos, ast)
-        val childrenNodes = childrenAsts.map { part =>
-          part.ast
-            .map(_.spanTreeNode(part.pos))
-            .getOrElse(SpanTree.EmptyEndpoint(part.pos))
+        childrenNodes match {
+          case callee :: args =>
+            SpanTree
+              .ApplicationChain(SpanTree.AstNodeInfo(pos, ast), callee, args)
+          case _ =>
+            // app prefix always has two children, flattening can only add more
+            throw new Exception("impossible happened")
         }
-        val info = SpanTree.AstNodeInfo(pos, ast, childrenNodes)
-        SpanTree.OperatorChain(info, ast.usedInfixOperator.get) // FIXME
+
       case _ =>
-        println("failed to generate span tree node for " + ast.show())
-        println(ast.toString())
-        null
+        GeneralizedInfix(ast) match {
+          case Some(info) =>
+            val childrenAsts = ast.flattenInfix(pos)
+            val childrenNodes = childrenAsts.map { part =>
+              part.ast
+                .map(_.spanTreeNode(part.pos))
+                .getOrElse(SpanTree.EmptyEndpoint(part.pos))
+            }
+            val info = SpanTree.AstNodeInfo(pos, ast)
+
+            val self = childrenNodes.head
+            val calls = childrenNodes.drop(1).sliding(2, 2).map {
+              case (opr: SpanTree.Operator) :: (arg: SpanTree) :: Nil =>
+                (opr, arg)
+            }
+            SpanTree.OperatorChain(
+              info,
+              ast.usedInfixOperator.get,
+              self,
+              calls.toList
+            )
+          case _ =>
+            println("failed to generate span tree node for " + ast.show())
+            println(ast.toString())
+            null
+        }
     }
     def spanTree: SpanTree = ast.spanTreeNode(TextPosition.Start)
 
@@ -197,8 +226,7 @@ object AstOps {
       val inputAsts = rhs.groupTopInputs
       // TODO subports
       val inputs           = inputAsts.map(_.asPort)
-      val outputName       = assignment.flatMap(_.name)
-      val output           = Port.Info(None, outputName, Seq())
+      val output           = lhs.map(_.spanTree)
       val flags: Set[Flag] = Set.empty // TODO
       val stats            = None
       val metadata         = null // TODO

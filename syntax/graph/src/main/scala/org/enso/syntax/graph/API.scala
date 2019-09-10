@@ -239,11 +239,13 @@ object API {
       id: Id,
       expr: SpanTree,
       inputs: Seq[Port.Info],
-      output: Port.Info,
+      output: Option[SpanTree], // TODO rename
       flags: Set[Flag],
       stats: Option[Stats],
       marker: Any
-    )
+    ) {
+      def outputInfo = OutputInfo(output)
+    }
   }
 
   //
@@ -356,9 +358,7 @@ object API {
     ////////////////////////////////////////////////////////////////////////////
   }
 
-  case class TextPosition(index: Int)
-      extends AnyVal
-      with Ordered[TextPosition] {
+  case class TextPosition(index: Int) extends Ordered[TextPosition] {
     def +(offset: Int) = TextPosition(index + offset)
 
     def compare(rhs: TextPosition): Int = index compare rhs.index
