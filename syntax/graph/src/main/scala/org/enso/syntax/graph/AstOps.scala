@@ -18,14 +18,16 @@ import org.enso.syntax.text.ast.opr.Assoc
 import scala.collection.GenTraversableOnce
 
 object KnownOperators {
-  val Assignment = AST.Opr("=")
-  val Access     = AST.Opr(".")
-  val Minus      = AST.Opr("-")
+  val Assignment = "="
+  val Access     = "."
+  val Minus      = "-"
 }
 
 object AstOps {
   implicit class Opr_ops(opr: AST.Opr) {
-    def isAssignment: Boolean = opr == KnownOperators.Assignment
+    def isAssignment: Boolean = opr.name == KnownOperators.Assignment
+    def isAccess:     Boolean = opr.name == KnownOperators.Access
+    def isMinus:      Boolean = opr.name == KnownOperators.Minus
   }
 
   case class ExpressionPart(pos: TextPosition, ast: Option[AST])
@@ -159,10 +161,10 @@ object AstOps {
     }
 
     def spanTreeNode(pos: TextPosition): SpanTree = ast match {
-      case AST.Opr.any(opr)          => SpanTree.FunctionName(pos, opr)
-      case AST.Blank.any(_)          => SpanTree.Atom(pos, ast)
-      case AST.Literal.Number.any(_) => SpanTree.Atom(pos, ast)
-      case AST.Var.any(_)            => SpanTree.Atom(pos, ast)
+      case AST.Opr.any(opr)          => SpanTree.AstLeaf(pos, opr)
+      case AST.Blank.any(_)          => SpanTree.AstLeaf(pos, ast)
+      case AST.Literal.Number.any(_) => SpanTree.AstLeaf(pos, ast)
+      case AST.Var.any(_)            => SpanTree.AstLeaf(pos, ast)
       case AST.App.Prefix.any(app) =>
         val info         = SpanTree.AstNodeInfo(pos, ast)
         val childrenAsts = flattenPrefix(pos, app)
@@ -173,9 +175,9 @@ object AstOps {
         childrenNodes match {
           case callee :: args =>
             callee match {
-              case calleeAtom: SpanTree.Atom =>
-                val functionName = SpanTree.FunctionName(calleeAtom)
-                SpanTree.ApplicationChain(info, functionName, args)
+              // FIXME support non-atoms
+              case calleeAtom: SpanTree.AstLeaf =>
+                SpanTree.ApplicationChain(info, calleeAtom, args)
               case _ =>
                 throw new Exception(
                   s"The application target $callee was not an atom"
@@ -189,25 +191,33 @@ object AstOps {
       case _ =>
         GeneralizedInfix(ast) match {
           case Some(info) =>
-            val childrenAsts = ast.flattenInfix(pos)
+            val childrenAsts = info.flattenInfix(pos)
             val childrenNodes = childrenAsts.map { part =>
               part.ast
                 .map(_.spanTreeNode(part.pos))
                 .getOrElse(SpanTree.EmptyEndpoint(part.pos))
             }
-            val info = SpanTree.AstNodeInfo(pos, ast)
 
-            val self = childrenNodes.head
-            val calls = childrenNodes.drop(1).sliding(2, 2).map {
-              case (opr: SpanTree.Operator) :: (arg: SpanTree) :: Nil =>
-                (opr, arg)
-            }
-            SpanTree.OperatorChain(
-              info,
-              ast.usedInfixOperator.get,
-              self,
-              calls.toList
+            val nodeInfo = SpanTree.AstNodeInfo(pos, ast)
+
+            val self = childrenNodes.headOption.getOrElse(
+              throw new Exception(
+                "internal error: infix with no children nodes"
+              )
             )
+            val calls = childrenNodes
+              .drop(1)
+              .sliding(2, 2)
+              .map {
+                case (opr: SpanTree.AstLeaf) :: (arg: SpanTree) :: Nil =>
+                  (opr, arg)
+              }
+              .toSeq
+
+            if (info.operator.isAccess)
+              SpanTree.AccessorPath(nodeInfo, info.operator, self, calls)
+            else
+              SpanTree.OperatorChain(nodeInfo, info.operator, self, calls)
           case _ =>
             println("failed to generate span tree node for " + ast.show())
             println(ast.toString())

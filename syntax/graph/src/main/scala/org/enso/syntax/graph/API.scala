@@ -358,10 +358,14 @@ object API {
     ////////////////////////////////////////////////////////////////////////////
   }
 
+  /** Strongly typed index position in a text. */
   case class TextPosition(index: Int) extends Ordered[TextPosition] {
     def +(offset: Int) = TextPosition(index + offset)
-    def <->(that: TextPosition):    TextSpan = TextSpan(this, that)
-    def compare(rhs: TextPosition): Int      = index compare rhs.index
+
+    /** Span between two text positions. Operands order is irrelevant. */
+    def <->(that: TextPosition): TextSpan = TextSpan(this, that)
+
+    def compare(rhs: TextPosition): Int = index compare rhs.index
   }
   object TextPosition {
     val Start = TextPosition(0)
