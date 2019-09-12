@@ -62,6 +62,33 @@ sealed trait SpanTree {
     case Seq()                   => Success(this)
     case topIndex :: tailIndices => children(topIndex).get(tailIndices)
   }
+
+  /** Calls function `f` for all nodes in the subtree. */
+  def foreach[U](
+    f: SpanTree.PathedChildInfo => U,
+    pathSoFar: SpanTree.Path = Seq()
+  ): Unit = describeChildren.zipWithIndex.foreach {
+    case (childInfo, index) =>
+      val childPath = pathSoFar :+ index
+      f(childInfo.addPath(childPath))
+      childInfo.spanTree.foreach(f, childPath)
+  }
+
+  def foldLeft[B](z: B)(op: (B, SpanTree.PathedChildInfo) => B): B = {
+    var result = z
+    this.foreach(x => result = op(result, x), Seq())
+    result
+  }
+
+  def insertionPoints: Seq[TextPosition] = {
+    foldLeft[Seq[TextPosition]](Seq()) {
+      case (op, node) =>
+        if (node.insertable)
+          op :+ node.spanTree.begin
+        else
+          op
+    }.sorted
+  }
 }
 
 object SpanTree {
@@ -69,16 +96,30 @@ object SpanTree {
   /** Just a [[SpanTree]] with a sequence of [[Action]] that are supported for
     * it.
     */
-  final case class ChildInfo(
-    spanTree: SpanTree,
-    actions: Set[SpanTree.Action] = Set()
-  ) {
+  trait ChildInfoBase {
+    val spanTree: SpanTree
+    val actions: Set[SpanTree.Action]
+
     def supports(action: Action): Boolean = actions.contains(action)
     def settable:                 Boolean = supports(Action.Set)
     def erasable:                 Boolean = supports(Action.Erase)
     def insertable:               Boolean = supports(Action.Insert)
-
   }
+
+  final case class ChildInfo(
+    spanTree: SpanTree,
+    actions: Set[SpanTree.Action] = Set()
+  ) extends ChildInfoBase {
+    def addPath(path: SpanTree.Path): PathedChildInfo =
+      PathedChildInfo(spanTree, path, actions)
+  }
+
+  final case class PathedChildInfo(
+    spanTree: SpanTree,
+    path: SpanTree.Path,
+    actions: Set[SpanTree.Action] = Set()
+  ) extends ChildInfoBase
+
   object ChildInfo {
 
     /** Create info for node that supports all 3 [[Action]]s. */
@@ -229,7 +270,12 @@ object SpanTree {
   /** A leaf representing an AST element that cannot be decomposed any
     * further.
     */
-  case class AstLeaf(info: AstNodeInfo) extends AstNode with Leaf {}
+  final case class AstLeaf(info: AstNodeInfo) extends AstNode with Leaf {
+    // special insertion point that allows replacing non-application AST
+    // with application AST by applying an argument over it
+    override def describeChildren: Seq[ChildInfo] =
+      Seq(ChildInfo.insertionPoint(end))
+  }
   object AstLeaf {
     def apply(textPosition: TextPosition, ast: AST): SpanTree.AstLeaf =
       AstLeaf(AstNodeInfo(textPosition, ast))

@@ -8,6 +8,7 @@ import org.enso.syntax.graph.API._
 import org.enso.syntax.text.AST.Cons
 import org.scalatest._
 
+import scala.meta.Tree
 import scala.reflect.ClassTag
 
 /** Mock project state - contains a single module named `Main` with given body.
@@ -45,6 +46,46 @@ final case class NotificationSinkMock() extends NotificationSink {
 
 object StateManagerMock {
   val mainModule: Module.Id = List1(Cons("Main"))
+}
+
+object TestUtils {
+  val InsertionMark      = '⎀'
+  val BeginSettableBlock = '«'
+  val EndSettableBlock   = '»'
+
+  case class ProgramTestCase(
+    program: String,
+    expectedInsertionPoints: Seq[TextPosition],
+    expectedSettableParts: Seq[TextSpan]
+  )
+
+  object ProgramTestCase {
+    def apply(markedProgram: String): ProgramTestCase = {
+      val markdownChars =
+        Seq(InsertionMark, BeginSettableBlock, EndSettableBlock)
+      val program = markedProgram.filterNot(markdownChars.contains(_))
+
+      var insertionPoints: Seq[TextPosition] = Seq()
+      var settableSpans: Seq[TextSpan]       = Seq()
+
+      var blockBeginIndixes: Seq[TextPosition] = Seq()
+
+      var index = TextPosition(0)
+      markedProgram.foreach {
+        case InsertionMark =>
+          insertionPoints = insertionPoints :+ index
+        case BeginSettableBlock =>
+          blockBeginIndixes = blockBeginIndixes :+ index
+        case EndSettableBlock =>
+          settableSpans     = settableSpans :+ (blockBeginIndixes.last <-> index)
+          blockBeginIndixes = blockBeginIndixes.dropRight(1)
+        case _ =>
+          index += 1
+      }
+
+      ProgramTestCase(program, insertionPoints, settableSpans)
+    }
+  }
 }
 
 trait TestUtils extends org.scalatest.Matchers {
@@ -87,7 +128,7 @@ trait TestUtils extends org.scalatest.Matchers {
       action(graph.nodes.head)
     }._1
   }
-  def checkJustExpressionSpanTree[R](
+  def testSpanTreeFor[R](
     program: ProgramText
   )(action: SpanTree => R): R =
     checkModuleSingleNodeGraph(program) { node =>
@@ -98,6 +139,22 @@ trait TestUtils extends org.scalatest.Matchers {
       verifyTreeIndices(node.expr)
       action(node.expr)
     }
+
+  def testSpanTreeMarkdown[R](
+    markedProgram: ProgramText
+  ): Unit = {
+    withClue(s"when testing markdown: `$markedProgram`") {
+      val programAndMarks = TestUtils.ProgramTestCase(markedProgram)
+      testSpanTreeFor(programAndMarks.program) { root =>
+        withClue("insertion points: ") {
+          root.insertionPoints shouldEqual programAndMarks.expectedInsertionPoints
+        }
+        withClue("settableChildren points: ") {
+          root.settableChildren.map(_.span) shouldEqual programAndMarks.expectedSettableParts
+        }
+      }
+    }
+  }
 
   def expectImports(
     value: Seq[Module.Name],
@@ -301,32 +358,33 @@ class Tests extends FunSuite with TestUtils {
 //    }
 //  }
   test("app single arg") {
-    checkJustExpressionSpanTree("foo 4") { root =>
+    testSpanTreeFor("foo 4") { root =>
       root.settableChildren.map(_.text) shouldEqual Seq("4")
+      root.insertionPoints shouldEqual Seq(5).map(TextPosition(_))
     }
   }
   test("app two args") {
-    checkJustExpressionSpanTree("foo a _") { root =>
+    testSpanTreeFor("foo a _") { root =>
       root.settableChildren.map(_.text) shouldEqual Seq("a", "_")
     }
   }
   test("infix with blank sides") {
-    checkJustExpressionSpanTree("+") { root =>
+    testSpanTreeFor("+") { root =>
       root.settableChildren.map(_.text) shouldEqual Seq("", "")
     }
   }
   test("infix with blank left") {
-    checkJustExpressionSpanTree("+5") { root =>
+    testSpanTreeFor("+5") { root =>
       root.settableChildren.map(_.text) shouldEqual Seq("", "5")
     }
   }
   test("infix with blank right") {
-    checkJustExpressionSpanTree("5+") { root =>
+    testSpanTreeFor("5+") { root =>
       root.settableChildren.map(_.text) shouldEqual Seq("5", "")
     }
   }
   test("infix chain with blank right") {
-    checkJustExpressionSpanTree("a+b+") { root =>
+    testSpanTreeFor("a+b+") { root =>
       root.settableChildren.map(_.text) shouldEqual Seq("a", "b", "")
     }
   }
@@ -338,28 +396,28 @@ class Tests extends FunSuite with TestUtils {
 //    }
   //  }
   test("infix chain with blank left middle right") {
-    checkJustExpressionSpanTree("+ +") { root =>
+    testSpanTreeFor("+ +") { root =>
       root.settableChildren.map(_.text) shouldEqual Seq("", "", "")
     }
   }
   test("infix chain with blank left") {
-    checkJustExpressionSpanTree("+b+c") { root =>
+    testSpanTreeFor("+b+c") { root =>
       root.settableChildren.map(_.text) shouldEqual Seq("", "b", "c")
     }
   }
   test("infix chain with blank sides") {
-    checkJustExpressionSpanTree("+a+b+") { root =>
+    testSpanTreeFor("+a+b+") { root =>
       root.settableChildren.map(_.text) shouldEqual Seq("", "a", "b", "")
     }
   }
   test("get infix node") {
-    checkJustExpressionSpanTree("a+2") { root =>
+    testSpanTreeFor("a+2") { root =>
       root.settableChildren.map(_.text) shouldEqual Seq("a", "2")
     }
   }
 
   test("flattening prefix application") {
-    checkJustExpressionSpanTree("a b c 4") { root =>
+    testSpanTreeFor("a b c 4") { root =>
       root.children match {
         case Seq(a_, b, c, d, insertPoint) =>
           a_.text shouldEqual "a"
@@ -374,7 +432,7 @@ class Tests extends FunSuite with TestUtils {
     }
   }
   test("flattening infix chain") {
-    checkJustExpressionSpanTree("a+b+c+4") { root =>
+    testSpanTreeFor("a+b+c+4") { root =>
       root.children match {
         case Seq(a_, opr, b, opr2, c, opr3, d, insertPoint) =>
           a_.text shouldEqual "a"
@@ -392,7 +450,7 @@ class Tests extends FunSuite with TestUtils {
     }
   }
   test("flattening right-associative infix chain") {
-    checkJustExpressionSpanTree("a , b , c , 4") { root =>
+    testSpanTreeFor("a , b , c , 4") { root =>
       root.children match {
         case Seq(a_, opr, b, opr2, c, opr3, d, insertPoint) =>
           a_.text shouldEqual "a"
@@ -410,7 +468,7 @@ class Tests extends FunSuite with TestUtils {
     }
   }
   test("flattening infix application2") {
-    checkJustExpressionSpanTree("a +  b *  c + d") { root =>
+    testSpanTreeFor("a +  b *  c + d") { root =>
       root.children match {
         case Seq(a_, opr, bTimesC, opr2, d, insertPoint) =>
           a_.text shouldEqual "a"
@@ -421,7 +479,10 @@ class Tests extends FunSuite with TestUtils {
           insertPoint shouldBe a[SpanTree.EmptyEndpoint]
 
           bTimesC shouldBe a[SpanTree.OperatorChain]
-          bTimesC.asInstanceOf[SpanTree.OperatorChain].opr.name shouldEqual "*"
+          bTimesC
+            .asInstanceOf[SpanTree.OperatorChain]
+            .opr
+            .name shouldEqual "*"
           bTimesC.children match {
             case Seq(b, times, c, nestedInsertPoint) =>
               b shouldBe a[SpanTree.AstLeaf]
@@ -481,6 +542,15 @@ class Tests extends FunSuite with TestUtils {
     }
 
     // , a b = ...
+  }
+
+  /////////////////////////////////////////////////////////////////////
+
+  test("settable points") {
+    testSpanTreeMarkdown("foo⎀")
+    testSpanTreeMarkdown("foo ⎀«a»⎀⎀")
+    testSpanTreeMarkdown("foo ⎀«a» ⎀«b»⎀⎀")
+    // can insert before each argument, after `b`, after `foo a b`
   }
 
   /////////////////////////////////////////////////////////////////////
