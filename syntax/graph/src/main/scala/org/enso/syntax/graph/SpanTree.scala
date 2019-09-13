@@ -51,6 +51,9 @@ sealed trait SpanTree {
   def settableChildren: Seq[SpanTree] =
     describeChildren.filter(_.settable).map(_.spanTree)
 
+  def erasableChildren: Seq[SpanTree] =
+    describeChildren.filter(_.erasable).map(_.spanTree)
+
   /** Index of the first character in the [[span]]. */
   def begin: TextPosition = span.begin
 
@@ -153,6 +156,8 @@ object SpanTree {
       * creating a connection.
       */
     object Set extends Action
+
+    val All = scala.Predef.Set(Insert, Erase, Set)
   }
 
   /** Node that represent some non-empty AST. */
@@ -199,26 +204,40 @@ object SpanTree {
     *
     * @param opr The infix operator on which we apply operands. If there are
     *            multiple operators in chain, any of them might be referenced.
-    * @param self The left-most operand and the first input.
+    * @param firstOperand The left-most operand and the first input.
     *             // FIXME FIXME not really a self for right-assoc operators
     * @param parts Subsequent pairs of children (operator, operand).
     */
   case class OperatorChain(
     info: AstNodeInfo,
     opr: Opr,
-    self: SpanTree,
+    firstOperand: SpanTree,
     parts: Seq[(AstLeaf, SpanTree)]
   ) extends ApplicationLike {
+
+    private def describeOperand(operand: SpanTree): ChildInfo = operand match {
+      case _: EmptyEndpoint =>
+        ChildInfo(operand, Set(Action.Insert))
+      case _ =>
+        ChildInfo(operand, Action.All)
+    }
+
     override def describeChildren: Seq[SpanTree.ChildInfo] = {
-      // FIXME not really a self, rename / reconsider
-      val selfInfo = ChildInfo.withAllActions(self)
-      val childrenInfos = parts.foldLeft(Seq(selfInfo)) {
+      val leftmostOperandInfo = describeOperand(firstOperand)
+      val childrenInfos = parts.foldLeft(Seq(leftmostOperandInfo)) {
         case (acc, (oprAtom, operand)) =>
           val operatorInfo = ChildInfo(oprAtom)
-          val operandInfo  = ChildInfo.withAllActions(operand)
+          val operandInfo  = describeOperand(operand)
           acc :+ operatorInfo :+ operandInfo
       }
-      childrenInfos :+ ChildInfo.insertionPoint(end)
+
+      // If we already miss last the argument, don't add additional placeholder.
+      val insertAfterLast = childrenInfos.lastOption.map(_.spanTree) match {
+        case Some(EmptyEndpoint(_)) => None
+        case _                      => Some(ChildInfo.insertionPoint(end))
+      }
+
+      childrenInfos ++ insertAfterLast
     }
   }
 
@@ -232,7 +251,10 @@ object SpanTree {
     parts: Seq[(AstLeaf, SpanTree)]
   ) extends ApplicationLike {
     override def describeChildren: Seq[SpanTree.ChildInfo] = {
-      val selfInfo = ChildInfo.withAllActions(self)
+      val selfInfo = self match {
+        case _: EmptyEndpoint => ChildInfo(self, Set(Action.Insert))
+        case _                => ChildInfo(self, Set(Action.Set))
+      }
       parts.foldLeft(Seq(selfInfo)) {
         case (acc, (oprAtom, operand)) =>
           val operatorInfo = ChildInfo(oprAtom)
@@ -271,10 +293,10 @@ object SpanTree {
     * further.
     */
   final case class AstLeaf(info: AstNodeInfo) extends AstNode with Leaf {
-    // special insertion point that allows replacing non-application AST
-    // with application AST by applying an argument over it
-    override def describeChildren: Seq[ChildInfo] =
-      Seq(ChildInfo.insertionPoint(end))
+//    // special insertion point that allows replacing non-application AST
+//    // with application AST by applying an argument over it
+//    override def describeChildren: Seq[ChildInfo] =
+//      Seq(ChildInfo.insertionPoint(end))
   }
   object AstLeaf {
     def apply(textPosition: TextPosition, ast: AST): SpanTree.AstLeaf =

@@ -49,41 +49,58 @@ object StateManagerMock {
 }
 
 object TestUtils {
-  val InsertionMark      = '⎀'
-  val BeginSettableBlock = '«'
-  val EndSettableBlock   = '»'
+  val InsertionMark                 = '⎀'
+  val BeginSettableAndErasableBlock = '«'
+  val EndSettableAndErasableBlock   = '»'
+  val BeginSettableBlock            = '‹'
+  val EndSettableBlock              = '›'
 
   case class ProgramTestCase(
     program: String,
     expectedInsertionPoints: Seq[TextPosition],
-    expectedSettableParts: Seq[TextSpan]
+    expectedSettableParts: Seq[TextSpan],
+    expectedErasableParts: Seq[TextSpan]
   )
 
   object ProgramTestCase {
     def apply(markedProgram: String): ProgramTestCase = {
       val markdownChars =
-        Seq(InsertionMark, BeginSettableBlock, EndSettableBlock)
+        Seq(
+          InsertionMark,
+          BeginSettableAndErasableBlock,
+          EndSettableAndErasableBlock,
+          BeginSettableBlock,
+          EndSettableBlock
+        )
       val program = markedProgram.filterNot(markdownChars.contains(_))
 
       var insertionPoints: Seq[TextPosition] = Seq()
       var settableSpans: Seq[TextSpan]       = Seq()
+      var erasableSpans: Seq[TextSpan]       = Seq()
 
-      var blockBeginIndixes: Seq[TextPosition] = Seq()
+      var beginSetErasableBlock: Seq[TextPosition] = Seq()
+      var beginSettableBlock: Seq[TextPosition]    = Seq()
 
       var index = TextPosition(0)
       markedProgram.foreach {
         case InsertionMark =>
           insertionPoints = insertionPoints :+ index
+        case BeginSettableAndErasableBlock =>
+          beginSetErasableBlock = beginSetErasableBlock :+ index
+        case EndSettableAndErasableBlock =>
+          settableSpans         = settableSpans :+ (beginSetErasableBlock.last <-> index)
+          erasableSpans         = erasableSpans :+ (beginSetErasableBlock.last <-> index)
+          beginSetErasableBlock = beginSetErasableBlock.dropRight(1)
         case BeginSettableBlock =>
-          blockBeginIndixes = blockBeginIndixes :+ index
+          beginSettableBlock = beginSettableBlock :+ index
         case EndSettableBlock =>
-          settableSpans     = settableSpans :+ (blockBeginIndixes.last <-> index)
-          blockBeginIndixes = blockBeginIndixes.dropRight(1)
+          settableSpans      = settableSpans :+ (beginSettableBlock.last <-> index)
+          beginSettableBlock = beginSettableBlock.dropRight(1)
         case _ =>
           index += 1
       }
 
-      ProgramTestCase(program, insertionPoints, settableSpans)
+      ProgramTestCase(program, insertionPoints, settableSpans, erasableSpans)
     }
   }
 }
@@ -145,12 +162,16 @@ trait TestUtils extends org.scalatest.Matchers {
   ): Unit = {
     withClue(s"when testing markdown: `$markedProgram`") {
       val programAndMarks = TestUtils.ProgramTestCase(markedProgram)
+      println(s"testing program: `${programAndMarks.program}`")
       testSpanTreeFor(programAndMarks.program) { root =>
         withClue("insertion points: ") {
           root.insertionPoints shouldEqual programAndMarks.expectedInsertionPoints
         }
         withClue("settableChildren points: ") {
           root.settableChildren.map(_.span) shouldEqual programAndMarks.expectedSettableParts
+        }
+        withClue("erasable points: ") {
+          root.erasableChildren.map(_.span) shouldEqual programAndMarks.expectedErasableParts
         }
       }
     }
@@ -357,37 +378,6 @@ class Tests extends FunSuite with TestUtils {
 //      root.visibleChildren.map(_.text) shouldEqual Seq("5")
 //    }
 //  }
-  test("app single arg") {
-    testSpanTreeFor("foo 4") { root =>
-      root.settableChildren.map(_.text) shouldEqual Seq("4")
-      root.insertionPoints shouldEqual Seq(5).map(TextPosition(_))
-    }
-  }
-  test("app two args") {
-    testSpanTreeFor("foo a _") { root =>
-      root.settableChildren.map(_.text) shouldEqual Seq("a", "_")
-    }
-  }
-  test("infix with blank sides") {
-    testSpanTreeFor("+") { root =>
-      root.settableChildren.map(_.text) shouldEqual Seq("", "")
-    }
-  }
-  test("infix with blank left") {
-    testSpanTreeFor("+5") { root =>
-      root.settableChildren.map(_.text) shouldEqual Seq("", "5")
-    }
-  }
-  test("infix with blank right") {
-    testSpanTreeFor("5+") { root =>
-      root.settableChildren.map(_.text) shouldEqual Seq("5", "")
-    }
-  }
-  test("infix chain with blank right") {
-    testSpanTreeFor("a+b+") { root =>
-      root.settableChildren.map(_.text) shouldEqual Seq("a", "b", "")
-    }
-  }
   // TODO: `a+ b` works same as `a + b` but not `a +b`
   //  to be considered how span tree should behave in such conditions
 //  test("infix chain with left-attached operator") {
@@ -395,26 +385,6 @@ class Tests extends FunSuite with TestUtils {
 //      root.visibleChildren.map(_.text) shouldEqual Seq("a", "b", "c")
 //    }
   //  }
-  test("infix chain with blank left middle right") {
-    testSpanTreeFor("+ +") { root =>
-      root.settableChildren.map(_.text) shouldEqual Seq("", "", "")
-    }
-  }
-  test("infix chain with blank left") {
-    testSpanTreeFor("+b+c") { root =>
-      root.settableChildren.map(_.text) shouldEqual Seq("", "b", "c")
-    }
-  }
-  test("infix chain with blank sides") {
-    testSpanTreeFor("+a+b+") { root =>
-      root.settableChildren.map(_.text) shouldEqual Seq("", "a", "b", "")
-    }
-  }
-  test("get infix node") {
-    testSpanTreeFor("a+2") { root =>
-      root.settableChildren.map(_.text) shouldEqual Seq("a", "2")
-    }
-  }
 
   test("flattening prefix application") {
     testSpanTreeFor("a b c 4") { root =>
@@ -546,11 +516,25 @@ class Tests extends FunSuite with TestUtils {
 
   /////////////////////////////////////////////////////////////////////
 
-  test("settable points") {
-    testSpanTreeMarkdown("foo⎀")
-    testSpanTreeMarkdown("foo ⎀«a»⎀⎀")
-    testSpanTreeMarkdown("foo ⎀«a» ⎀«b»⎀⎀")
+  test("prefix application actions") {
+    testSpanTreeMarkdown("foo")
+    testSpanTreeMarkdown("foo ⎀«a»⎀")
+    testSpanTreeMarkdown("foo ⎀«4»⎀")
+    testSpanTreeMarkdown("foo ⎀«a» ⎀«_»⎀")
     // can insert before each argument, after `b`, after `foo a b`
+  }
+
+  test("infix operator chains") {
+    testSpanTreeMarkdown("⎀+⎀")
+    testSpanTreeMarkdown("⎀«a»+⎀")
+    testSpanTreeMarkdown("⎀+⎀«b»⎀")
+    testSpanTreeMarkdown("⎀+⎀«5»⎀")
+    testSpanTreeMarkdown("⎀+⎀«b»+⎀")
+    testSpanTreeMarkdown("⎀+⎀«b»+⎀«c»⎀")
+    testSpanTreeMarkdown("⎀«a»+⎀«b»+⎀")
+    testSpanTreeMarkdown("⎀«a»+⎀«b»⎀")
+    testSpanTreeMarkdown("⎀+⎀ +⎀")
+    testSpanTreeMarkdown("⎀+⎀«a»+⎀«b»+⎀")
   }
 
   /////////////////////////////////////////////////////////////////////
