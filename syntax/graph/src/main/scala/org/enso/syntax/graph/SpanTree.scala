@@ -4,6 +4,7 @@ import org.enso.syntax.graph.API.TextPosition
 import org.enso.syntax.graph.API.TextSpan
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Opr
+import org.enso.syntax.text.ast.meta.Pattern
 
 import scala.util.Success
 import scala.util.Try
@@ -292,15 +293,30 @@ object SpanTree {
   /** A leaf representing an AST element that cannot be decomposed any
     * further.
     */
-  final case class AstLeaf(info: AstNodeInfo) extends AstNode with Leaf {
-//    // special insertion point that allows replacing non-application AST
-//    // with application AST by applying an argument over it
-//    override def describeChildren: Seq[ChildInfo] =
-//      Seq(ChildInfo.insertionPoint(end))
-  }
+  final case class AstLeaf(info: AstNodeInfo) extends AstNode with Leaf
   object AstLeaf {
     def apply(textPosition: TextPosition, ast: AST): SpanTree.AstLeaf =
       AstLeaf(AstNodeInfo(textPosition, ast))
+  }
+
+  final case class MacroPiece(
+    introducer: Option[String],
+    patternMatch: Pattern.Match
+  ) extends SpanTree {
+    override def span: TextSpan = ???
+    override def text =
+      patternMatch.toStream.foldLeft("")(
+        (s, ast) => s + (" " * ast.off).toString + ast.el.show()
+      )
+    override def describeChildren: Seq[ChildInfo] = ???
+
+    private def childrenFor(
+      pos: TextPosition,
+      pat: Pattern.Match
+    ): Seq[ChildInfo] = ???
+  }
+  object Segment {
+    def apply(textPosition: TextPosition, segment: AST.Macro.Match.Segment) = {}
   }
 
   /** An index in the sequence returned by [[SpanTree.children]] method. */

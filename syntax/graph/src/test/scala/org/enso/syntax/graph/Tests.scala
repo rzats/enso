@@ -332,17 +332,14 @@ class Tests extends FunSuite with TestUtils {
       node.flags shouldBe empty
     }
   }
-//  test("node literal in parens") {
-//    checkModuleSingleNodeGraph(
-//      "(15)",
-//      node => {
-//        node.expr.text should equal("(15)")
-//        node.inputs should have size 0
-//        node.output.name should equal(None)
-//        node.flags shouldBe empty
-//      }
-//    )
-//  }
+  test("node literal in parens") {
+    checkModuleSingleNodeGraph("a c  -> b") { node =>
+      node.expr.text should equal("(15)")
+//      node.inputs should have size 0
+      //node.output.name should equal(None)
+      node.flags shouldBe empty
+    }
+  }
   test("node trivial var") {
     checkModuleSingleNodeGraph("foo") { node =>
       node.expr.text should equal("foo")

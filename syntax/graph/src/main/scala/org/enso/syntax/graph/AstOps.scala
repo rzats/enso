@@ -13,6 +13,7 @@ import org.enso.syntax.text.AST.Block.Line
 import org.enso.syntax.text.AST.Block.OptLine
 import org.enso.syntax.text.AST.Import
 import org.enso.syntax.text.AST.UnapplyByType
+import org.enso.syntax.text.ast.meta.Pattern
 import org.enso.syntax.text.ast.opr.Assoc
 
 import scala.collection.GenTraversableOnce
@@ -188,6 +189,24 @@ object AstOps {
             throw new Exception("impossible: failed to find application target")
         }
 
+      case AST.Macro.Match(optPrefix, segments, resolved) => {
+
+        var pos = TextPosition.Start
+        val pfx = optPrefix.map(SpanTree.MacroPiece(None, _))
+        optPrefix.foreach { pos += _.toStream }
+
+        val childSegments = segments.map { s =>
+          SpanTree.MacroPiece(Some(s.head.toString), s.body)
+        }
+        // TODO prefix
+        def childrenForMatch(patMatch: Pattern.Match) = {}
+
+        println(optPrefix)
+        println(segments)
+        println(resolved)
+        null
+      }
+
       case _ =>
         GeneralizedInfix(ast) match {
           case Some(info) =>
@@ -221,7 +240,7 @@ object AstOps {
           case _ =>
             println("failed to generate span tree node for " + ast.show())
             println(ast.toString())
-            null
+            throw new Exception("internal error: not supported ast")
         }
     }
     def spanTree: SpanTree = ast.spanTreeNode(TextPosition.Start)

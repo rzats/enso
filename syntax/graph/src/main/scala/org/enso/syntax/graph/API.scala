@@ -3,8 +3,10 @@ package org.enso.syntax.graph
 import java.util.UUID
 
 import org.enso.data.List1
+import org.enso.data.Shifted
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Cons
+import org.enso.syntax.text.AST.SAST
 
 /** Layer over Double Representation and other backend services. Directly under
   * GUI. */
@@ -360,7 +362,18 @@ object API {
 
   /** Strongly typed index position in a text. */
   case class TextPosition(index: Int) extends Ordered[TextPosition] {
-    def +(offset: Int) = TextPosition(index + offset)
+    def +(offset: Int):        TextPosition = TextPosition(index + offset)
+    def +(ast: AST):           TextPosition = this + ast.repr.span
+    def +(sast: Shifted[AST]): TextPosition = this + sast.off + sast.el
+    def +[A](elems: Seq[Shifted[AST]]): TextPosition = {
+      // FIXME [mwu] can we just do dyanmic dispatch based on elem type?
+      //  like as if we had two-phase lookup
+      var ret = this
+      elems.foreach { elem =>
+        ret = ret + elem
+      }
+      ret
+    }
 
     /** Span between two text positions. Operands order is irrelevant. */
     def <->(that: TextPosition): TextSpan = TextSpan(this, that)

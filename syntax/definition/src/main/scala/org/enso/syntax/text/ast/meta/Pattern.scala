@@ -61,7 +61,7 @@ object Pattern {
   
   /** Meta Patterns */
   final case class Build   (pat  : P)                               extends P
-  final case class Err     (msg  : String, pat    : P)              extends P
+  final case class Err     (smsg  : String, pat    : P)              extends P
   final case class Tag     (tag  : String, pat    : P)              extends P
   final case class Cls     (cls  : Class , pat    : P)              extends P
 
