@@ -3,11 +3,15 @@ package org.enso.syntax.graph
 import org.enso.data.List1
 import org.enso.data.List1._
 import org.enso.flexer.Reader
+import org.enso.syntax.graph.API.Notification.Text
 import org.enso.syntax.graph.API._
 import org.enso.syntax.text.AST.App.Infix
-import org.enso.syntax.text.AST.Block.{Line, OptLine}
-import org.enso.syntax.text.AST.{Import, UnapplyByType}
-import org.enso.syntax.text.{AST, Parser}
+import org.enso.syntax.text.AST.Block.Line
+import org.enso.syntax.text.AST.Block.OptLine
+import org.enso.syntax.text.AST.Import
+import org.enso.syntax.text.AST.UnapplyByType
+import org.enso.syntax.text.AST
+import org.enso.syntax.text.Parser
 import org.enso.syntax.text.ast.Repr._
 
 import scala.collection.GenTraversableOnce
@@ -245,35 +249,39 @@ final case class DoubleRepresentation(
 ) extends GraphAPI
     with TextAPI {
 
-  protected def findAndReplace(loc: Module.Location, pos: TextPosition)(
-    fun: (TextPosition, AST.Block.OptLine) => List[AST.Block.OptLine]
+  protected def findAndReplace(module: Module.Location, at: Text.Position)(
+    fun: (Text.Position, AST.Block.OptLine) => List[AST.Block.OptLine]
   ) = {
     var span = 0
-    val module = state.getModule(loc).findAndReplace { line =>
+    val content = state.getModule(module).findAndReplace { line =>
       span += line.span
-      if (span < pos.index) None
-      else Some(fun(TextPosition(span - line.span), line))
+      if (span < at.index) None
+      else Some(fun(Text.Position(span - line.span), line))
     }
-    state.setModule(loc, module)
+    state.setModule(module, content)
   }
 
   def getText(loc: Module.Location): String = state.getModule(loc).show
 
-  def insertText(loc: Module.Location, cursor: TextPosition, text: String) =
-    findAndReplace(loc, cursor) { (pos, line) =>
-      val (prefix, suffix) = line.show.splitAt(pos.index + cursor.index)
+  def insertText(module: Module.Location, at: Text.Position, text: String) = {
+    findAndReplace(module, at) { (pos, line) =>
+      val (prefix, suffix) = line.show.splitAt(pos.index + at.index)
       val result           = Parser().run(new Reader(prefix + text + suffix))
       result.lines.toList
     }
+    notifier.notify(Text.Inserted(module, at, text))
+  }
 
-  def eraseText(loc: Module.Location, span: TextSpan) =
+  def eraseText(loc: Module.Location, span: Text.Span) = {
     findAndReplace(loc, span.start) { (pos, line) =>
       val (line1, line2) = line.show.splitAt(pos.index + span.start.index)
       val result         = Parser().run(new Reader(line1 + line2.drop(span.length)))
       result.lines.toList
     }
+    notifier.notify(Text.Erased(loc, span))
+  }
 
-  def copyText(loc: Module.Location, span: TextSpan): String = {
+  def copyText(loc: Module.Location, span: Text.Span): String = {
     var text = ""
     findAndReplace(loc, span.start) { (pos, line) =>
       val start = pos.index + span.start.index
@@ -283,8 +291,8 @@ final case class DoubleRepresentation(
     text
   }
 
-  def pasteText(loc: Module.Location, cursor: TextPosition, clipboard: String) =
-    insertText(loc, cursor, clipboard)
+  def pasteText(module: Module.Location, at: Text.Position, clipboard: String) =
+    insertText(module, at, clipboard)
 
   def getGraph(loc: API.Definition.Graph.Location): Definition.Graph.Info = ???
   def getGraph(loc: Module.Graph.Location): Module.Graph.Info = {
@@ -339,7 +347,7 @@ final case class DoubleRepresentation(
 
     val newAst = module.insert(lineToPlaceImport, Import(importee))
     state.setModule(context, newAst)
-    notifier.retrieve(API.Notification.Invalidate.Module(context))
+    notifier.notify(API.Notification.Invalidate.Module(context))
   }
 
   override def removeImport(
@@ -354,6 +362,6 @@ final case class DoubleRepresentation(
 
     val newAst = ast.removeAt(lineIndex)
     state.setModule(context, newAst)
-    notifier.retrieve(API.Notification.Invalidate.Module(context))
+    notifier.notify(API.Notification.Invalidate.Module(context))
   }
 }

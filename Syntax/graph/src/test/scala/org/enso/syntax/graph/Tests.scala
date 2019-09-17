@@ -2,6 +2,7 @@ package org.enso.syntax.graph
 
 import org.enso.data.List1
 import org.enso.syntax.graph
+import org.enso.syntax.graph.API.Notification.Text
 import org.enso.syntax.graph.API._
 import org.enso.syntax.graph.Extensions._
 import org.enso.syntax.text.AST
@@ -37,7 +38,7 @@ final case class StateManagerMock(var program: String) extends StateManager {
 
 final case class NotificationSinkMock() extends NotificationSink {
   var notificationsReceived: Seq[API.Notification] = Seq()
-  override def retrieve(notification: API.Notification): Unit = {
+  override def notify(notification: API.Notification): Unit = {
     println(s"Got notification: $notification")
     notificationsReceived = notificationsReceived :+ notification
   }
@@ -90,14 +91,14 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     checkThatTransforms(
       prefix + suffix,
       prefix + middle + suffix,
-      _.insertText(mockModule, TextPosition(prefix.length), middle)
+      _.insertText(mockModule, Text.Position(prefix.length), middle)
     )
     checkThatTransforms(
       prefix + middle + suffix,
       prefix + suffix,
       _.eraseText(
         mockModule,
-        TextSpan(TextPosition(prefix.length), middle.length)
+        Text.Span(Text.Position(prefix.length), middle.length)
       )
     )
     checkOutput(
@@ -105,7 +106,7 @@ class Tests extends FunSuite with org.scalatest.Matchers {
       middle,
       _.copyText(
         mockModule,
-        TextSpan(TextPosition(prefix.length), middle.length)
+        Text.Span(Text.Position(prefix.length), middle.length)
       )
     )
   }

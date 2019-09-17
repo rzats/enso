@@ -3,6 +3,7 @@ package org.enso.syntax.graph
 import java.util.UUID
 
 import org.enso.data.List1
+import org.enso.syntax.graph.API.Notification.Text
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Cons
 
@@ -90,7 +91,7 @@ object StateManager {
 }
 
 trait NotificationSink {
-  def retrieve(notification: API.Notification): Unit
+  def notify(notification: API.Notification): Unit
 }
 
 object API {
@@ -351,18 +352,22 @@ object API {
       case class Project()                           extends Invalidate
     }
 
-    case class TextInserted(
-      module: Module.Location,
-      position: TextPosition,
-      text: String
-    )
-    case class TextErased(module: Module.Location, span: TextSpan)
+    sealed trait Text extends Notification
+    object Text {
+      case class Erased(module: Module.Location, span: Span)
+          extends Notification
+      case class Inserted(
+        module: Module.Location,
+        position: Position,
+        text: String
+      ) extends Notification
+
+      case class Position(index: Int) extends AnyVal
+      case class Span(start: Position, length: Int)
+    }
 
     ////////////////////////////////////////////////////////////////////////////
   }
-
-  case class TextPosition(index: Int) extends AnyVal
-  case class TextSpan(start: TextPosition, length: Int)
 
   /***** Exceptions */
   final case class ImportAlreadyExistsException(name: Module.Name)
@@ -381,10 +386,10 @@ trait TextAPI {
   def getText(loc: Module.Location): String
 
   // modify
-  def insertText(loc: Module.Location, cursor: TextPosition, text: String): Unit
-  def eraseText(loc: Module.Location, span: TextSpan): Unit
-  def copyText(loc: Module.Location, span: TextSpan): String
-  def pasteText(loc: Module.Location, cursor: TextPosition, text: String): Unit // FIXME We can get both plain text or metadata from graph
+  def insertText(module: Module.Location, at: Text.Position, text: String): Unit
+  def eraseText(module: Module.Location, span: Text.Span): Unit
+  def copyText(module: Module.Location, span: Text.Span): String
+  def pasteText(module: Module.Location, at: Text.Position, text: String): Unit // FIXME We can get both plain text or metadata from graph
 
   // TODO should we represent here that text notifications are emitted?
 }
