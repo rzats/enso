@@ -34,6 +34,30 @@ package object data {
         case s :: ss => List1(s, ss ++ lst.toList)
       }
 
+      private def insertToList[B >: T](
+        list: List[B],
+        i: Int,
+        element: B
+      ): List[B] = {
+        val (front, back) = list.splitAt(i)
+        front ++ (element :: back)
+      }
+
+      def insert[B >: T](index: Int, element: B): List1[B] = {
+        if (index == 0) lst.prepend(element)
+        else List1(lst.head, insertToList(lst.tail, index - 1, element))
+      }
+
+      def removeAt(index: Int): List[T] = {
+        if (index == 0) lst.tail
+        else lst.head :: lst.tail.patch(index - 1, Nil, 1)
+      }
+
+      def indexWhere(p: T => Boolean, from: Int = 0): Option[Int] =
+        lst.toList.indexWhere(p, from) match {
+          case -1    => None
+          case index => Some(index)
+        }
     }
   }
 }

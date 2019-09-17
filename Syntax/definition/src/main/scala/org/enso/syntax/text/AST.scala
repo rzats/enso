@@ -1110,6 +1110,8 @@ object AST {
     }
     object Match {
       val any = UnapplyByType[Match]
+      def unapply(t: AST) =
+        Unapply[Match].run(t => (t.pfx, t.segs, t.resolved))(t)
       def apply(
         pfx: Option[Pattern.Match],
         segs: Shifted.List1[Match.Segment],

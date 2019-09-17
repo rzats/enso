@@ -28,6 +28,7 @@ object Repr {
   implicit class ToReprOps[T: Repr](t: T) {
     def repr: Builder = Repr(t)
     def span: Int     = repr.span
+    def show: String  = repr.build()
   }
 
   ///// Instances ////

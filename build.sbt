@@ -195,7 +195,7 @@ lazy val syntax = (project in file("Syntax/specialization"))
       .value
   )
 
-lazy val graphSyntax = (project in file("Syntax/graph"))
+lazy val syntax_graph = (project in file("Syntax/graph"))
   .dependsOn(syntax)
   .configs(Test)
   .settings(
