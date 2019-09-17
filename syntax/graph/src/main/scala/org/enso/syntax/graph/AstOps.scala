@@ -195,11 +195,22 @@ object AstOps {
         val pfx = optPrefix.map(SpanTree.MacroPiece(None, _))
         optPrefix.foreach { pos += _.toStream }
 
-        val childSegments = segments.map { s =>
-          SpanTree.MacroPiece(Some(s.head.toString), s.body)
+        def handlePatMatch(patMatch: Pattern.Match): SpanTree = patMatch match {
+          case Pattern.Match.Or(pat, elem) =>
+            handlePatMatch(elem.fold(identity, identity))
+          case Pattern.Match.Seq(pat, elems) =>
+            handlePatMatch(elems._1) // TODO FIXME ALART -- process _2
+          case Pattern.Match.Build(_, elem) =>
+            elem.el.spanTreeNode(pos)
+          case a =>
+            println(a)
+            null
         }
-        // TODO prefix
-        def childrenForMatch(patMatch: Pattern.Match) = {}
+
+        val childSegments = segments.map { s =>
+          handlePatMatch(s.body)
+        //SpanTree.MacroPiece(Some(s.head.toString), s.body)
+        }
 
         println(optPrefix)
         println(segments)

@@ -333,7 +333,7 @@ class Tests extends FunSuite with TestUtils {
     }
   }
   test("node literal in parens") {
-    checkModuleSingleNodeGraph("a c  -> b") { node =>
+    checkModuleSingleNodeGraph("(15)") { node =>
       node.expr.text should equal("(15)")
 //      node.inputs should have size 0
       //node.output.name should equal(None)
