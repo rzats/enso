@@ -255,6 +255,11 @@ object AST {
     implicit cls: ASTClass[T]
   ) {
     override def toString  = s"Node($id,$shape)"
+    override def equals(obj: Any): Boolean = obj match {
+      case ast: ASTOf[T] => ast.shape == shape
+      case _ => false
+    }
+    def equalsByID[X[_] >: T[_]](obj: ASTOf[X]): Boolean = obj.id == id
     val repr: Repr.Builder = cls.repr(shape)
     val span: Int          = cls.repr(shape).span
     def show():             String   = repr.build()

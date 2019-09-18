@@ -148,8 +148,7 @@ class Parser {
   import Parser._
   private val engine = newEngine()
 
-  def run(input: Reader): AST.Module =
-    run(input, Map())
+  def run(input: Reader): AST.Module = run(input, Map())
 
   def run(input: Reader, idMap: Map[(Int, Int), AST.ID]): AST.Module =
     engine.run(input).map(Macro.run) match {
@@ -243,7 +242,7 @@ class Parser {
 }
 
 object Parser {
-  def apply(): Parser   = new Parser()
+  def apply(): Parser = new Parser()
   private val newEngine = flexer.Parser.compile(ParserDef())
 
   //// Exceptions ////
@@ -335,10 +334,7 @@ object Main extends App {
 
   println("--- PARSING ---")
 
-  val mod = parser.run(
-    new Reader(inp),
-    Map()
-  )
+  val mod = parser.run(new Reader(inp))
 
   println(pretty(mod.toString))
 
