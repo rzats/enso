@@ -52,12 +52,12 @@ class Tests extends FunSuite with org.scalatest.Matchers {
 
   def withDR[R](
     program: String,
-    f: DoubleRepresentation => R
-  ): (R, AST.Module) = {
+    action: DoubleRepresentation => R
+  ): (R, StateManagerMock, NotificationSinkMock) = {
     val state    = StateManagerMock(program)
     val notifier = NotificationSinkMock()
-    val result   = f(DoubleRepresentation(state, notifier))
-    (result, state.ast)
+    val result   = action(DoubleRepresentation(state, notifier))
+    (result, state, notifier)
   }
 
   def checkOutput[R](
@@ -65,21 +65,20 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     expectedOutput: R,
     action: DoubleRepresentation => R
   ): R = {
-    val state    = StateManagerMock(program)
-    val notifier = NotificationSinkMock()
-    val result   = action(DoubleRepresentation(state, notifier))
-    expectedOutput should be(result)
+    val (result, _, _) = withDR(program, action)
+    result should be(expectedOutput)
     result
   }
 
   def checkThatTransforms[R](
     initialProgram: String,
     expectedProgram: String,
-    action: DoubleRepresentation => R
+    action: DoubleRepresentation => R,
+    notification: Option[API.Notification] = None
   ): R = {
-    val (result, finalAst) = withDR(initialProgram, action)
-    val actualFinalProgram = finalAst.show()
-    actualFinalProgram should be(expectedProgram.replace("\r\n", "\n"))
+    val (result, state, notifier) = withDR(initialProgram, action)
+    state.ast.show should be(ParserUtils.preprocess(expectedProgram))
+    notification.foreach(notifier.notificationsReceived.head should be(_))
     result
   }
 
@@ -87,26 +86,26 @@ class Tests extends FunSuite with org.scalatest.Matchers {
     val prefix = program.takeWhile(_ != '»').dropRight(1)
     val suffix = program.dropWhile(_ != '«').drop(2)
     val middle = program.dropWhile(_ != '»').drop(1).takeWhile(_ != '«')
+
+    val position = TextAPI.Position(prefix.length)
+    val span = TextAPI.Span(position, middle.length)
+
     checkThatTransforms(
       prefix + suffix,
       prefix + middle + suffix,
-      _.insertText(mockModule, TextAPI.Position(prefix.length), middle)
+      _.insertText(mockModule, position, middle),
+      Some(TextAPI.Notification.Inserted(mockModule, position, middle))
     )
     checkThatTransforms(
       prefix + middle + suffix,
       prefix + suffix,
-      _.eraseText(
-        mockModule,
-        TextAPI.Span(TextAPI.Position(prefix.length), middle.length)
-      )
+      _.eraseText(mockModule, span),
+      Some(TextAPI.Notification.Erased(mockModule, span))
     )
     checkOutput(
       prefix + middle + suffix,
       middle,
-      _.copyText(
-        mockModule,
-        TextAPI.Span(TextAPI.Position(prefix.length), middle.length)
-      )
+      _.copyText(mockModule, span)
     )
   }
 

@@ -244,6 +244,7 @@ object ParserUtils {
 //    })
     ast
   }
+  def preprocess(program: String): String = new Reader(program).toString()
 }
 
 final case class DoubleRepresentation(
