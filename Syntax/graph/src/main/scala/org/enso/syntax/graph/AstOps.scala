@@ -6,10 +6,12 @@ import org.enso.syntax.graph.API.Flag
 import org.enso.syntax.graph.API.Module
 import org.enso.syntax.graph.API.Node
 import org.enso.syntax.graph.API.Port
+import org.enso.syntax.graph.SpanTree.ChildInfo
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.App.Infix
 import org.enso.syntax.text.AST.Block.Line
 import org.enso.syntax.text.AST.Block.OptLine
+import org.enso.syntax.text.AST.Ident
 import org.enso.syntax.text.AST.Import
 import org.enso.syntax.text.AST.UnapplyByType
 import org.enso.syntax.text.ast.meta.Pattern
@@ -26,8 +28,8 @@ object KnownOperators {
 object AstOps {
   implicit class Opr_ops(opr: AST.Opr) {
     def isAssignment: Boolean = opr.name == KnownOperators.Assignment
-    def isAccess: Boolean     = opr.name == KnownOperators.Access
-    def isMinus: Boolean      = opr.name == KnownOperators.Minus
+    def isAccess:     Boolean = opr.name == KnownOperators.Access
+    def isMinus:      Boolean = opr.name == KnownOperators.Minus
   }
 
   case class ExpressionPart(pos: TextPosition, ast: Option[AST])
@@ -45,10 +47,10 @@ object AstOps {
     rightSpace: Int,
     rightArg: Option[AST]
   ) {
-    def name: String                = operator.name
-    def span(ast: Option[AST]): Int = ast.map(_.repr.span).getOrElse(0)
+    def name:                   String = operator.name
+    def span(ast: Option[AST]): Int    = ast.map(_.repr.span).getOrElse(0)
 
-    def oprPos: Int      = span(leftArg) + leftSpace
+    def oprPos:      Int = span(leftArg) + leftSpace
     def rightArgPos: Int = oprPos + operator.repr.span + rightSpace
     def usesSameOperator(ast: Option[AST]): Boolean =
       ast.exists(_.isInfixOperatorUsage(operator.name))
@@ -188,33 +190,60 @@ object AstOps {
             throw new Exception("impossible: failed to find application target")
         }
 
-      case AST.Macro.Match(optPrefix, segments, resolved) => {
-
-        var pos = TextPosition.Start
-        val pfx = optPrefix.map(SpanTree.MacroPiece(None, _))
-        optPrefix.foreach { pos += _.toStream }
-
-        def handlePatMatch(patMatch: Pattern.Match): SpanTree = patMatch match {
+      case m @ AST.Macro.Match(optPrefix, segments, resolved) => {
+        def handlePatMatch(
+          pos: TextPosition,
+          patMatch: Pattern.Match
+        ): Seq[ChildInfo] = patMatch match {
           case Pattern.Match.Or(pat, elem) =>
-            handlePatMatch(elem.fold(identity, identity))
-          case Pattern.Match.Seq(pat, elems) =>
-            handlePatMatch(elems._1) // TODO FIXME ALART -- process _2
+            handlePatMatch(pos, elem.fold(identity, identity))
+          case Pattern.Match.Seq(pat, elems) => {
+            val left       = handlePatMatch(pos, elems._1)
+            val leftLength = TextLength(elems._1)
+            val right      = handlePatMatch(pos + leftLength, elems._2)
+            left ++ right
+          }
           case Pattern.Match.Build(_, elem) =>
-            elem.el.spanTreeNode(pos)
+            val node = elem.el.spanTreeNode(pos + elem.off)
+            Seq(ChildInfo(node))
+          case Pattern.Match.End(_) =>
+            Seq()
+          case Pattern.Match.Nothing(_) =>
+            Seq()
           case a =>
             println(a)
             null
         }
 
-        val childSegments = segments.map { s =>
-          handlePatMatch(s.body)
-        //SpanTree.MacroPiece(Some(s.head.toString), s.body)
+        val optPrefixNode = optPrefix.map { m =>
+          val children = handlePatMatch(pos, m)
+          SpanTree.MacroSegment(pos, None, m, children)
         }
 
-        println(optPrefix)
-        println(segments)
-        println(resolved)
-        null
+        def handleSegment(
+          pos: TextPosition,
+          s: AST.Macro.Match.Segment
+        ): SpanTree.MacroSegment = {
+          val bodyPos  = pos + TextLength(s.head)
+          val children = handlePatMatch(bodyPos, s.body)
+          SpanTree.MacroSegment(pos, Some(s.head.show()), s.body, children)
+        }
+
+        var i = pos + optPrefixNode
+            .map(_.span.length)
+            .getOrElse(TextLength.Empty)
+
+        val segmentNodes = segments.toList(0).map { s =>
+          val node = handleSegment(i + s.off, s.el)
+          i += node.span.length + TextLength(s.off)
+          node
+        }
+
+        SpanTree.MacroMatch(
+          SpanTree.AstNodeInfo(pos, m),
+          optPrefixNode,
+          segmentNodes
+        )
       }
 
       case _ =>
@@ -261,6 +290,10 @@ object AstOps {
         case None                 => (None, ast)
       }
 
+      // FIXME: provisional rule to not generate nodes from imports
+      if (rhs.asImport.nonEmpty)
+        return None
+
       val assignment = lhs.map(AssignmentInfo(_, rhs))
 
       // definition with inputs is a function
@@ -306,8 +339,8 @@ object AstOps {
 
   implicit class Module_ops(module: AST.Module) {
     //def importedModules: List[Module.Name] = module.imports.map(_.path)
-    def imports: List[Import]              = module.flatTraverse(_.asImport)
-    def lineIndexOf(ast: AST): Option[Int] = lineIndexWhere(_ == ast)
+    def imports:               List[Import] = module.flatTraverse(_.asImport)
+    def lineIndexOf(ast: AST): Option[Int]  = lineIndexWhere(_ == ast)
     def lineIndexWhere(p: AST => Boolean): Option[Int] = {
       module.lines.indexWhere(_.elem.exists(p))
     }

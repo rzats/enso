@@ -68,7 +68,8 @@ final case class DoubleRepresentation(
   def eraseText(loc: Module.Location, span: TextSpan) = {
     findAndReplace(loc, span.begin) { (pos, line) =>
       val (line1, line2) = line.show.splitAt(pos.index + span.begin.index)
-      val result         = Parser().run(new Reader(line1 + line2.drop(span.length)))
+      val result =
+        Parser().run(new Reader(line1 + line2.drop(span.length.value)))
       result.lines.toList
     }
     notifier.notify(Text.Erased(loc, span))
@@ -78,7 +79,7 @@ final case class DoubleRepresentation(
     var text = ""
     findAndReplace(loc, span.begin) { (pos, line) =>
       val start = pos.index + span.begin.index
-      text = line.show.substring(start, start + span.length)
+      text = line.show.substring(start, start + span.length.value)
       List(line)
     }
     text
@@ -99,7 +100,7 @@ final case class DoubleRepresentation(
     context: Node.Context,
     metadata: Node.Metadata,
     expr: String
-  ): Node.Id                                                       = ???
+  ): Node.Id = ???
   def setMetadata(node: Node.Location, newMetadata: Node.Metadata) = ???
   def enableFlag(node: Node.Location, flag: Flag)                  = ???
   def disableFlag(node: Node.Location, flag: Flag)                 = ???
@@ -108,7 +109,7 @@ final case class DoubleRepresentation(
   def extractToFunction(
     context: Node.Context,
     node: Set[Node.Id]
-  ): Definition.Id                                                       = ???
+  ): Definition.Id = ???
   def setPortName(port: Graph.Port.Location, name: String)               = ???
   def addPort(port: Graph.Port.Location, name: String, tp: Option[Type]) = ???
   def removePort(port: Graph.Port.Location)                              = ???

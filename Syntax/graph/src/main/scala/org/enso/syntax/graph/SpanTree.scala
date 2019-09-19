@@ -103,9 +103,9 @@ object SpanTree {
     val actions: Set[SpanTree.Action]
 
     def supports(action: Action): Boolean = actions.contains(action)
-    def settable: Boolean                 = supports(Action.Set)
-    def erasable: Boolean                 = supports(Action.Erase)
-    def insertable: Boolean               = supports(Action.Insert)
+    def settable:                 Boolean = supports(Action.Set)
+    def erasable:                 Boolean = supports(Action.Erase)
+    def insertable:               Boolean = supports(Action.Insert)
   }
 
   final case class ChildInfo(
@@ -178,15 +178,15 @@ object SpanTree {
       extends SpanTree
       with Leaf {
     override def text: String   = ""
-    override def span: TextSpan = TextSpan(position, 0)
+    override def span: TextSpan = TextSpan.Empty(position)
   }
 
   /** Node describing certain AST subtree, has non-zero span. */
   sealed trait AstNode extends SpanTree {
     def info: AstNodeInfo
-    def ast: AST       = info.ast
+    def ast:  AST      = info.ast
     def text: String   = ast.show()
-    def span: TextSpan = TextSpan(info.position, ast.repr.span)
+    def span: TextSpan = TextSpan(info.position, TextLength(ast))
 
   }
 
@@ -297,16 +297,30 @@ object SpanTree {
       AstLeaf(AstNodeInfo(textPosition, ast))
   }
 
-  final case class MacroPiece(
+  final case class MacroMatch(
+    info: AstNodeInfo,
+    prefix: Option[MacroSegment],
+    segments: Seq[MacroSegment]
+  ) extends AstNode {
+    override def describeChildren: Seq[ChildInfo] = {
+      prefix.map(ChildInfo(_)).toSeq ++ segments.map(ChildInfo(_))
+    }
+  }
+
+  final case class MacroSegment(
+    override val begin: TextPosition,
     introducer: Option[String],
-    patternMatch: Pattern.Match
+    patternMatch: Pattern.Match,
+    override val describeChildren: Seq[ChildInfo]
   ) extends SpanTree {
-    override def span: TextSpan = ???
-    override def text =
-      patternMatch.toStream.foldLeft("")(
+    override def span: TextSpan = {
+      val introLength = TextLength(introducer.map(_.length).getOrElse(0))
+      TextSpan(begin, introLength + TextLength(patternMatch))
+    }
+    override def text: String =
+      patternMatch.toStream.foldLeft(introducer.getOrElse(""))(
         (s, ast) => s + (" " * ast.off).toString + ast.el.show()
       )
-    override def describeChildren: Seq[ChildInfo] = ???
 
     private def childrenFor(
       pos: TextPosition,

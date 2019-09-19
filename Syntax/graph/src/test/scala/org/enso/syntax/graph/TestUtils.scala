@@ -67,7 +67,7 @@ trait TestUtils extends org.scalatest.Matchers {
       prefix + suffix,
       _.eraseText(
         mockModule,
-        TextSpan(TextPosition(prefix.length), middle.length)
+        TextSpan(TextPosition(prefix.length), TextLength(middle))
       )
     )
     checkOutput(
@@ -75,7 +75,7 @@ trait TestUtils extends org.scalatest.Matchers {
       middle,
       _.copyText(
         mockModule,
-        TextSpan(TextPosition(prefix.length), middle.length)
+        TextSpan(TextPosition(prefix.length), TextLength(middle))
       )
     )
   }
@@ -98,7 +98,8 @@ trait TestUtils extends org.scalatest.Matchers {
   def testSpanTreeFor[R](program: ProgramText)(action: SpanTree => R): R =
     checkModuleSingleNodeGraph(program) { node =>
       // make sure that span covers the whole expression
-      val expectedSpan = TextSpan(TextPosition.Start, program.length)
+      val expectedSpan =
+        TextSpan(TextPosition.Start, TextLength(program))
       node.expr.span shouldEqual expectedSpan
 
       verifyTreeIndices(node.expr)
@@ -144,15 +145,19 @@ trait TestUtils extends org.scalatest.Matchers {
     * @param tree A root node of the span tree.
     */
   def verifyTreeIndices(tree: SpanTree): Unit = {
-    def verifyNode(node: SpanTree): Unit = node match {
-      case node: SpanTree.AstNode =>
-        val textFromSpan    = tree.text.substring(node.span)
-        val textFromShowing = node.ast.show()
-        textFromSpan shouldEqual textFromShowing
-        node.children.foreach(verifyNode)
-      case node: SpanTree.EmptyEndpoint =>
-        node.span.length shouldEqual 0
-        node.children.foreach(verifyNode)
+    def verifyNode(node: SpanTree): Unit = {
+//      println(s"Checking node $node")
+      val textFromSpan = tree.text.substring(node.span)
+      textFromSpan shouldEqual node.text
+      node match {
+        case node: SpanTree.AstNode =>
+          textFromSpan shouldEqual node.ast.show()
+        case node: SpanTree.EmptyEndpoint =>
+          node.span.length shouldEqual TextLength.Empty
+        case _ =>
+          Unit
+      }
+      node.children.foreach(verifyNode)
     }
     verifyNode(tree)
   }

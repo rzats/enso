@@ -2,6 +2,7 @@ package org.enso.syntax.graph
 
 import org.enso.data.Shifted
 import org.enso.syntax.text.AST
+import org.enso.syntax.text.ast.meta.Pattern
 
 import scala.collection.GenIterable
 
@@ -17,20 +18,33 @@ object Ops {
   }
 }
 
-/** Strongly typed index position in a text. */
-case class TextPosition(index: Int) extends Ordered[TextPosition] {
-  def +(offset: Int): TextPosition        = TextPosition(index + offset)
-  def +(ast: AST): TextPosition           = this + ast.repr.span
-  def +(sast: Shifted[AST]): TextPosition = this + sast.off + sast.el
-  def +[A](elems: Seq[Shifted[AST]]): TextPosition = {
+case class TextLength(value: Int) extends Ordered[TextLength] {
+  def +(offset: TextLength):    TextLength = TextLength(value + offset.value)
+  def compare(rhs: TextLength): Int        = value compare rhs.value
+}
+object TextLength {
+  val Empty = TextLength(0)
+  def apply(pat: Pattern.Match): TextLength = TextLength(pat.toStream)
+  def apply(ast: AST):           TextLength = TextLength(ast.repr.span)
+  def apply(text: String):       TextLength = TextLength(text.length)
+  def apply(sast: Shifted[AST]): TextLength =
+    TextLength(sast.off) + TextLength(sast.el)
+  def apply[A](elems: Seq[Shifted[AST]]): TextLength = {
     // FIXME [mwu] can we just do dyanmic dispatch based on elem type?
     //  like as if we had two-phase lookupB
-    var ret = this
+    var ret = TextLength(0)
     elems.foreach { elem =>
-      ret = ret + elem
+      ret += TextLength(elem)
     }
     ret
   }
+}
+
+/** Strongly typed index position in a text. */
+case class TextPosition(index: Int) extends Ordered[TextPosition] {
+  def +(offset: Int):        TextPosition = TextPosition(index + offset)
+  def +(offset: TextLength): TextPosition = TextPosition(index + offset.value)
+  def -(offset: TextLength): TextPosition = TextPosition(index - offset.value)
 
   /** Span between two text positions. Operands order is irrelevant. */
   def <->(that: TextPosition): TextSpan = TextSpan(this, that)
@@ -40,7 +54,7 @@ case class TextPosition(index: Int) extends Ordered[TextPosition] {
 object TextPosition {
   val Start = TextPosition(0)
 }
-case class TextSpan(begin: TextPosition, length: Int)
+case class TextSpan(begin: TextPosition, length: TextLength)
     extends Ordered[TextSpan] {
 
   /** Index of the first character past the span */
@@ -54,5 +68,7 @@ object TextSpan {
   /** Span between two text positions. */
   def apply(pos1: TextPosition, pos2: TextPosition): TextSpan =
     if (pos1 > pos2) TextSpan(pos2, pos1)
-    else TextSpan(pos1, pos2.index - pos1.index)
+    else TextSpan(pos1, TextLength(pos2.index - pos1.index))
+
+  def Empty(pos: TextPosition): TextSpan = TextSpan(pos, TextLength.Empty)
 }

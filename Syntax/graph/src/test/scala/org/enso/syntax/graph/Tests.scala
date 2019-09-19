@@ -1,5 +1,6 @@
 package org.enso.syntax.graph
 
+import org.enso.syntax.graph
 import org.enso.syntax.graph.API._
 import org.scalatest._
 
@@ -110,6 +111,13 @@ class Tests extends FunSuite with TestUtils {
       graph.links should have size 0
     }
   }
+  test("no nodes from import") {
+    withDR("import Foo.Bar") { dr =>
+      val graph = dr.getGraph(Module.Graph.Location(mockModule))
+      graph.nodes should have size 0
+      graph.links should have size 0
+    }
+  }
 //  test("no nodes from operator def") {
 //    withDR(
 //      "+ a b = a + b",
@@ -127,17 +135,53 @@ class Tests extends FunSuite with TestUtils {
       node.flags shouldBe empty
     }
   }
-//  test("node literal in parens") {
-//    checkModuleSingleNodeGraph("(15)") { node =>
-//      node.expr.text should equal("(15)")
-//      node.flags shouldBe empty
-//    }
-//  }
+  test("atom in in brackets") {
+    case class AtomInBrackets(literal: String, loff: Int, roff: Int) {
+      val leftSegment  = "(" + " " * loff + literal
+      val rightSegment = ")"
+      val program      = leftSegment + " " * roff + ")"
+    }
+
+    val cases = Seq(
+      AtomInBrackets("15", 0, 0),
+      AtomInBrackets("foo", 1, 1),
+      AtomInBrackets("15", 2, 0),
+      AtomInBrackets("_", 0, 0),
+      AtomInBrackets("15", 0, 2)
+    )
+
+    cases.foreach { testedCase =>
+      println("testing span tree structure for " + testedCase.program)
+      testSpanTreeFor(testedCase.program) { tree =>
+        val children = asExpected[SpanTree.MacroMatch](tree).describeChildren
+        children should have size 2
+        children match {
+          case Seq(leftInfo, rightInfo) =>
+            val rightSegment =
+              asExpected[SpanTree.MacroSegment](rightInfo.spanTree)
+            val leftSegment =
+              asExpected[SpanTree.MacroSegment](leftInfo.spanTree)
+
+            leftSegment.text shouldEqual testedCase.leftSegment
+            leftInfo.actions shouldEqual Set()
+
+            val leftChildren = leftSegment.describeChildren
+            leftChildren should have size 1
+            val bracketContents = leftChildren.head
+            val leftChildNode =
+              asExpected[SpanTree.AstLeaf](bracketContents.spanTree)
+            leftChildNode.text shouldEqual testedCase.literal
+            //bracketContents.actions shouldEqual Set(SpanTree.Action.Insert)
+
+            rightSegment.text shouldEqual testedCase.rightSegment
+            rightInfo.actions shouldEqual Set()
+        }
+      }
+    }
+  }
   test("node trivial var") {
     checkModuleSingleNodeGraph("foo") { node =>
       node.expr.text should equal("foo")
-      node.inputs shouldEqual None
-      node.flags shouldBe empty
     }
   }
 //  test("node single paren arg app") {
@@ -301,7 +345,7 @@ class Tests extends FunSuite with TestUtils {
   }
   test("no node outputs when no assignment") {
     val programs =
-      Seq("15", "foo", "_", "20+79 * aa", "foo.bar.baz", "import Base")
+      Seq("15", "foo", "_", "20+79 * aa", "foo.bar.baz")
     programs foreach checkNodeHasNoOutputs
   }
   test("node outputs on single var assignment") {
