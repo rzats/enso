@@ -380,7 +380,6 @@ object API {
 
 trait TextAPI {
   import API._
-  import API.TextAPI._
 
   // view
   def getText(loc: Module.Location): String

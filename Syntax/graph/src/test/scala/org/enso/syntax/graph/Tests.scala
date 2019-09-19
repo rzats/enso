@@ -1,6 +1,5 @@
 package org.enso.syntax.graph
 
-import org.enso.syntax.graph
 import org.enso.syntax.graph.API._
 import org.scalatest._
 

@@ -1,10 +1,8 @@
 package org.enso.syntax.graph
 
-import org.enso.syntax.graph.API.Module
-import org.enso.syntax.graph.API.Node
+import org.enso.syntax.graph.API._
 import org.enso.syntax.graph.Ops._
 import org.enso.syntax.graph.AstOps._
-import org.enso.syntax.text.AST
 
 import scala.reflect.ClassTag
 
@@ -20,14 +18,13 @@ trait TestUtils extends org.scalatest.Matchers {
   type ProgramText = String
 
   val mockModule = StateManagerMock.mainModule
-
   def withDR[R](program: ProgramText)(
-    f: DoubleRepresentation => R
-  ): (R, AST.Module) = {
+    action: DoubleRepresentation => R
+  ): (R, StateManagerMock, NotificationSinkMock) = {
     val state    = StateManagerMock(program)
     val notifier = NotificationSinkMock()
-    val result   = f(DoubleRepresentation(state, notifier))
-    (result, state.ast)
+    val result   = action(DoubleRepresentation(state, notifier))
+    (result, state, notifier)
   }
 
   def checkOutput[R](
@@ -35,21 +32,20 @@ trait TestUtils extends org.scalatest.Matchers {
     expectedOutput: R,
     action: DoubleRepresentation => R
   ): R = {
-    val state    = StateManagerMock(program)
-    val notifier = NotificationSinkMock()
-    val result   = action(DoubleRepresentation(state, notifier))
-    expectedOutput should be(result)
+    val (result, _, _) = withDR(program)(action)
+    result should be(expectedOutput)
     result
   }
 
   def checkThatTransforms[R](
     initialProgram: String,
     expectedProgram: String,
-    action: DoubleRepresentation => R
+    action: DoubleRepresentation => R,
+    notification: Option[API.Notification] = None
   ): R = {
-    val (result, finalAst) = withDR(initialProgram)(action)
-    val actualFinalProgram = finalAst.show()
-    actualFinalProgram should be(expectedProgram.replace("\r\n", "\n"))
+    val (result, state, notifier) = withDR(initialProgram)(action)
+    state.ast.show should be(ParserUtils.preprocess(expectedProgram))
+    notification.foreach(notifier.notificationsReceived.head should be(_))
     result
   }
 
@@ -57,28 +53,29 @@ trait TestUtils extends org.scalatest.Matchers {
     val prefix = program.takeWhile(_ != '»').dropRight(1)
     val suffix = program.dropWhile(_ != '«').drop(2)
     val middle = program.dropWhile(_ != '»').drop(1).takeWhile(_ != '«')
+
+    val position = TextPosition(prefix.length)
+    val span     = TextSpan(position, TextLength(middle.length))
+
     checkThatTransforms(
       prefix + suffix,
       prefix + middle + suffix,
-      _.insertText(mockModule, TextPosition(prefix.length), middle)
+      _.insertText(mockModule, position, middle),
+      Some(TextAPI.Notification.Inserted(mockModule, position, middle))
     )
     checkThatTransforms(
       prefix + middle + suffix,
       prefix + suffix,
-      _.eraseText(
-        mockModule,
-        TextSpan(TextPosition(prefix.length), TextLength(middle))
-      )
+      _.eraseText(mockModule, span),
+      Some(TextAPI.Notification.Erased(mockModule, span))
     )
     checkOutput(
       prefix + middle + suffix,
       middle,
-      _.copyText(
-        mockModule,
-        TextSpan(TextPosition(prefix.length), TextLength(middle))
-      )
+      _.copyText(mockModule, span)
     )
   }
+
   def expectTransformationError[E: ClassTag](
     initialProgram: String
   )(action: DoubleRepresentation => Unit): Unit = {
