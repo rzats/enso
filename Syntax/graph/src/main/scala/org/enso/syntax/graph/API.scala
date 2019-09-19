@@ -240,24 +240,21 @@ object API {
     final case class Stats() // progress, debug, profiling - TODO
     final case class Info(
       id: Id,
-      expr: Expr,
-      inputs: Seq[Port.Info],
-      output: Port.Info,
+      expr: SpanTree,
+      leftSide: Option[SpanTree], // TODO rename
       flags: Set[Flag],
       stats: Option[Stats],
       marker: Any
-    )
+    ) {
+      def inputs:  Option[InputTree]  = InputTree(expr)
+      def outputs: Option[OutputTree] = OutputTree(leftSide)
+    }
   }
 
   //
   trait TODO
 
   final case class Type(tp: TODO)
-
-  final case class SpanTree() extends TODO {}
-
-  // TODO [MWU] as discussed, most likely we should pass the whole AST
-  final case class Expr(text: String, spanTree: SpanTree)
 
   sealed trait Port
   object Port {
@@ -361,17 +358,14 @@ object API {
   object TextAPI {
 
     object Notification {
-      case class Erased(module: Module.Location, span: Span)
+      case class Erased(module: Module.Location, span: TextSpan)
           extends Notification
       case class Inserted(
         module: Module.Location,
-        position: Position,
+        position: TextPosition,
         text: String
       ) extends Notification
     }
-
-    case class Position(index: Int) extends AnyVal
-    case class Span(start: Position, length: Int)
   }
 
   /***** Exceptions */
@@ -392,10 +386,10 @@ trait TextAPI {
   def getText(loc: Module.Location): String
 
   // modify
-  def insertText(module: Module.Location, at: Position, text: String): Unit
-  def eraseText(module: Module.Location, span: Span): Unit
-  def copyText(module: Module.Location, span: Span): String
-  def pasteText(module: Module.Location, at: Position, text: String): Unit // FIXME We can get both plain text or metadata from graph
+  def insertText(module: Module.Location, at: TextPosition, text: String): Unit
+  def eraseText(module: Module.Location, span: TextSpan): Unit
+  def copyText(module: Module.Location, span: TextSpan): String
+  def pasteText(module: Module.Location, at: TextPosition, text: String): Unit // FIXME We can get both plain text or metadata from graph
 
   // TODO should we represent here that text notifications are emitted?
 }
