@@ -11,11 +11,11 @@ import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.App.Infix
 import org.enso.syntax.text.AST.Block.Line
 import org.enso.syntax.text.AST.Block.OptLine
-import org.enso.syntax.text.AST.Ident
 import org.enso.syntax.text.AST.Import
 import org.enso.syntax.text.AST.UnapplyByType
 import org.enso.syntax.text.ast.meta.Pattern
 import org.enso.syntax.text.ast.opr.Assoc
+import org.enso.syntax.text.ast.Repr._
 
 import scala.collection.GenTraversableOnce
 
@@ -340,10 +340,14 @@ object AstOps {
   implicit class Module_ops(module: AST.Module) {
     //def importedModules: List[Module.Name] = module.imports.map(_.path)
     def imports:               List[Import] = module.flatTraverse(_.asImport)
-    def lineIndexOf(ast: AST): Option[Int]  = lineIndexWhere(_ == ast)
-    def lineIndexWhere(p: AST => Boolean): Option[Int] = {
-      module.lines.indexWhere(_.elem.exists(p))
-    }
+    def lineIndexOf(ast: AST): Option[Int]  = lineIndexWhere(_ == ast).map(_._2)
+    def lineIndexWhere(p: AST => Boolean): Option[(OptLine, Int)] =
+      module.lines.zipWithIndex.find(_._1.elem.exists(p))
+
+    def lineOffset(lineIx: Int): Int =
+      module.lines.toList.take(lineIx).foldLeft(0) {
+        case (offset, line) => offset + line.span
+      }
 
     /** flatMaps non-empty lines ASTs. */
     def flatTraverse[B](f: AST => GenTraversableOnce[B]): List[B] =

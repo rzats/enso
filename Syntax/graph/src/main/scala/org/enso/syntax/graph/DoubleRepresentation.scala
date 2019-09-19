@@ -3,7 +3,6 @@ package org.enso.syntax.graph
 import org.enso.data.List1
 import org.enso.flexer.Reader
 import AstOps._
-import org.enso.syntax.graph.API.Notification.Text
 import org.enso.syntax.graph.API._
 import org.enso.syntax.text.AST.Import
 import org.enso.syntax.text.AST
@@ -54,30 +53,36 @@ final case class DoubleRepresentation(
     state.setModule(module, content)
   }
 
-  def getText(loc: Module.Location): String = state.getModule(loc).show
+  def getText(module: Module.Location): String = state.getModule(module).show
 
-  def insertText(module: Module.Location, at: TextPosition, text: String) = {
+  def insertText(
+    module: Module.Location,
+    at: TextPosition,
+    text: String
+  ) = {
     findAndReplace(module, at) { (pos, line) =>
       val (prefix, suffix) = line.show.splitAt(pos.index + at.index)
       val result           = Parser().run(new Reader(prefix + text + suffix))
       result.lines.toList
     }
-    notifier.notify(Text.Inserted(module, at, text))
+    notifier.notify(TextAPI.Notification.Inserted(module, at, text))
+    notifier.notify(GraphAPI.Notification.Invalidate.Module(module))
   }
 
-  def eraseText(loc: Module.Location, span: TextSpan) = {
-    findAndReplace(loc, span.begin) { (pos, line) =>
+  def eraseText(module: Module.Location, span: TextSpan) = {
+    findAndReplace(module, span.begin) { (pos, line) =>
       val (line1, line2) = line.show.splitAt(pos.index + span.begin.index)
       val result =
         Parser().run(new Reader(line1 + line2.drop(span.length.value)))
       result.lines.toList
     }
-    notifier.notify(Text.Erased(loc, span))
+    notifier.notify(TextAPI.Notification.Erased(module, span))
+    notifier.notify(GraphAPI.Notification.Invalidate.Module(module))
   }
 
-  def copyText(loc: Module.Location, span: TextSpan): String = {
+  def copyText(module: Module.Location, span: TextSpan): String = {
     var text = ""
-    findAndReplace(loc, span.begin) { (pos, line) =>
+    findAndReplace(module, span.begin) { (pos, line) =>
       val start = pos.index + span.begin.index
       text = line.show.substring(start, start + span.length.value)
       List(line)
@@ -85,7 +90,11 @@ final case class DoubleRepresentation(
     text
   }
 
-  def pasteText(module: Module.Location, at: TextPosition, clipboard: String) =
+  def pasteText(
+    module: Module.Location,
+    at: TextPosition,
+    clipboard: String
+  ) =
     insertText(module, at, clipboard)
 
   def getGraph(loc: API.Definition.Graph.Location): Definition.Graph.Info = ???
@@ -137,27 +146,35 @@ final case class DoubleRepresentation(
       lastImport => module.lineIndexWhere(_.imports(lastImport.path))
     )
     val lineToPlaceImport = lastImportPosition match {
-      case Some(lastImportLineNumber) => lastImportLineNumber + 1
-      case None                       => 0
+      case Some((_, lastImportLineNumber)) => lastImportLineNumber + 1
+      case None                            => 0
     }
 
     val newAst = module.insert(lineToPlaceImport, Import(importee))
     state.setModule(context, newAst)
-    notifier.notify(API.Notification.Invalidate.Module(context))
+    notifier.notify(GraphAPI.Notification.Invalidate.Module(context))
+
+    val text   = AST.Import(importee).show
+    val offset = TextPosition(module.lineOffset(lineToPlaceImport))
+    notifier.notify(TextAPI.Notification.Inserted(context, offset, text))
   }
 
   override def removeImport(
     context: Module.Id,
     importToRemove: Module.Name
   ): Unit = {
-    val ast = state.getModule(context)
-    val lineIndex = ast.lineIndexWhere(_ imports importToRemove) match {
+    val module = state.getModule(context)
+    val (line, lineIx) = module.lineIndexWhere(_ imports importToRemove) match {
       case Some(index) => index
       case None        => throw NoSuchImportException(importToRemove)
     }
 
-    val newAst = ast.removeAt(lineIndex)
+    val newAst = module.removeAt(lineIx)
     state.setModule(context, newAst)
-    notifier.notify(API.Notification.Invalidate.Module(context))
+    notifier.notify(GraphAPI.Notification.Invalidate.Module(context))
+
+    val offset = TextPosition(module.lineOffset(lineIx))
+    val span   = TextSpan(offset, TextLength(line.span))
+    notifier.notify(TextAPI.Notification.Erased(context, span))
   }
 }

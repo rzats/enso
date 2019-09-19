@@ -125,6 +125,9 @@ object API {
       /** Construct module name from strings like "Foo.Baz" */
       def apply(text: String): Name = Name(text.split('.'))
 
+      /** Construct string from module name */
+      def apply(name: Name): String = name.head + "." + name.tail.mkString(".")
+
       def apply(iterable: Iterable[String]): Name = {
         List1.fromListOption(iterable.toList) match {
           case Some(nameParts) =>
@@ -243,7 +246,7 @@ object API {
       stats: Option[Stats],
       marker: Any
     ) {
-      def inputs: Option[InputTree]   = InputTree(expr)
+      def inputs:  Option[InputTree]  = InputTree(expr)
       def outputs: Option[OutputTree] = OutputTree(leftSide)
     }
   }
@@ -271,12 +274,12 @@ object API {
     )
 
     object Info {
-      def apply(): Info                    = Info(None, None, Seq())
+      def apply():                    Info = Info(None, None, Seq())
       def apply(children: Seq[Info]): Info = Info(None, None, children)
     }
 
     /**  port that we don't really know anything about */
-    def Empty                    = Info(None, None, Seq())
+    def Empty = Info(None, None, Seq())
     def Empty(n: Int): Seq[Info] = Seq.fill(n)(Port.Empty)
   }
 
@@ -304,52 +307,57 @@ object API {
 
   /** Each change to the project state shall be covered by a Notification. */
   sealed trait Notification
-  object Notification {
 
-    /** Node-related updates */
-    sealed trait Node extends Notification
-    object Node {
-      import API.Node._
-      case class Added(ctx: Context, node: Info) extends Node
-      case class Removed(loc: Location)          extends Node
-      sealed trait Changed                       extends Node
-      object Changed {
-        case class Expression(node: Location, newExpr: String) extends Node
-        case class Inputs(node: API.Input.Context, inputs: List[Port.Info])
-            extends Node
-        case class Output(node: Location, output: Port.Info)   extends Node
-        case class Metadata(loc: Location, metadata: Metadata) extends Node
+  object GraphAPI {
+    object Notification {
+
+      /** Node-related updates */
+      sealed trait Node extends Notification
+      object Node {
+        import API.Node._
+        case class Added(ctx: Context, node: Info) extends Node
+        case class Removed(loc: Location)          extends Node
+        sealed trait Changed                       extends Node
+        object Changed {
+          case class Expression(node: Location, newExpr: String) extends Node
+          case class Inputs(node: API.Input.Context, inputs: List[Port.Info])
+              extends Node
+          case class Output(node: Location, output: Port.Info)   extends Node
+          case class Metadata(loc: Location, metadata: Metadata) extends Node
+        }
+
+        sealed trait Flag extends Node
+        object Flag {
+          case class Enabled(node: Location, flag: API.Flag)  extends Flag
+          case class Disabled(node: Location, flag: API.Flag) extends Flag
+        }
       }
 
-      sealed trait Flag extends Node
-      object Flag {
-        case class Enabled(node: Location, flag: API.Flag)  extends Flag
-        case class Disabled(node: Location, flag: API.Flag) extends Flag
+      /** Connection-related updates */
+      sealed trait Connection extends Notification
+      object Connection {
+        case class Added(connection: API.Connection)   extends Connection
+        case class Removed(connection: API.Connection) extends Connection
+      }
+
+      /** Invalidations
+        *
+        * Invalidation happens when given entity information might have been
+        * changed, however more specific extent of change is unknown.
+        */
+      sealed trait Invalidate extends Notification
+      object Invalidate {
+        case class Node(node: API.Node.Location)       extends Invalidate
+        case class Graph(graph: API.Graph.Location)    extends Invalidate
+        case class Module(module: API.Module.Location) extends Invalidate
+        case class Project()                           extends Invalidate
       }
     }
+  }
 
-    /** Connection-related updates */
-    sealed trait Connection extends Notification
-    object Connection {
-      case class Added(connection: API.Connection)   extends Connection
-      case class Removed(connection: API.Connection) extends Connection
-    }
+  object TextAPI {
 
-    /** Invalidations
-      *
-      * Invalidation happens when given entity information might have been
-      * changed, however more specific extent of change is unknown.
-      */
-    sealed trait Invalidate extends Notification
-    object Invalidate {
-      case class Node(node: API.Node.Location)       extends Invalidate
-      case class Graph(graph: API.Graph.Location)    extends Invalidate
-      case class Module(module: API.Module.Location) extends Invalidate
-      case class Project()                           extends Invalidate
-    }
-
-    sealed trait Text extends Notification
-    object Text {
+    object Notification {
       case class Erased(module: Module.Location, span: TextSpan)
           extends Notification
       case class Inserted(
@@ -358,8 +366,6 @@ object API {
         text: String
       ) extends Notification
     }
-
-    ////////////////////////////////////////////////////////////////////////////
   }
 
   /***** Exceptions */
@@ -374,15 +380,16 @@ object API {
 
 trait TextAPI {
   import API._
+  import API.TextAPI._
 
   // view
   def getText(loc: Module.Location): String
 
   // modify
   def insertText(module: Module.Location, at: TextPosition, text: String): Unit
-  def eraseText(module: Module.Location, span: TextSpan):                  Unit
-  def copyText(module: Module.Location, span: TextSpan):                   String
-  def pasteText(module: Module.Location, at: TextPosition, text: String):  Unit // FIXME We can get both plain text or metadata from graph
+  def eraseText(module: Module.Location, span: TextSpan): Unit
+  def copyText(module: Module.Location, span: TextSpan): String
+  def pasteText(module: Module.Location, at: TextPosition, text: String): Unit // FIXME We can get both plain text or metadata from graph
 
   // TODO should we represent here that text notifications are emitted?
 }
@@ -396,12 +403,12 @@ trait GraphAPI {
     case ctx @ Module.Graph.Location(_)     => getGraph(ctx)
   }
   def getGraph(loc: Definition.Graph.Location): Definition.Graph.Info
-  def getGraph(loc: Module.Graph.Location):     Module.Graph.Info
-  def getDefinitions(loc: Module.Location):     Seq[Definition.Info]
+  def getGraph(loc: Module.Graph.Location): Module.Graph.Info
+  def getDefinitions(loc: Module.Location): Seq[Definition.Info]
   // TODO other entities? (visible through Graph API)
   /** Manage Imports */
-  def importedModules(module: Module.Location):                      Seq[Module.Name]
-  def importModule(context: Module.Id, importee: Module.Name):       Unit
+  def importedModules(module: Module.Location): Seq[Module.Name]
+  def importModule(context: Module.Id, importee: Module.Name): Unit
   def removeImport(context: Module.Id, importToRemove: Module.Name): Unit
   //////////////////////////////////////////////////////////////////////////////
   def addNode(
