@@ -190,19 +190,18 @@ object AstOps {
             throw new Exception("impossible: failed to find application target")
         }
 
-      case m @ AST.Macro.Match(optPrefix, segments, resolved) => {
+      case m @ AST.Macro.Match(optPrefix, segments, resolved) =>
         def handlePatMatch(
           pos: TextPosition,
           patMatch: Pattern.Match
         ): Seq[ChildInfo] = patMatch match {
           case Pattern.Match.Or(pat, elem) =>
             handlePatMatch(pos, elem.fold(identity, identity))
-          case Pattern.Match.Seq(pat, elems) => {
+          case Pattern.Match.Seq(pat, elems) =>
             val left       = handlePatMatch(pos, elems._1)
             val leftLength = TextLength(elems._1)
             val right      = handlePatMatch(pos + leftLength, elems._2)
             left ++ right
-          }
           case Pattern.Match.Build(_, elem) =>
             val node = elem.el.spanTreeNode(pos + elem.off)
             Seq(ChildInfo(node, Set(SpanTree.Action.Set)))
@@ -248,7 +247,7 @@ object AstOps {
           optPrefixNode,
           segmentNodes
         )
-      }
+
 
       case _ =>
         GeneralizedInfix(ast) match {
@@ -302,7 +301,7 @@ object AstOps {
 
       // definition with inputs is a function
       // and a function is not a node
-      if (assignment.exists(_.inputAsts.nonEmpty))
+      if (assignment.exists(_.arguments.nonEmpty))
         return None
 
       val id       = ast.getId

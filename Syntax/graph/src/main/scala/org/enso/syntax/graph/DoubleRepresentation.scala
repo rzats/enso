@@ -15,10 +15,10 @@ case class MissingIdException(ast: AST) extends Exception {
 }
 
 case class AssignmentInfo(lhs: AST, rhs: AST) {
-  val lhsParts: List1[AST]            = lhs.flattenApps
-  val name: Option[String]            = lhsParts.head.varName
-  val inputAsts: Seq[AST]             = lhsParts.tail
-  val inputNames: Seq[Option[String]] = inputAsts.map(_.varName)
+  val lhsParts: List1[AST]          = lhs.flattenApps
+  val name: Option[String]          = lhsParts.head.varName
+  val arguments: Seq[AST]           = lhsParts.tail
+  val argNames: Seq[Option[String]] = arguments.map(_.varName)
 }
 
 object ParserUtils {
@@ -33,6 +33,7 @@ object ParserUtils {
     val ast    = parser.run(new Reader(program))
     ast
   }
+  def preprocess(program: String): String = new Reader(program).toString()
 }
 
 final case class DoubleRepresentation(
