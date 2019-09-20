@@ -2,7 +2,10 @@ package org.enso.syntax.graph
 
 import org.enso.syntax.graph
 import org.enso.syntax.graph.API._
+import org.enso.syntax.graph.SpanTree.OperatorChain
 import org.scalatest._
+
+import scala.reflect.ClassTag
 
 class Tests extends FunSuite with TestUtils {
   test("text modifications") {
@@ -136,22 +139,21 @@ class Tests extends FunSuite with TestUtils {
     }
   }
   test("atom in in brackets") {
-    case class AtomInBrackets(literal: String, loff: Int, roff: Int) {
+    case class Case(literal: String, loff: Int, roff: Int) {
       val leftSegment  = "(" + " " * loff + literal
       val rightSegment = ")"
       val program      = leftSegment + " " * roff + ")"
     }
 
     val cases = Seq(
-      AtomInBrackets("15", 0, 0),
-      AtomInBrackets("foo", 1, 1),
-      AtomInBrackets("15", 2, 0),
-      AtomInBrackets("_", 0, 0),
-      AtomInBrackets("15", 0, 2)
+      Case("15", 0, 0),
+      Case("foo", 1, 1),
+      Case("15", 2, 0),
+      Case("_", 0, 0),
+      Case("15", 0, 2)
     )
 
     cases.foreach { testedCase =>
-      println("testing span tree structure for " + testedCase.program)
       testSpanTreeFor(testedCase.program) { tree =>
         val children = asExpected[SpanTree.MacroMatch](tree).describeChildren
         children should have size 2
@@ -171,12 +173,93 @@ class Tests extends FunSuite with TestUtils {
             val leftChildNode =
               asExpected[SpanTree.AstLeaf](bracketContents.spanTree)
             leftChildNode.text shouldEqual testedCase.literal
-            //bracketContents.actions shouldEqual Set(SpanTree.Action.Insert)
+            bracketContents.actions shouldEqual Set(
+              SpanTree.Action.Set,
+              SpanTree.Action.Erase
+            )
 
             rightSegment.text shouldEqual testedCase.rightSegment
             rightInfo.actions shouldEqual Set()
         }
       }
+    }
+  }
+  test("span tree: skip expr") {
+    val expr    = "15 +  foo"
+    val program = s"skip  $expr"
+    testSpanTreeFor(program) { tree =>
+      tree shouldBe a[SpanTree.MacroMatch]
+      val segment = expectChild[SpanTree.MacroSegment](tree, Set())
+      segment.text shouldEqual program
+
+      val exprChild =
+        expectChild[SpanTree.OperatorChain](segment, Set(SpanTree.Action.Set))
+      exprChild.text shouldEqual expr
+    }
+  }
+
+  def expectChild[R <: SpanTree: ClassTag](
+    spanTree: SpanTree,
+    expectedActions: Set[SpanTree.Action]
+  ): R =
+    expectChildren(spanTree, Seq(expectedActions)) match {
+      case Seq(child) =>
+        asExpected[R](child)
+    }
+
+  def expectChildren2[R1 <: SpanTree: ClassTag, R2 <: SpanTree: ClassTag](
+    spanTree: SpanTree,
+    expectedActions1: Set[SpanTree.Action],
+    expectedActions2: Set[SpanTree.Action]
+  ): (R1, R2) = {
+    expectChildren(spanTree, Seq(expectedActions1, expectedActions2)) match {
+      case Seq(child1, child2) =>
+        (asExpected[R1](child1), asExpected[R2](child2))
+    }
+  }
+
+  def expectChildren(
+    spanTree: SpanTree,
+    expectedActionsPerChild: Seq[Set[SpanTree.Action]]
+  ): Seq[SpanTree] = {
+    val children = spanTree.describeChildren
+    children should have size expectedActionsPerChild.size
+
+    children.zip(expectedActionsPerChild).map {
+      case (child, expectedActions) =>
+        child.actions shouldEqual expectedActions
+        child.spanTree
+    }
+  }
+  test("span tree: if foo bar baz then   a+b") {
+    val conditionText = "foo bar baz"
+    val thenExpr      = "a+b"
+    val program       = s"if $conditionText then   $thenExpr"
+    println("testing span tree structure for " + program)
+    testSpanTreeFor(program) { tree =>
+      tree shouldBe a[SpanTree.MacroMatch]
+      val macroChildren =
+        expectChildren2[SpanTree.MacroSegment, SpanTree.MacroSegment](
+          tree,
+          Set(),
+          Set()
+        )
+
+      val ifSegment = macroChildren._1
+      ifSegment.text shouldEqual s"if $conditionText"
+      val ifExprChild = expectChild[SpanTree.ApplicationChain](
+        ifSegment,
+        Set(SpanTree.Action.Set)
+      )
+      ifExprChild.text shouldEqual conditionText
+
+      val thenSegment = asExpected[SpanTree.MacroSegment](macroChildren._2)
+      thenSegment.text shouldEqual s"then   $thenExpr"
+      val thenExprChild = expectChild[SpanTree.OperatorChain](
+        thenSegment,
+        Set(SpanTree.Action.Set)
+      )
+      thenExprChild.text shouldEqual thenExpr
     }
   }
   test("node trivial var") {

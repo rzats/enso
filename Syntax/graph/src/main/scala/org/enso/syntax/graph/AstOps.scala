@@ -205,7 +205,7 @@ object AstOps {
           }
           case Pattern.Match.Build(_, elem) =>
             val node = elem.el.spanTreeNode(pos + elem.off)
-            Seq(ChildInfo(node))
+            Seq(ChildInfo(node, Set(SpanTree.Action.Set)))
           case Pattern.Match.End(_) =>
             Seq()
           case Pattern.Match.Nothing(_) =>
@@ -225,7 +225,11 @@ object AstOps {
           s: AST.Macro.Match.Segment
         ): SpanTree.MacroSegment = {
           val bodyPos  = pos + TextLength(s.head)
-          val children = handlePatMatch(bodyPos, s.body)
+          var children = handlePatMatch(bodyPos, s.body)
+          if (Utils.canBeNothing(s.body.pat))
+            children = children.map { child =>
+              child.copy(actions = child.actions + SpanTree.Action.Erase)
+            }
           SpanTree.MacroSegment(pos, Some(s.head.show()), s.body, children)
         }
 

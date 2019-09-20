@@ -18,6 +18,16 @@ object Ops {
   }
 }
 
+object Utils {
+  def canBeNothing(pat: Pattern): Boolean = {
+    val emptyInput = List()
+    pat.matchOpt(emptyInput, lineBegin = false, reversed = false) match {
+      case None    => false
+      case Some(_) => true
+    }
+  }
+}
+
 case class TextLength(value: Int) extends Ordered[TextLength] {
   def +(offset: TextLength):    TextLength = TextLength(value + offset.value)
   def compare(rhs: TextLength): Int        = value compare rhs.value
