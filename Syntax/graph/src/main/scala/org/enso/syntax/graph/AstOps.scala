@@ -19,6 +19,9 @@ import org.enso.syntax.text.ast.Repr._
 
 import scala.collection.GenTraversableOnce
 
+/** Operators with special meaning that we support.
+  * // TODO consider where is the best place for this
+  */
 object KnownOperators {
   val Assignment = "="
   val Access     = "."
@@ -28,57 +31,87 @@ object KnownOperators {
 object AstOps {
   implicit class Opr_ops(opr: AST.Opr) {
     def isAssignment: Boolean = opr.name == KnownOperators.Assignment
-    def isAccess:     Boolean = opr.name == KnownOperators.Access
-    def isMinus:      Boolean = opr.name == KnownOperators.Minus
+    def isAccess: Boolean     = opr.name == KnownOperators.Access
+    def isMinus: Boolean      = opr.name == KnownOperators.Minus
   }
 
-  case class ExpressionPart(pos: TextPosition, ast: Option[AST])
-  object ExpressionPart {
-    def apply(pos: TextPosition, ast: AST): ExpressionPart =
-      ExpressionPart(pos, Some(ast))
+  /** Optional part of AST or point in it that knows its place in the
+    * expression. Used e.g. to represent infix operator operands.
+    */
+  sealed trait ExpressionPartOrPoint {
+    def span:   TextSpan
+    def astOpt: Option[AST]
+  }
+  object ExpressionPartOrPoint {
+    def apply(pos: TextPosition, astOpt: Option[AST]): ExpressionPartOrPoint =
+      astOpt match {
+        case Some(ast) => ExpressionPart(pos, ast)
+        case None      => EmptyPlace(pos)
+      }
   }
 
-  /** A helper type to abstract away differences between infix operator applied
-    * to a different number of arguments. */
-  case class GeneralizedInfix(
-    leftArg: Option[AST],
+  final case class ExpressionPart(pos: TextPosition, ast: AST)
+      extends ExpressionPartOrPoint {
+    override def span: TextSpan      = TextSpan(pos, ast)
+    override def astOpt: Option[AST] = Some(ast)
+  }
+
+  /** Place in expression where some AST could have been present but was not. */
+  final case class EmptyPlace(pos: TextPosition) extends ExpressionPartOrPoint {
+    override def span: TextSpan      = TextSpan(pos, TextLength.Empty)
+    override def astOpt: Option[AST] = None
+  }
+
+  final case class InfixExpressionParts(
+    left: ExpressionPartOrPoint,
+    operator: ExpressionPart,
+    right: ExpressionPartOrPoint
+  )
+
+  /** A helper type to abstract away differences between proper infix operator
+    * application and ones with missing argument (section apps). */
+  final case class GeneralizedInfix(
+    leftArgAst: Option[AST],
     leftSpace: Int,
-    operator: AST.Opr,
+    operatorAst: AST.Opr,
     rightSpace: Int,
-    rightArg: Option[AST]
+    rightArgAst: Option[AST]
   ) {
-    def name:                   String = operator.name
-    def span(ast: Option[AST]): Int    = ast.map(_.repr.span).getOrElse(0)
+    def name: String                = operatorAst.name
+    def span(ast: Option[AST]): Int = ast.map(_.span).getOrElse(0)
 
-    def oprPos:      Int = span(leftArg) + leftSpace
-    def rightArgPos: Int = oprPos + operator.repr.span + rightSpace
-    def usesSameOperator(ast: Option[AST]): Boolean =
-      ast.exists(_.isInfixOperatorUsage(operator.name))
+    def operatorOffset: Int = span(leftArgAst) + leftSpace
+    def rightArgumentOffset: Int =
+      operatorOffset + operatorAst.span + rightSpace
 
-    def parts(offset: TextPosition) = {
-      (
-        ExpressionPart(offset, leftArg),
-        ExpressionPart(offset + oprPos, operator),
-        ExpressionPart(offset + rightArgPos, rightArg)
+    def sameOperatorAsIn(ast: AST): Boolean =
+      ast.isInfixOperatorUsage(operatorAst.name)
+
+    def getParts(offset: TextPosition): InfixExpressionParts = {
+      InfixExpressionParts(
+        ExpressionPartOrPoint(offset, leftArgAst),
+        ExpressionPart(offset + operatorOffset, operatorAst),
+        ExpressionPartOrPoint(offset + rightArgumentOffset, rightArgAst)
       )
     }
 
+    /** Converts nested operator applications into a flat list of all operands.
+      *
+      */
     def flattenInfix(
       pos: TextPosition
-    ): Seq[ExpressionPart] = {
-      def flatten(child: ExpressionPart) =
-        if (usesSameOperator(child.ast))
-          child.ast.get.flattenInfix(child.pos)
-        else
+    ): Seq[ExpressionPartOrPoint] = {
+      def flatten(child: ExpressionPartOrPoint) = child.astOpt match {
+        case Some(ast) if sameOperatorAsIn(ast) =>
+          ast.flattenInfix(child.span.begin)
+        case _ =>
           Seq(child)
+      }
 
-      parts(pos) match {
-        case (lhs, opr, rhs) =>
-          Assoc.of(operator.name) match {
-            case Assoc.Left  => flatten(lhs) :+ opr :+ rhs
-            case Assoc.Right => lhs +: opr +: flatten(rhs)
-          }
-        case _ => throw new Exception("impossible happened")
+      val parts = getParts(pos)
+      Assoc.of(operatorAst.name) match {
+        case Assoc.Left  => flatten(parts.left) :+ parts.operator :+ parts.right
+        case Assoc.Right => parts.left +: parts.operator +: flatten(parts.right)
       }
     }
   }
@@ -142,7 +175,7 @@ object AstOps {
     }
 
     def usedInfixOperator: Option[AST.Opr] =
-      GeneralizedInfix(ast).map(_.operator)
+      GeneralizedInfix(ast).map(_.operatorAst)
 
     def isInfixOperatorUsage: Boolean =
       ast.usedInfixOperator.nonEmpty
@@ -152,7 +185,7 @@ object AstOps {
 
     def flattenInfix(
       pos: TextPosition
-    ): Seq[ExpressionPart] = {
+    ): Seq[ExpressionPartOrPoint] = {
       println("flattening on " + ast.show())
       GeneralizedInfix(ast) match {
         case None =>
@@ -252,10 +285,11 @@ object AstOps {
         GeneralizedInfix(ast) match {
           case Some(info) =>
             val childrenAsts = info.flattenInfix(pos)
-            val childrenNodes = childrenAsts.map { part =>
-              part.ast
-                .map(_.spanTreeNode(part.pos))
-                .getOrElse(SpanTree.EmptyEndpoint(part.pos))
+            val childrenNodes = childrenAsts.map {
+              case part: ExpressionPart =>
+                part.ast.spanTreeNode(part.pos)
+              case part: EmptyPlace =>
+                SpanTree.EmptyEndpoint(part.pos)
             }
 
             val nodeInfo = SpanTree.AstNodeInfo(pos, ast)
@@ -274,10 +308,10 @@ object AstOps {
               }
               .toSeq
 
-            if (info.operator.isAccess)
-              SpanTree.AccessorPath(nodeInfo, info.operator, self, calls)
+            if (info.operatorAst.isAccess)
+              SpanTree.AccessorPath(nodeInfo, info.operatorAst, self, calls)
             else
-              SpanTree.OperatorChain(nodeInfo, info.operator, self, calls)
+              SpanTree.OperatorChain(nodeInfo, info.operatorAst, self, calls)
           case _ =>
             println("failed to generate span tree node for " + ast.show())
             println(ast.toString())
@@ -341,8 +375,8 @@ object AstOps {
 
   implicit class Module_ops(module: AST.Module) {
     //def importedModules: List[Module.Name] = module.imports.map(_.path)
-    def imports:               List[Import] = module.flatTraverse(_.asImport)
-    def lineIndexOf(ast: AST): Option[Int]  = lineIndexWhere(_ == ast).map(_._2)
+    def imports: List[Import]              = module.flatTraverse(_.asImport)
+    def lineIndexOf(ast: AST): Option[Int] = lineIndexWhere(_ == ast).map(_._2)
     def lineIndexWhere(p: AST => Boolean): Option[(OptLine, Int)] =
       module.lines.zipWithIndex.find(_._1.elem.exists(p))
 

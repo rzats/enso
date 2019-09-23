@@ -29,14 +29,14 @@ object Utils {
 }
 
 case class TextLength(value: Int) extends Ordered[TextLength] {
-  def +(offset: TextLength):    TextLength = TextLength(value + offset.value)
-  def compare(rhs: TextLength): Int        = value compare rhs.value
+  def +(offset: TextLength): TextLength = TextLength(value + offset.value)
+  def compare(rhs: TextLength): Int     = value compare rhs.value
 }
 object TextLength {
-  val Empty = TextLength(0)
+  val Empty                                 = TextLength(0)
   def apply(pat: Pattern.Match): TextLength = TextLength(pat.toStream)
-  def apply(ast: AST):           TextLength = TextLength(ast.repr.span)
-  def apply(text: String):       TextLength = TextLength(text.length)
+  def apply(ast: AST): TextLength           = TextLength(ast.repr.span)
+  def apply(text: String): TextLength       = TextLength(text.length)
   def apply(sast: Shifted[AST]): TextLength =
     TextLength(sast.off) + TextLength(sast.el)
   def apply[A](elems: Seq[Shifted[AST]]): TextLength = {
@@ -52,7 +52,7 @@ object TextLength {
 
 /** Strongly typed index position in a text. */
 case class TextPosition(index: Int) extends Ordered[TextPosition] {
-  def +(offset: Int):        TextPosition = TextPosition(index + offset)
+  def +(offset: Int): TextPosition        = TextPosition(index + offset)
   def +(offset: TextLength): TextPosition = TextPosition(index + offset.value)
   def -(offset: TextLength): TextPosition = TextPosition(index - offset.value)
 
@@ -79,6 +79,10 @@ object TextSpan {
   def apply(pos1: TextPosition, pos2: TextPosition): TextSpan =
     if (pos1 > pos2) TextSpan(pos2, pos1)
     else TextSpan(pos1, TextLength(pos2.index - pos1.index))
+
+  /** Span between two text positions. */
+  def apply(pos: TextPosition, ast: AST): TextSpan =
+    TextSpan(pos, TextLength(ast.span))
 
   def Empty(pos: TextPosition): TextSpan = TextSpan(pos, TextLength.Empty)
 }
