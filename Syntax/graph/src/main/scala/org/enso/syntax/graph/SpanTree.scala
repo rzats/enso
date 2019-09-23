@@ -10,13 +10,11 @@ import scala.util.Try
 /** Span tree describes structure of a given Luna expression fragment. This is
   * the base type for span tree nodes.
   *
-  * The span tree's structure is more friendly for GUI to work with than pure
+  * The span tree's structure is more friendly for GUI to consume than pure
   * AST, as the chains of prefix applications and operator calls are flattened.
   *
   * The tree is supposed to work both for the node expression (assignment's
-  * right side) and pattern (left side). More specific structures describing
-  * node's input and output port structures can be obtained from span tree
-  * using [[OutputTree]] and [[InputTree]].
+  * right side) and pattern (left side).
   */
 sealed trait SpanTree {
 

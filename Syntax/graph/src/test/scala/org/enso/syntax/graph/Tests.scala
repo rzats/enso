@@ -132,8 +132,8 @@ class Tests extends FunSuite with TestUtils {
 //  }
   test("node trivial literal") {
     checkModuleSingleNodeGraph("15") { node =>
-      node.expr.text should equal("15")
-      node.inputs shouldEqual None
+      node.expr.text shouldEqual "15"
+      node.outputs shouldEqual None
       node.flags shouldBe empty
     }
   }
@@ -283,7 +283,6 @@ class Tests extends FunSuite with TestUtils {
   test("get trivial named node") {
     checkModuleSingleNodeGraph("a = 15") { node =>
       node.expr.text should equal("15")
-      node.inputs shouldEqual None
       node.flags shouldBe empty
     }
   }
@@ -393,64 +392,5 @@ class Tests extends FunSuite with TestUtils {
           fail(s"wrong element count in: ${root.children}")
       }
     }
-  }
-
-  //  // TODO support unary minus
-  //  test("node unary minus number") {
-  //    checkJustExpressionSpanTree("-5") { root =>
-  //      root.visibleChildren.map(_.text) shouldEqual Seq("5")
-  //    }
-  //  }
-  // TODO: `a+ b` works same as `a + b` but not `a +b`
-  //  to be considered how span tree should behave in such conditions
-  // test("infix chain with left-attached operator") {
-  //    checkJustExpressionSpanTree("a+ b + c") { root =>
-  //      root.visibleChildren.map(_.text) shouldEqual Seq("a", "b", "c")
-  //    }
-  //  }
-
-  ////////////////////
-  // OUTPUTS /////////
-  ////////////////////s
-  def checkNodeHasNoOutputs(program: ProgramText): Unit =
-    checkNodeOutputs(program)(_ shouldEqual OutputTree.Anonymous)
-
-  def checkNodeOutputs[A](program: ProgramText)(f: OutputTree => A): A = {
-    checkModuleSingleNodeGraph(program) { node =>
-      node.outputs match {
-        case Some(output) => f(output)
-        case None =>
-          fail(s"missing output information for `$program`")
-      }
-    }
-  }
-  test("no node outputs when no assignment") {
-    val programs =
-      Seq("15", "foo", "_", "20+79 * aa", "foo.bar.baz")
-    programs foreach checkNodeHasNoOutputs
-  }
-  test("node outputs on single var assignment") {
-    type ExpectedVarName = String
-    val cases: Seq[(ProgramText, ExpectedVarName)] =
-      Seq("a = 15" -> "a", "bar = baz" -> "bar")
-    cases.foreach {
-      case (program, expectedVar) =>
-        checkNodeOutputs(program)(_ shouldEqual OutputTree.Var(expectedVar))
-    }
-  }
-  test("nodes with multiple outputs") {
-    type ExpectedVarName = String
-    val cases: Seq[(ProgramText, Seq[ExpectedVarName])] = Seq(
-      "a,b = foo"   -> Seq("a", "b"),
-      "a,b,c = foo" -> Seq("a", "b", "c")
-    )
-    cases.foreach {
-      case (program, expectedVars) =>
-        val expectedSubPorts = expectedVars.map(OutputTree.Var(_))
-        val expectedPort     = OutputTree.PortGroup(expectedSubPorts)
-        checkNodeOutputs(program)(_ shouldEqual expectedPort)
-    }
-
-    // , a b = ...
   }
 }

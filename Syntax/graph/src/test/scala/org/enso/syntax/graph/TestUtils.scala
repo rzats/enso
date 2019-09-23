@@ -41,6 +41,9 @@ trait TestUtils extends org.scalatest.Matchers {
     result
   }
 
+  /** Checks that action transforms program from initial to expected text.
+    * If notification is given, it is expected to be emitted.
+    */
   def checkThatTransforms[R](
     initialProgram: ProgramText,
     expectedProgram: ProgramText,

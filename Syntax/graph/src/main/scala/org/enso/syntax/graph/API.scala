@@ -241,14 +241,11 @@ object API {
     final case class Info(
       id: Id,
       expr: SpanTree,
-      leftSide: Option[SpanTree], // TODO rename
+      outputs: Option[SpanTree], // TODO rename
       flags: Set[Flag],
       stats: Option[Stats],
       marker: Any
-    ) {
-      def inputs:  Option[InputTree]  = InputTree(expr)
-      def outputs: Option[OutputTree] = OutputTree(leftSide)
-    }
+    )
   }
 
   //
