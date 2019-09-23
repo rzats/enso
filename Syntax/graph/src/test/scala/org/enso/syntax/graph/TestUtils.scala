@@ -4,20 +4,23 @@ import org.enso.syntax.graph.API._
 import org.enso.syntax.graph.Ops._
 import org.enso.syntax.graph.AstOps._
 
+import scala.collection.mutable
 import scala.reflect.ClassTag
 
 final case class NotificationSinkMock() extends NotificationSink {
-  var notificationsReceived: Seq[API.Notification] = Seq()
+  val notificationsReceived: mutable.ArrayBuffer[API.Notification] =
+    mutable.ArrayBuffer()
+
   override def notify(notification: API.Notification): Unit = {
     println(s"Got notification: $notification")
-    notificationsReceived = notificationsReceived :+ notification
+    notificationsReceived += notification
   }
 }
 
 trait TestUtils extends org.scalatest.Matchers {
   type ProgramText = String
 
-  val mockModule = StateManagerMock.mainModule
+  val mockModule: Module.Id = StateManagerMock.mainModule
   def withDR[R](program: ProgramText)(
     action: DoubleRepresentation => R
   ): (R, StateManagerMock, NotificationSinkMock) = {
@@ -27,8 +30,9 @@ trait TestUtils extends org.scalatest.Matchers {
     (result, state, notifier)
   }
 
+  /** Checks if given action run on program yields expected return value. */
   def checkOutput[R](
-    program: String,
+    program: ProgramText,
     expectedOutput: R,
     action: DoubleRepresentation => R
   ): R = {
@@ -38,8 +42,8 @@ trait TestUtils extends org.scalatest.Matchers {
   }
 
   def checkThatTransforms[R](
-    initialProgram: String,
-    expectedProgram: String,
+    initialProgram: ProgramText,
+    expectedProgram: ProgramText,
     action: DoubleRepresentation => R,
     notification: Option[API.Notification] = None
   ): R = {
@@ -77,7 +81,7 @@ trait TestUtils extends org.scalatest.Matchers {
   }
 
   def expectTransformationError[E: ClassTag](
-    initialProgram: String
+    initialProgram: ProgramText
   )(action: DoubleRepresentation => Unit): Unit = {
     an[E] should be thrownBy { withDR(initialProgram)(action) }
     ()
@@ -166,6 +170,7 @@ trait TestUtils extends org.scalatest.Matchers {
   }
 }
 
+/** All expected positions and spans are sorted in increasing order. */
 case class SpanTreeTestCase(
   program: String,
   expectedInsertionPoints: Seq[TextPosition],
@@ -173,15 +178,26 @@ case class SpanTreeTestCase(
   expectedErasableParts: Seq[TextSpan]
 )
 
+/** This object introduces a simple markdown notation for testing available
+  * action. There are 3 types of marks available:
+  *  - ⎀ denotes an insertion point
+  *  - «elem» denotes that `elem` allows [[Action.Set]] and [[Action.Erase]].
+  *  - ‹elem› denotes that `elem` allows [[Action.Set]].
+  *
+  * For example, `foo ⎀«a»⎀` describes the following test case:
+  *  - `foo` does not support any actions
+  *  - there are two insertion points: before and after `a`
+  *  - `a` can be replaced or erased
+  *  - no other actions are possible
+  **/
 object SpanTreeTestCase {
-
   val InsertionMark                 = '⎀'
   val BeginSettableAndErasableBlock = '«'
   val EndSettableAndErasableBlock   = '»'
   val BeginSettableBlock            = '‹'
   val EndSettableBlock              = '›'
-  val markdownChars =
-    Seq(
+  val markdownChars: Set[Char] =
+    Set(
       InsertionMark,
       BeginSettableAndErasableBlock,
       EndSettableAndErasableBlock,
@@ -189,35 +205,52 @@ object SpanTreeTestCase {
       EndSettableBlock
     )
 
+  /** Helper class for discovering block spans. */
+  case class BlockManager() {
+
+    /** Opened, unclosed blocks. */
+    val startIndices: mutable.ArrayStack[TextPosition] = mutable.ArrayStack()
+
+    /** All observed blocks */
+    val spans: mutable.ArrayBuffer[TextSpan] = mutable.ArrayBuffer()
+
+    /** Open block at given position. */
+    def open(position: TextPosition): Unit = startIndices.push(position)
+
+    /** Close block at given position. */
+    def close(position: TextPosition): Unit = {
+      val start = startIndices.pop()
+      val block = start <-> position
+      spans += block
+    }
+  }
+
   def apply(markedProgram: String): SpanTreeTestCase = {
-    val program = markedProgram.filterNot(markdownChars.contains(_))
+    val program = markedProgram.filterNot(markdownChars.contains)
 
-    var insertionPoints: Seq[TextPosition] = Seq()
-    var settableSpans: Seq[TextSpan]       = Seq()
-    var erasableSpans: Seq[TextSpan]       = Seq()
-
-    var beginSetErasableBlock: Seq[TextPosition] = Seq()
-    var beginSettableBlock: Seq[TextPosition]    = Seq()
+    val insertionPoints  = mutable.ArrayBuffer[TextPosition]()
+    val settable         = BlockManager()
+    val settableErasable = BlockManager()
 
     var index = TextPosition(0)
     markedProgram.foreach {
       case InsertionMark =>
-        insertionPoints = insertionPoints :+ index
+        insertionPoints += index
       case BeginSettableAndErasableBlock =>
-        beginSetErasableBlock = beginSetErasableBlock :+ index
+        settableErasable.open(index)
       case EndSettableAndErasableBlock =>
-        settableSpans         = settableSpans :+ (beginSetErasableBlock.last <-> index)
-        erasableSpans         = erasableSpans :+ (beginSetErasableBlock.last <-> index)
-        beginSetErasableBlock = beginSetErasableBlock.dropRight(1)
+        settableErasable.close(index)
       case BeginSettableBlock =>
-        beginSettableBlock = beginSettableBlock :+ index
+        settable.open(index)
       case EndSettableBlock =>
-        settableSpans      = settableSpans :+ (beginSettableBlock.last <-> index)
-        beginSettableBlock = beginSettableBlock.dropRight(1)
+        settable.close(index)
       case _ =>
+        // only non-marker characters increase index
         index += 1
     }
 
+    val settableSpans = (settable.spans ++ settableErasable.spans).sorted
+    val erasableSpans = settableErasable.spans
     SpanTreeTestCase(program, insertionPoints, settableSpans, erasableSpans)
   }
 }

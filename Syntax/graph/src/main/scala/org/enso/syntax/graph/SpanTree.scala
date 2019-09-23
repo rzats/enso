@@ -50,6 +50,8 @@ sealed trait SpanTree {
   def settableChildren: Seq[SpanTree] =
     describeChildren.filter(_.settable).map(_.spanTree)
 
+  /** Returns list of children that can be target of [[Action.Erase]].
+    */
   def erasableChildren: Seq[SpanTree] =
     describeChildren.filter(_.erasable).map(_.spanTree)
 
@@ -100,7 +102,7 @@ object SpanTree {
     */
   trait ChildInfoBase {
     val spanTree: SpanTree
-    val actions: Set[SpanTree.Action]
+    val actions: Set[Action]
 
     def supports(action: Action): Boolean = actions.contains(action)
     def settable:                 Boolean = supports(Action.Set)
@@ -110,7 +112,7 @@ object SpanTree {
 
   final case class ChildInfo(
     spanTree: SpanTree,
-    actions: Set[SpanTree.Action] = Set()
+    actions: Set[Action] = Set()
   ) extends ChildInfoBase {
     def addPath(path: SpanTree.Path): PathedChildInfo =
       PathedChildInfo(spanTree, path, actions)
@@ -119,7 +121,7 @@ object SpanTree {
   final case class PathedChildInfo(
     spanTree: SpanTree,
     path: SpanTree.Path,
-    actions: Set[SpanTree.Action] = Set()
+    actions: Set[Action] = Set()
   ) extends ChildInfoBase
 
   object ChildInfo {
@@ -133,40 +135,11 @@ object SpanTree {
       ChildInfo(EmptyEndpoint(position), Set(Action.Insert))
   }
 
-  /** Base type for all Actions that can be performed on [[SpanTree]] node in
-    * the context of node expression.
-    */
-  sealed trait Action
-
-  object Action {
-
-    /** Insert is operation available for nodes with variable number of
-      * children. Inserting on index of a child will shift it (and all
-      * subsequent elements) right.
-      */
-    object Insert extends Action
-
-    /** Erase is an operation to remove a child of node with variable children
-      * count.
-      */
-    object Erase extends Action
-
-    /** Set means replacing given node's expression part with a Var when
-      * creating a connection.
-      */
-    object Set extends Action
-
-    val All = scala.Predef.Set(Insert, Erase, Set)
-  }
-
   /** Node that represent some non-empty AST. */
   final case class AstNodeInfo(
     position: TextPosition,
     ast: AST
   ) {}
-
-  sealed trait Flag
-  object Self extends Flag
 
   /** Node denoting a location that could contain some value but currently is
     * empty. Its span has length zero and it is not paired with any
@@ -297,6 +270,7 @@ object SpanTree {
       AstLeaf(AstNodeInfo(textPosition, ast))
   }
 
+  /** Node representing a macro usage. */
   final case class MacroMatch(
     info: AstNodeInfo,
     prefix: Option[MacroSegment],
@@ -307,6 +281,9 @@ object SpanTree {
     }
   }
 
+  /** Node representing a macro prefix or segment. [[introducer]] is empty iff
+    * represented node was prefix. Otherwise, it contains segment's head name.
+    */
   final case class MacroSegment(
     override val begin: TextPosition,
     introducer: Option[String],
@@ -321,14 +298,6 @@ object SpanTree {
       patternMatch.toStream.foldLeft(introducer.getOrElse(""))(
         (s, ast) => s + (" " * ast.off).toString + ast.el.show()
       )
-
-    private def childrenFor(
-      pos: TextPosition,
-      pat: Pattern.Match
-    ): Seq[ChildInfo] = ???
-  }
-  object Segment {
-    def apply(textPosition: TextPosition, segment: AST.Macro.Match.Segment) = {}
   }
 
   /** An index in the sequence returned by [[SpanTree.children]] method. */

@@ -173,8 +173,8 @@ class Tests extends FunSuite with TestUtils {
               asExpected[SpanTree.AstLeaf](bracketContents.spanTree)
             leftChildNode.text shouldEqual testedCase.literal
             bracketContents.actions shouldEqual Set(
-              SpanTree.Action.Set,
-              SpanTree.Action.Erase
+              Action.Set,
+              Action.Erase
             )
 
             rightSegment.text shouldEqual testedCase.rightSegment
@@ -192,14 +192,14 @@ class Tests extends FunSuite with TestUtils {
       segment.text shouldEqual program
 
       val exprChild =
-        expectChild[SpanTree.OperatorChain](segment, Set(SpanTree.Action.Set))
+        expectChild[SpanTree.OperatorChain](segment, Set(Action.Set))
       exprChild.text shouldEqual expr
     }
   }
 
   def expectChild[R <: SpanTree: ClassTag](
     spanTree: SpanTree,
-    expectedActions: Set[SpanTree.Action]
+    expectedActions: Set[Action]
   ): R =
     expectChildren(spanTree, Seq(expectedActions)) match {
       case Seq(child) =>
@@ -208,8 +208,8 @@ class Tests extends FunSuite with TestUtils {
 
   def expectChildren2[R1 <: SpanTree: ClassTag, R2 <: SpanTree: ClassTag](
     spanTree: SpanTree,
-    expectedActions1: Set[SpanTree.Action],
-    expectedActions2: Set[SpanTree.Action]
+    expectedActions1: Set[Action],
+    expectedActions2: Set[Action]
   ): (R1, R2) = {
     expectChildren(spanTree, Seq(expectedActions1, expectedActions2)) match {
       case Seq(child1, child2) =>
@@ -219,7 +219,7 @@ class Tests extends FunSuite with TestUtils {
 
   def expectChildren(
     spanTree: SpanTree,
-    expectedActionsPerChild: Seq[Set[SpanTree.Action]]
+    expectedActionsPerChild: Seq[Set[Action]]
   ): Seq[SpanTree] = {
     val children = spanTree.describeChildren
     children should have size expectedActionsPerChild.size
@@ -234,7 +234,6 @@ class Tests extends FunSuite with TestUtils {
     val conditionText = "foo bar baz"
     val thenExpr      = "a+b"
     val program       = s"if $conditionText then   $thenExpr"
-    println("testing span tree structure for " + program)
     testSpanTreeFor(program) { tree =>
       tree shouldBe a[SpanTree.MacroMatch]
       val macroChildren =
@@ -248,7 +247,7 @@ class Tests extends FunSuite with TestUtils {
       ifSegment.text shouldEqual s"if $conditionText"
       val ifExprChild = expectChild[SpanTree.ApplicationChain](
         ifSegment,
-        Set(SpanTree.Action.Set)
+        Set(Action.Set)
       )
       ifExprChild.text shouldEqual conditionText
 
@@ -256,7 +255,7 @@ class Tests extends FunSuite with TestUtils {
       thenSegment.text shouldEqual s"then   $thenExpr"
       val thenExprChild = expectChild[SpanTree.OperatorChain](
         thenSegment,
-        Set(SpanTree.Action.Set)
+        Set(Action.Set)
       )
       thenExprChild.text shouldEqual thenExpr
     }
