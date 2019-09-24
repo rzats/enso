@@ -95,6 +95,12 @@ sealed trait SpanTree {
 
 object SpanTree {
 
+  /** Actions available for functions, i.e. application targets and infix
+    * operators. While this API level allows setting functions, this capability
+    * will likely be blocked in the GUI.
+    */
+  val functionActions: Set[Action] = Set(Action.Set)
+
   /** Just a [[SpanTree]] with a sequence of [[Action]] that are supported for
     * it.
     */
@@ -103,9 +109,9 @@ object SpanTree {
     val actions: Set[Action]
 
     def supports(action: Action): Boolean = actions.contains(action)
-    def settable:                 Boolean = supports(Action.Set)
-    def erasable:                 Boolean = supports(Action.Erase)
-    def insertable:               Boolean = supports(Action.Insert)
+    def settable: Boolean                 = supports(Action.Set)
+    def erasable: Boolean                 = supports(Action.Erase)
+    def insertable: Boolean               = supports(Action.Insert)
   }
 
   final case class ChildInfo(
@@ -123,6 +129,8 @@ object SpanTree {
   ) extends ChildInfoBase
 
   object ChildInfo {
+    def apply(spanTree: SpanTree, action: Action): ChildInfo =
+      ChildInfo(spanTree, Set(action))
 
     /** Create info for node that supports all 3 [[Action]]s. */
     def withAllActions(spanTree: SpanTree): ChildInfo =
@@ -130,7 +138,7 @@ object SpanTree {
 
     /** Create info for node that supports only [[Set]] [[Action]]. */
     def insertionPoint(position: TextPosition): ChildInfo =
-      ChildInfo(EmptyEndpoint(position), Set(Action.Insert))
+      ChildInfo(EmptyEndpoint(position), Action.Insert)
   }
 
   /** Node that represent some non-empty AST. */
@@ -155,7 +163,7 @@ object SpanTree {
   /** Node describing certain AST subtree, has non-zero span. */
   sealed trait AstNode extends SpanTree {
     def info: AstNodeInfo
-    def ast:  AST      = info.ast
+    def ast: AST       = info.ast
     def text: String   = ast.show()
     def span: TextSpan = TextSpan(info.position, TextLength(ast))
 
@@ -187,7 +195,7 @@ object SpanTree {
 
     private def describeOperand(operand: SpanTree): ChildInfo = operand match {
       case _: EmptyEndpoint =>
-        ChildInfo(operand, Set(Action.Insert))
+        ChildInfo(operand, Action.Insert)
       case _ =>
         ChildInfo(operand, Action.All)
     }
@@ -196,7 +204,7 @@ object SpanTree {
       val leftmostOperandInfo = describeOperand(firstOperand)
       val childrenInfos = parts.foldLeft(Seq(leftmostOperandInfo)) {
         case (acc, (oprAtom, operand)) =>
-          val operatorInfo = ChildInfo(oprAtom)
+          val operatorInfo = ChildInfo(oprAtom, functionActions)
           val operandInfo  = describeOperand(operand)
           acc :+ operatorInfo :+ operandInfo
       }
@@ -222,8 +230,8 @@ object SpanTree {
   ) extends ApplicationLike {
     override def describeChildren: Seq[SpanTree.ChildInfo] = {
       val selfInfo = self match {
-        case _: EmptyEndpoint => ChildInfo(self, Set(Action.Insert))
-        case _                => ChildInfo(self, Set(Action.Set))
+        case _: EmptyEndpoint => ChildInfo(self, Action.Insert)
+        case _                => ChildInfo(self, Action.Set)
       }
       parts.foldLeft(Seq(selfInfo)) {
         case (acc, (oprAtom, operand)) =>
@@ -246,10 +254,10 @@ object SpanTree {
     arguments: Seq[SpanTree]
   ) extends ApplicationLike {
     override def describeChildren: Seq[SpanTree.ChildInfo] = {
-      val calleeInfo           = ChildInfo(callee)
+      val calleeInfo           = ChildInfo(callee, functionActions)
       val argumentsInfo        = arguments.map(ChildInfo.withAllActions)
       val potentialNewArgument = ChildInfo.insertionPoint(end)
-      Seq(calleeInfo) ++ argumentsInfo :+ potentialNewArgument
+      calleeInfo +: argumentsInfo :+ potentialNewArgument
     }
   }
 

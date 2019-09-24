@@ -101,12 +101,13 @@ object AstOps {
     def flattenInfix(
       pos: TextPosition
     ): Seq[ExpressionPartOrPoint] = {
-      def flatten(child: ExpressionPartOrPoint) = child.astOpt match {
-        case Some(ast) if sameOperatorAsIn(ast) =>
-          ast.flattenInfix(child.span.begin)
-        case _ =>
-          Seq(child)
-      }
+      def flatten(child: ExpressionPartOrPoint): Seq[ExpressionPartOrPoint] =
+        child.astOpt match {
+          case Some(ast) if sameOperatorAsIn(ast) =>
+            ast.flattenInfix(child.span.begin)
+          case _ =>
+            Seq(child)
+        }
 
       val parts = getParts(pos)
       Assoc.of(operatorAst.name) match {
@@ -237,7 +238,7 @@ object AstOps {
             left ++ right
           case Pattern.Match.Build(_, elem) =>
             val node = elem.el.spanTreeNode(pos + elem.off)
-            Seq(ChildInfo(node, Set(Action.Set)))
+            Seq(ChildInfo(node, Action.Set))
           case Pattern.Match.End(_) =>
             Seq()
           case Pattern.Match.Nothing(_) =>

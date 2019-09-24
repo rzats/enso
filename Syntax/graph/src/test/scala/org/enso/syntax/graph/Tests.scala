@@ -288,24 +288,24 @@ class Tests extends FunSuite with TestUtils {
   }
 
   test("prefix application actions") {
-    testSpanTreeMarkdown("foo")
-    testSpanTreeMarkdown("foo ⎀«a»⎀")
-    testSpanTreeMarkdown("foo ⎀«4»⎀")
-    testSpanTreeMarkdown("foo ⎀«a» ⎀«_»⎀")
+    testSpanTreeMarkdown("foo") // TODO should `foo` be settable?
+    testSpanTreeMarkdown("‹foo› ⎀«a»⎀")
+    testSpanTreeMarkdown("‹foo› ⎀«4»⎀")
+    testSpanTreeMarkdown("‹foo› ⎀«a» ⎀«_»⎀")
     // can insert before each argument, after `b`, after `foo a b`
   }
 
   test("infix operator chains") {
-    testSpanTreeMarkdown("⎀+⎀")
-    testSpanTreeMarkdown("⎀«a»+⎀")
-    testSpanTreeMarkdown("⎀+⎀«b»⎀")
-    testSpanTreeMarkdown("⎀+⎀«5»⎀")
-    testSpanTreeMarkdown("⎀+⎀«b»+⎀")
-    testSpanTreeMarkdown("⎀+⎀«b»+⎀«c»⎀")
-    testSpanTreeMarkdown("⎀«a»+⎀«b»+⎀")
-    testSpanTreeMarkdown("⎀«a»+⎀«b»⎀")
-    testSpanTreeMarkdown("⎀+⎀ +⎀")
-    testSpanTreeMarkdown("⎀+⎀«a»+⎀«b»+⎀")
+    testSpanTreeMarkdown("⎀‹+›⎀")
+    testSpanTreeMarkdown("⎀«a»‹+›⎀")
+    testSpanTreeMarkdown("⎀‹+›⎀«b»⎀")
+    testSpanTreeMarkdown("⎀‹+›⎀«5»⎀")
+    testSpanTreeMarkdown("⎀‹+›⎀«b»‹+›⎀")
+    testSpanTreeMarkdown("⎀‹+›⎀«b»‹+›⎀«c»⎀")
+    testSpanTreeMarkdown("⎀«a»‹+›⎀«b»‹+›⎀")
+    testSpanTreeMarkdown("⎀«a»‹+›⎀«b»⎀")
+    testSpanTreeMarkdown("⎀‹+›⎀ ‹+›⎀")
+    testSpanTreeMarkdown("⎀‹+›⎀«a»‹+›⎀«b»‹+›⎀")
   }
 
   test("flattening prefix application") {

@@ -110,6 +110,10 @@ trait TestUtils extends org.scalatest.Matchers {
       action(node.expr)
     }
 
+  /** Takes a program with markdown. Checks that all marked actions are
+    * available in the span tree and that no other actions are available.
+    * @see [[SpanTreeTestCase]] for markdown description.
+    */
   def testSpanTreeMarkdown[R](markedProgram: ProgramText): Unit = {
     withClue(s"when testing markdown: `$markedProgram`") {
       val programAndMarks = SpanTreeTestCase(markedProgram)
