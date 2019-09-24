@@ -47,14 +47,6 @@ sealed trait SpanTree {
   /** Children nodes. */
   def children: Seq[SpanTree] = describeChildren.map(_.spanTree)
 
-  /** Children that support [[Action.Set]] action. */
-  def settableChildren: Seq[SpanTree] =
-    describeChildren.filter(_.settable).map(_.spanTree)
-
-  /** Children that support [[Action.Erase]] action. */
-  def erasableChildren: Seq[SpanTree] =
-    describeChildren.filter(_.erasable).map(_.spanTree)
-
   /** Index of the first character in the [[span]]. */
   def begin: TextPosition = span.begin
 
@@ -89,16 +81,6 @@ sealed trait SpanTree {
       result = op(result, nodeInfo)
     }
     result
-  }
-
-  def insertionPoints: Seq[TextPosition] = {
-    foldLeft[Seq[TextPosition]](Seq()) {
-      case (op, node) =>
-        if (node.insertable)
-          op :+ node.spanTree.begin
-        else
-          op
-    }.sorted
   }
 
   def toSeq: Seq[NodeInfoWithPath] = foldLeft(Seq[NodeInfoWithPath]()) {
@@ -201,9 +183,6 @@ object SpanTree {
   /** E.g. `a + b + c` flattened to a single 5-child node. Operands can be
     * set and erased. New operands can be inserted next to existing operands.
     *
-    * This is used for all infix operators other than dot that is represented
-    * using [[AccessorPath]] node.
-    *
     * @param opr The infix operator on which we apply operands. If there are
     *            multiple operators in chain, any of them might be referenced.
     * @param leftmostOperand The left-most operand and the first input.
@@ -239,29 +218,6 @@ object SpanTree {
       }
 
       childrenInfos ++ insertAfterLast
-    }
-  }
-
-  /** Just like [[OperatorChain]] but for dot `.` operator. Such operator chain
-    * represents an access path. Only the first element ([[self]]) can be set.
-    */
-  case class AccessorPath(
-    info: AstNodeInfo,
-    opr: Opr,
-    self: SpanTree,
-    parts: Seq[(AstLeaf, SpanTree)]
-  ) extends ApplicationLike {
-    override def describeChildren: Seq[SpanTree.NodeInfo] = {
-      val selfInfo = self match {
-        case _: EmptyEndpoint => NodeInfo(self, Action.Insert)
-        case _                => NodeInfo(self, Action.Set)
-      }
-      parts.foldLeft(Seq(selfInfo)) {
-        case (acc, (oprAtom, operand)) =>
-          val operatorInfo = NodeInfo(oprAtom)
-          val operandInfo  = NodeInfo(operand)
-          acc :+ operatorInfo :+ operandInfo
-      }
     }
   }
 
@@ -421,10 +377,7 @@ object SpanTree {
             }
             .toSeq
 
-          if (info.operatorAst.isAccess)
-            AccessorPath(nodeInfo, info.operatorAst, self, calls)
-          else
-            OperatorChain(nodeInfo, info.operatorAst, self, calls)
+          OperatorChain(nodeInfo, info.operatorAst, self, calls)
         case _ =>
           println("failed to generate span tree node for " + ast.show())
           println(ast.toString())
