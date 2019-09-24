@@ -6,7 +6,8 @@ import org.enso.syntax.graph.API.Flag
 import org.enso.syntax.graph.API.Module
 import org.enso.syntax.graph.API.Node
 import org.enso.syntax.graph.API.Port
-import org.enso.syntax.graph.SpanTree.ChildInfo
+import org.enso.syntax.graph.Ops._
+import org.enso.syntax.graph.SpanTree.NodeInfo
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.App.Infix
 import org.enso.syntax.text.AST.Block.Line
@@ -142,24 +143,24 @@ object AstOps {
   }
 
   implicit class Ast_ops(ast: AST) {
-    def getId: AST.ID =
+    def requireID: AST.ID =
       ast.id.getOrElse(throw MissingIdException(ast))
 
     def as[T: UnapplyByType]: Option[T] = UnapplyByType[T].unapply(ast)
     def is[T: UnapplyByType]: Boolean =
       UnapplyByType[T].unapply(ast).isDefined
 
-    // TODO: name should be more different from as[Import]
-    def asImport: Option[AST.Import] =
-      as[Import].orElse(as[AST.Macro.Match].flatMap(_.resolved.asImport))
+    def toImport: Option[AST.Import] =
+      // FIXME [mwu] I doubt we can use here resolved macro
+      as[Import].orElse(as[AST.Macro.Match].flatMap(_.resolved.toImport))
 
-    def asAssignment: Option[AST.App.Infix] =
+    def toAssignment: Option[AST.App.Infix] =
       ast.as[AST.App.Infix].filter(_.opr.isAssignment)
 
-    def varName: Option[String] = ast.as[AST.Var].map(_.name)
+    def toVarName: Option[String] = ast.as[AST.Var].map(_.name)
 
-    def imports(module: Module.Name): Boolean = {
-      ast.asImport.exists(_.path sameTarget module)
+    def doesImport(module: Module.Name): Boolean = {
+      ast.toImport.exists(_.path sameTarget module)
     }
 
     def flattenPrefix(
@@ -187,7 +188,6 @@ object AstOps {
     def flattenInfix(
       pos: TextPosition
     ): Seq[ExpressionPartOrPoint] = {
-      println("flattening on " + ast.show())
       GeneralizedInfix(ast) match {
         case None =>
           Seq(ExpressionPart(pos, ast))
@@ -228,7 +228,7 @@ object AstOps {
         def handlePatMatch(
           pos: TextPosition,
           patMatch: Pattern.Match
-        ): Seq[ChildInfo] = patMatch match {
+        ): Seq[NodeInfo] = patMatch match {
           case Pattern.Match.Or(pat, elem) =>
             handlePatMatch(pos, elem.fold(identity, identity))
           case Pattern.Match.Seq(pat, elems) =>
@@ -238,7 +238,7 @@ object AstOps {
             left ++ right
           case Pattern.Match.Build(_, elem) =>
             val node = elem.el.spanTreeNode(pos + elem.off)
-            Seq(ChildInfo(node, Action.Set))
+            Seq(NodeInfo(node, Action.Set))
           case Pattern.Match.End(_) =>
             Seq()
           case Pattern.Match.Nothing(_) =>
@@ -259,7 +259,7 @@ object AstOps {
         ): SpanTree.MacroSegment = {
           val bodyPos  = pos + TextLength(s.head)
           var children = handlePatMatch(bodyPos, s.body)
-          if (Utils.canBeNothing(s.body.pat))
+          if (s.body.pat.canBeNothing)
             children = children.map { child =>
               child.copy(actions = child.actions + Action.Erase)
             }
@@ -322,13 +322,13 @@ object AstOps {
     def spanTree: SpanTree = ast.spanTreeNode(TextPosition.Start)
 
     def asNode: Option[Node.Info] = {
-      val (lhs, rhs) = ast.asAssignment match {
+      val (lhs, rhs) = ast.toAssignment match {
         case Some(Infix(l, _, r)) => (Some(l), r)
         case None                 => (None, ast)
       }
 
       // FIXME: provisional rule to not generate nodes from imports
-      if (rhs.asImport.nonEmpty)
+      if (rhs.toImport.nonEmpty)
         return None
 
       val assignment = lhs.map(AssignmentInfo(_, rhs))
@@ -338,7 +338,7 @@ object AstOps {
       if (assignment.exists(_.arguments.nonEmpty))
         return None
 
-      val id       = ast.getId
+      val id       = ast.requireID
       val spanTree = rhs.spanTree
 
       val output           = lhs.map(_.spanTree)
@@ -368,6 +368,7 @@ object AstOps {
     }
   }
 
+  // FIXME: is this safe if module name is List1 ?
   implicit class ModuleName_ops(moduleName: API.Module.Name) {
     def nameAsString(): String = moduleName.toList.map(_.name).mkString(".")
     def sameTarget(rhs: API.Module.Name): Boolean =
@@ -376,7 +377,7 @@ object AstOps {
 
   implicit class Module_ops(module: AST.Module) {
     //def importedModules: List[Module.Name] = module.imports.map(_.path)
-    def imports: List[Import]              = module.flatTraverse(_.asImport)
+    def imports: List[Import]              = module.flatTraverse(_.toImport)
     def lineIndexOf(ast: AST): Option[Int] = lineIndexWhere(_ == ast).map(_._2)
     def lineIndexWhere(p: AST => Boolean): Option[(OptLine, Int)] =
       module.lines.zipWithIndex.find(_._1.elem.exists(p))

@@ -16,17 +16,21 @@ object Ops {
     def substring(span: TextSpan): String =
       text.substring(span.begin.index, span.end.index)
   }
-}
 
-object Utils {
-  def canBeNothing(pat: Pattern): Boolean = {
-    val emptyInput = List()
-    pat.matchOpt(emptyInput, lineBegin = false, reversed = false) match {
-      case None    => false
-      case Some(_) => true
-    }
+  implicit class Pattern_ops(pat: Pattern) {
+
+    /** Tests if given [[Pattern]] matches an empty
+      * string.
+      */
+    def canBeNothing(): Boolean = matches(List())
+
+    /** Tests if pat matches given token sequence. */
+    def matches(tokens: AST.Stream): Boolean =
+      pat.matchOpt(tokens, lineBegin = false, reversed = false).nonEmpty
   }
 }
+
+object Utils {}
 
 case class TextLength(value: Int) extends Ordered[TextLength] {
   def +(offset: TextLength): TextLength = TextLength(value + offset.value)
@@ -84,5 +88,6 @@ object TextSpan {
   def apply(pos: TextPosition, ast: AST): TextSpan =
     TextSpan(pos, TextLength(ast.span))
 
+  /** Zero-length span starting at given pos. */
   def Empty(pos: TextPosition): TextSpan = TextSpan(pos, TextLength.Empty)
 }

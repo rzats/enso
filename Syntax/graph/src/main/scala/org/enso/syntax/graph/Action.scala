@@ -18,7 +18,16 @@ object Action {
   /** Replaces given node. */
   object Set extends Action
 
+}
+
+object Actions {
+
   /** All possible actions. */
-  val All: Set[Action] = scala.Predef.Set(Insert, Erase, Set)
-  //                     ^^^ full name because Action.Set shadows the container
+  val All: Set[Action] = Set(Action.Insert, Action.Erase, Action.Set)
+
+  /** Actions available on nodes recognized as function name */
+  val Function: Set[Action] = Set(Action.Set)
+
+  /** Actions available for the root node in the SpanTree. */
+  val Root: Set[Action] = Set(Action.Set)
 }

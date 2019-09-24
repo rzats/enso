@@ -16,9 +16,9 @@ case class MissingIdException(ast: AST) extends Exception {
 
 case class AssignmentInfo(lhs: AST, rhs: AST) {
   val lhsParts: List1[AST]          = lhs.flattenApps
-  val name: Option[String]          = lhsParts.head.varName
+  val name: Option[String]          = lhsParts.head.toVarName
   val arguments: Seq[AST]           = lhsParts.tail
-  val argNames: Seq[Option[String]] = arguments.map(_.varName)
+  val argNames: Seq[Option[String]] = arguments.map(_.toVarName)
 }
 
 object ParserUtils {
@@ -110,7 +110,7 @@ final case class DoubleRepresentation(
     context: Node.Context,
     metadata: Node.Metadata,
     expr: String
-  ): Node.Id = ???
+  ): Node.Id                                                       = ???
   def setMetadata(node: Node.Location, newMetadata: Node.Metadata) = ???
   def enableFlag(node: Node.Location, flag: Flag)                  = ???
   def disableFlag(node: Node.Location, flag: Flag)                 = ???
@@ -119,7 +119,7 @@ final case class DoubleRepresentation(
   def extractToFunction(
     context: Node.Context,
     node: Set[Node.Id]
-  ): Definition.Id = ???
+  ): Definition.Id                                                       = ???
   def setPortName(port: Graph.Port.Location, name: String)               = ???
   def addPort(port: Graph.Port.Location, name: String, tp: Option[Type]) = ???
   def removePort(port: Graph.Port.Location)                              = ???
@@ -138,13 +138,13 @@ final case class DoubleRepresentation(
   override def importModule(context: Module.Id, importee: Module.Name): Unit = {
     val module         = state.getModule(context)
     val currentImports = module.imports
-    if (currentImports.exists(_ imports importee))
+    if (currentImports.exists(_ doesImport importee))
       throw ImportAlreadyExistsException(importee)
 
     // TODO perhaps here zippers could be useful?
 
     val lastImportPosition = currentImports.lastOption.flatMap(
-      lastImport => module.lineIndexWhere(_.imports(lastImport.path))
+      lastImport => module.lineIndexWhere(_.doesImport(lastImport.path))
     )
     val lineToPlaceImport = lastImportPosition match {
       case Some((_, lastImportLineNumber)) => lastImportLineNumber + 1
@@ -165,10 +165,11 @@ final case class DoubleRepresentation(
     importToRemove: Module.Name
   ): Unit = {
     val module = state.getModule(context)
-    val (line, lineIx) = module.lineIndexWhere(_ imports importToRemove) match {
-      case Some(index) => index
-      case None        => throw NoSuchImportException(importToRemove)
-    }
+    val (line, lineIx) =
+      module.lineIndexWhere(_ doesImport importToRemove) match {
+        case Some(index) => index
+        case None        => throw NoSuchImportException(importToRemove)
+      }
 
     val newAst = module.removeAt(lineIx)
     state.setModule(context, newAst)
