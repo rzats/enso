@@ -22,7 +22,7 @@ object Ops {
     /** Tests if given [[Pattern]] matches an empty
       * string.
       */
-    def canBeNothing(): Boolean = matches(List())
+    def canBeNothing: Boolean = matches(List())
 
     /** Tests if pat matches given token sequence. */
     def matches(tokens: AST.Stream): Boolean =

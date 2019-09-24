@@ -1,5 +1,6 @@
 package org.enso.syntax.graph
 
+import org.enso.syntax.graph.AstOps._
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Opr
 import org.enso.syntax.text.ast.meta.Pattern
@@ -205,14 +206,13 @@ object SpanTree {
     *
     * @param opr The infix operator on which we apply operands. If there are
     *            multiple operators in chain, any of them might be referenced.
-    * @param firstOperand The left-most operand and the first input.
-    *             // FIXME FIXME not really a self for right-assoc operators
+    * @param leftmostOperand The left-most operand and the first input.
     * @param parts Subsequent pairs of children (operator, operand).
     */
   case class OperatorChain(
     info: AstNodeInfo,
     opr: Opr,
-    firstOperand: SpanTree,
+    leftmostOperand: SpanTree,
     parts: Seq[(AstLeaf, SpanTree)]
   ) extends ApplicationLike {
 
@@ -224,7 +224,7 @@ object SpanTree {
     }
 
     override def describeChildren: Seq[SpanTree.NodeInfo] = {
-      val leftmostOperandInfo = describeOperand(firstOperand)
+      val leftmostOperandInfo = describeOperand(leftmostOperand)
       val childrenInfos = parts.foldLeft(Seq(leftmostOperandInfo)) {
         case (acc, (oprAtom, operand)) =>
           val operatorInfo = NodeInfo(oprAtom, functionActions)
@@ -339,4 +339,118 @@ object SpanTree {
 
   /** [[Path]] to the root of the [[SpanTree]], i.e. empty path. */
   val RootPath: Path = Seq()
+
+  //////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+  // BUILDING SPAN TREE CODE BELOW
+  //////////////////////////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////////////////////////////
+
+  def apply(pos: TextPosition, s: AST.Macro.Match.Segment): MacroSegment = {
+    import Ops._
+    val bodyPos  = pos + TextLength(s.head)
+    var children = patternStructure(bodyPos, s.body)
+    if (s.body.pat.canBeNothing)
+      children = children.map { child =>
+        child.copy(actions = child.actions + Action.Erase)
+      }
+    MacroSegment(pos, Some(s.head.show()), s.body, children)
+  }
+
+  def apply(ast: AST, pos: TextPosition): SpanTree = ast match {
+    case AST.Opr.any(opr)          => AstLeaf(pos, opr)
+    case AST.Blank.any(_)          => AstLeaf(pos, ast)
+    case AST.Literal.Number.any(_) => AstLeaf(pos, ast)
+    case AST.Var.any(_)            => AstLeaf(pos, ast)
+    case AST.App.Prefix.any(app) =>
+      val info         = AstNodeInfo(pos, ast)
+      val childrenAsts = ast.flattenPrefix(pos, app)
+      val childrenNodes = childrenAsts.map {
+        case (childPos, childAst) =>
+          SpanTree(childAst, childPos)
+      }
+      childrenNodes match {
+        case callee :: args =>
+          ApplicationChain(info, callee, args)
+        case _ =>
+          // app prefix always has two children, flattening can only add more
+          throw new Exception("impossible: failed to find application target")
+      }
+
+    case m @ AST.Macro.Match(optPrefix, segments, resolved) =>
+      val optPrefixNode = optPrefix.map { m =>
+        val children = patternStructure(pos, m)
+        MacroSegment(pos, None, m, children)
+      }
+      var i = pos + optPrefixNode
+          .map(_.span.length)
+          .getOrElse(TextLength.Empty)
+
+      val segmentNodes = segments.toList(0).map { s =>
+        val node = SpanTree(i + s.off, s.el)
+        i += node.span.length + TextLength(s.off)
+        node
+      }
+
+      MacroMatch(AstNodeInfo(pos, m), optPrefixNode, segmentNodes)
+
+    case _ =>
+      GeneralizedInfix(ast) match {
+        case Some(info) =>
+          val childrenAsts = info.flattenInfix(pos)
+          val childrenNodes = childrenAsts.map {
+            case part: ExpressionPart =>
+              SpanTree(part.ast, part.pos)
+            case part: EmptyPlace =>
+              SpanTree.EmptyEndpoint(part.pos)
+          }
+
+          val nodeInfo = AstNodeInfo(pos, ast)
+
+          val self = childrenNodes.headOption.getOrElse(
+            throw new Exception(
+              "internal error: infix with no children nodes"
+            )
+          )
+          val calls = childrenNodes
+            .drop(1)
+            .sliding(2, 2)
+            .map {
+              case (opr: AstLeaf) :: (arg: SpanTree) :: Nil =>
+                (opr, arg)
+            }
+            .toSeq
+
+          if (info.operatorAst.isAccess)
+            AccessorPath(nodeInfo, info.operatorAst, self, calls)
+          else
+            OperatorChain(nodeInfo, info.operatorAst, self, calls)
+        case _ =>
+          println("failed to generate span tree node for " + ast.show())
+          println(ast.toString())
+          throw new Exception("internal error: not supported ast")
+      }
+  }
+  def patternStructure(
+    pos: TextPosition,
+    patMatch: Pattern.Match
+  ): Seq[NodeInfo] = patMatch match {
+    case Pattern.Match.Or(pat, elem) =>
+      patternStructure(pos, elem.fold(identity, identity))
+    case Pattern.Match.Seq(pat, elems) =>
+      val left       = patternStructure(pos, elems._1)
+      val leftLength = TextLength(elems._1)
+      val right      = patternStructure(pos + leftLength, elems._2)
+      left ++ right
+    case Pattern.Match.Build(_, elem) =>
+      val node = SpanTree(elem.el, pos + elem.off)
+      Seq(NodeInfo(node, Action.Set))
+    case Pattern.Match.End(_) =>
+      Seq()
+    case Pattern.Match.Nothing(_) =>
+      Seq()
+    case a =>
+      println(a)
+      null
+  }
 }
