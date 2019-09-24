@@ -30,7 +30,12 @@ object Ops {
   }
 }
 
-object Utils {}
+object Utils {
+
+  def perhaps[T](isSome: Boolean, someValue: T): Option[T] =
+    if (isSome) Some(someValue)
+    else None
+}
 
 case class TextLength(value: Int) extends Ordered[TextLength] {
   def +(offset: TextLength): TextLength = TextLength(value + offset.value)
@@ -88,6 +93,11 @@ object TextSpan {
   def apply(pos: TextPosition, ast: AST): TextSpan =
     TextSpan(pos, TextLength(ast.span))
 
+  /** Span covering given String. */
+  def apply(text: String): TextSpan =
+    TextSpan(TextPosition.Start, TextLength(text))
+
   /** Zero-length span starting at given pos. */
   def Empty(pos: TextPosition): TextSpan = TextSpan(pos, TextLength.Empty)
+
 }

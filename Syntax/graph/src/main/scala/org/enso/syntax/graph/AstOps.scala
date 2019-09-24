@@ -210,15 +210,7 @@ object AstOps {
         }
         childrenNodes match {
           case callee :: args =>
-            callee match {
-              // FIXME support non-atoms
-              case calleeAtom: SpanTree.AstLeaf =>
-                SpanTree.ApplicationChain(info, calleeAtom, args)
-              case _ =>
-                throw new Exception(
-                  s"The application target $callee was not an atom"
-                )
-            }
+            SpanTree.ApplicationChain(info, callee, args)
           case _ =>
             // app prefix always has two children, flattening can only add more
             throw new Exception("impossible: failed to find application target")

@@ -119,14 +119,28 @@ trait TestUtils extends org.scalatest.Matchers {
       val programAndMarks = SpanTreeTestCase(markedProgram)
       println(s"testing program: `${programAndMarks.program}`")
       testSpanTreeFor(programAndMarks.program) { root =>
+        val nodes = root.toSeq
+        def collect[T <: Ordered[T]](
+          pred: SpanTree.NodeInfoWithPath => Boolean,
+          value: SpanTree.NodeInfoWithPath => T
+        ): Seq[T] = {
+          nodes.flatMap { node =>
+            Utils.perhaps(pred(node), value(node))
+          }.sorted
+        }
+
+        val settable   = collect(_.settable, _.spanTree.span)
+        val erasable   = collect(_.erasable, _.spanTree.span)
+        val insertable = collect(_.insertable, _.spanTree.begin)
+
         withClue("insertion points: ") {
-          root.insertionPoints shouldEqual programAndMarks.expectedInsertionPoints
+          insertable shouldEqual programAndMarks.expectedInsertionPoints
         }
         withClue("settableChildren points: ") {
-          root.settableChildren.map(_.span) shouldEqual programAndMarks.expectedSettableParts
+          settable shouldEqual programAndMarks.expectedSettableParts
         }
         withClue("erasable points: ") {
-          root.erasableChildren.map(_.span) shouldEqual programAndMarks.expectedErasableParts
+          erasable shouldEqual programAndMarks.expectedErasableParts
         }
       }
     }
@@ -235,14 +249,14 @@ object SpanTreeTestCase {
   def apply(markedProgram: String): SpanTreeTestCase = {
     val program = markedProgram.filterNot(markdownChars.contains)
 
-    val insertionPoints  = mutable.ArrayBuffer[TextPosition]()
+    val insertable       = mutable.ArrayBuffer[TextPosition]()
     val settable         = BlockManager()
     val settableErasable = BlockManager()
 
     var index = TextPosition(0)
     markedProgram.foreach {
       case InsertionMark =>
-        insertionPoints += index
+        insertable += index
       case BeginSettableAndErasableBlock =>
         settableErasable.open(index)
       case EndSettableAndErasableBlock =>
@@ -256,8 +270,27 @@ object SpanTreeTestCase {
         index += 1
     }
 
-    val settableSpans = (settable.spans ++ settableErasable.spans).sorted
-    val erasableSpans = settableErasable.spans
-    SpanTreeTestCase(program, insertionPoints, settableSpans, erasableSpans)
+    def perhapsWith[T <: Ordered[T]](
+      rootElem: T,
+      elems: Seq[T],
+      rootAction: Action
+    ): Seq[T] = {
+      val addRoot    = Actions.Root.contains(rootAction)
+      val finalElems = if (addRoot) rootElem +: elems else elems
+      finalElems.sorted
+    }
+
+    val rootSpan = TextSpan(program)
+
+    SpanTreeTestCase(
+      program,
+      perhapsWith(TextPosition.Start, insertable, Action.Insert),
+      perhapsWith(
+        rootSpan,
+        settable.spans ++ settableErasable.spans,
+        Action.Set
+      ),
+      perhapsWith(rootSpan, settableErasable.spans, Action.Erase)
+    )
   }
 }

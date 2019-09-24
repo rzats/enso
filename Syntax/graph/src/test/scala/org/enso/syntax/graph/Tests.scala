@@ -308,6 +308,11 @@ class Tests extends FunSuite with TestUtils {
     testSpanTreeMarkdown("⎀‹+›⎀«a»‹+›⎀«b»‹+›⎀")
   }
 
+  test("mixed infix and app") {
+    // three insertion points for a+b and two before/after `foo` argument.
+    testSpanTreeMarkdown("‹⎀«a»‹+›⎀«b»⎀› ⎀«foo»⎀")
+  }
+
   test("flattening prefix application") {
     testSpanTreeFor("a b c 4") { root =>
       root.children match {

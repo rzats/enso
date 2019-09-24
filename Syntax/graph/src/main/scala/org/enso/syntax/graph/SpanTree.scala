@@ -99,6 +99,11 @@ sealed trait SpanTree {
           op
     }.sorted
   }
+
+  def toSeq: Seq[NodeInfoWithPath] = foldLeft(Seq[NodeInfoWithPath]()) {
+    (acc, node) =>
+      node +: acc
+  }
 }
 
 object SpanTree {
