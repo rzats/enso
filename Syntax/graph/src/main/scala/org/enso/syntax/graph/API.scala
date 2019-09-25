@@ -151,7 +151,7 @@ object API {
       final case class Location(module: Module.Location) extends Graph.Location
 
       final case class Info(
-        nodes: Seq[API.Node.Info],
+        nodes: Seq[API.Node.Description],
         links: Seq[API.Connection]
       ) extends API.Graph.Info
     }
@@ -182,7 +182,7 @@ object API {
     /** Definition's graph. It has output and may have inputs. */
     object Graph {
       final case class Info(
-        nodes: Seq[Node.Info],
+        nodes: Seq[Node.Description],
         links: Seq[Connection],
         inputs: Seq[API.Graph.Input.Info],
         output: API.Graph.Output.Info
@@ -206,7 +206,7 @@ object API {
     sealed trait Location
 
     sealed trait Info {
-      def nodes: Seq[Node.Info]
+      def nodes: Seq[Node.Description]
       def links: Seq[Connection]
     }
 
@@ -215,7 +215,7 @@ object API {
       type Id      = API.Port.Id
       type Context = API.Port.GraphSocket
       final case class Location(context: Context, id: Id)
-      type Info = API.Port.Info
+      type Info = API.Port.Description
     }
     object Output {
       type Id      = API.Port.OutputPath
@@ -238,7 +238,7 @@ object API {
 
     final case class Metadata(visibleParts: TODO)
     final case class Stats() // progress, debug, profiling - TODO
-    final case class Info(
+    final case class Description(
       id: Id,
       expr: SpanTree,
       outputs: Option[SpanTree], // TODO rename
@@ -264,20 +264,21 @@ object API {
     final case class GraphSocket(graph: Graph.Location) extends Context
     final case class Location(context: Context, id: Id)
 
-    final case class Info(
+    final case class Description(
       tp: Option[Type],
       name: Option[String],
-      children: Seq[Info]
+      children: Seq[Description]
     )
 
-    object Info {
-      def apply():                    Info = Info(None, None, Seq())
-      def apply(children: Seq[Info]): Info = Info(None, None, children)
+    object Description {
+      def apply(): Description = Description(None, None, Seq())
+      def apply(children: Seq[Description]): Description =
+        Description(None, None, children)
     }
 
     /**  port that we don't really know anything about */
-    def Empty = Info(None, None, Seq())
-    def Empty(n: Int): Seq[Info] = Seq.fill(n)(Port.Empty)
+    def Empty = Description(None, None, Seq())
+    def Empty(n: Int): Seq[Description] = Seq.fill(n)(Port.Empty)
   }
 
   /** A port that produces values ("output", "source"). */
@@ -312,14 +313,17 @@ object API {
       sealed trait Node extends Notification
       object Node {
         import API.Node._
-        case class Added(ctx: Context, node: Info) extends Node
-        case class Removed(loc: Location)          extends Node
-        sealed trait Changed                       extends Node
+        case class Added(ctx: Context, node: Description) extends Node
+        case class Removed(loc: Location)                 extends Node
+        sealed trait Changed                              extends Node
         object Changed {
           case class Expression(node: Location, newExpr: String) extends Node
-          case class Inputs(node: API.Input.Context, inputs: List[Port.Info])
+          case class Inputs(
+            node: API.Input.Context,
+            inputs: List[Port.Description]
+          ) extends Node
+          case class Output(node: Location, output: Port.Description)
               extends Node
-          case class Output(node: Location, output: Port.Info)   extends Node
           case class Metadata(loc: Location, metadata: Metadata) extends Node
         }
 

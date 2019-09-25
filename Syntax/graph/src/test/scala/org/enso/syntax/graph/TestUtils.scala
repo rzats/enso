@@ -91,7 +91,7 @@ trait TestUtils extends org.scalatest.Matchers {
   }
   def checkModuleSingleNodeGraph[R](
     program: ProgramText
-  )(action: API.Node.Info => R): R = {
+  )(action: API.Node.Description => R): R = {
     withDR(program) { dr =>
       val graph = dr.getGraph(Module.Graph.Location(mockModule))
       graph.nodes should have size 1
@@ -121,11 +121,11 @@ trait TestUtils extends org.scalatest.Matchers {
       testSpanTreeFor(programAndMarks.program) { root =>
         val nodes = root.toSeq
         def collect[T <: Ordered[T]](
-          pred: SpanTree.NodeInfoWithPath => Boolean,
-          value: SpanTree.NodeInfoWithPath => T
+          pred: SpanTree.LocatedSpanTreeWithActions => Boolean,
+          value: SpanTree.LocatedSpanTreeWithActions => T
         ): Seq[T] = {
           nodes.flatMap { node =>
-            Utils.perhaps(pred(node), value(node))
+            TextUtils.perhaps(pred(node), value(node))
           }.sorted
         }
 
@@ -172,9 +172,9 @@ trait TestUtils extends org.scalatest.Matchers {
       val textFromSpan = tree.text.substring(node.span)
       textFromSpan shouldEqual node.text
       node match {
-        case node: SpanTree.AstNode =>
+        case node: SpanTree.Ast =>
           textFromSpan shouldEqual node.ast.show()
-        case node: SpanTree.EmptyEndpoint =>
+        case node: SpanTree.Empty =>
           node.span.length shouldEqual TextLength.Empty
         case _ =>
           Unit
@@ -183,7 +183,8 @@ trait TestUtils extends org.scalatest.Matchers {
     }
     verifyNode(tree)
   }
-  def verifyTreeIndices(node: Node.Info): Unit = verifyTreeIndices(node.expr)
+  def verifyTreeIndices(node: Node.Description): Unit =
+    verifyTreeIndices(node.expr)
 
   def asExpected[Target: ClassTag](value: AnyRef): Target = {
     value shouldBe a[Target]

@@ -188,7 +188,7 @@ class Tests extends FunSuite with TestUtils {
       segment.text shouldEqual program
 
       val exprChild =
-        expectChild[SpanTree.OperatorChain](segment, Set(Action.Set))
+        expectChild[SpanTree.OprChain](segment, Set(Action.Set))
       exprChild.text shouldEqual expr
     }
   }
@@ -241,7 +241,7 @@ class Tests extends FunSuite with TestUtils {
 
       val ifSegment = macroChildren._1
       ifSegment.text shouldEqual s"if $conditionText"
-      val ifExprChild = expectChild[SpanTree.ApplicationChain](
+      val ifExprChild = expectChild[SpanTree.AppChain](
         ifSegment,
         Set(Action.Set)
       )
@@ -249,7 +249,7 @@ class Tests extends FunSuite with TestUtils {
 
       val thenSegment = asExpected[SpanTree.MacroSegment](macroChildren._2)
       thenSegment.text shouldEqual s"then   $thenExpr"
-      val thenExprChild = expectChild[SpanTree.OperatorChain](
+      val thenExprChild = expectChild[SpanTree.OprChain](
         thenSegment,
         Set(Action.Set)
       )
@@ -318,7 +318,7 @@ class Tests extends FunSuite with TestUtils {
           b.text shouldEqual "b"
           c.text shouldEqual "c"
           d.text shouldEqual "4"
-          insertPoint shouldBe a[SpanTree.EmptyEndpoint]
+          insertPoint shouldBe a[SpanTree.Empty]
         case _ =>
           fail(s"wrong element count in: ${root.children}")
       }
@@ -336,7 +336,7 @@ class Tests extends FunSuite with TestUtils {
           c.text shouldEqual "c"
           opr3.text shouldEqual "+"
           d.text shouldEqual "4"
-          insertPoint shouldBe a[SpanTree.EmptyEndpoint]
+          insertPoint shouldBe a[SpanTree.Empty]
         case _ =>
           fail(s"wrong element count in: ${root.children}")
       }
@@ -354,7 +354,7 @@ class Tests extends FunSuite with TestUtils {
           c.text shouldEqual "c"
           opr3.text shouldEqual ","
           d.text shouldEqual "4"
-          insertPoint shouldBe a[SpanTree.EmptyEndpoint]
+          insertPoint shouldBe a[SpanTree.Empty]
         case _ =>
           fail(s"wrong element count in: ${root.children}")
       }
@@ -370,11 +370,11 @@ class Tests extends FunSuite with TestUtils {
           bTimesC.text shouldEqual "b *  c"
           opr2.text shouldEqual "+"
           d.text shouldEqual "d"
-          insertPoint shouldBe a[SpanTree.EmptyEndpoint]
+          insertPoint shouldBe a[SpanTree.Empty]
 
-          bTimesC shouldBe a[SpanTree.OperatorChain]
+          bTimesC shouldBe a[SpanTree.OprChain]
           bTimesC
-            .asInstanceOf[SpanTree.OperatorChain]
+            .asInstanceOf[SpanTree.OprChain]
             .opr
             .name shouldEqual "*"
           bTimesC.children match {
@@ -385,8 +385,8 @@ class Tests extends FunSuite with TestUtils {
               times.text shouldEqual "*"
               b shouldBe a[SpanTree.AstLeaf]
               c.text shouldEqual "c"
-              insertPoint shouldBe a[SpanTree.EmptyEndpoint]
-              nestedInsertPoint shouldBe a[SpanTree.EmptyEndpoint]
+              insertPoint shouldBe a[SpanTree.Empty]
+              nestedInsertPoint shouldBe a[SpanTree.Empty]
             case _ =>
               fail(s"wrong children count for ${bTimesC.text}")
           }
