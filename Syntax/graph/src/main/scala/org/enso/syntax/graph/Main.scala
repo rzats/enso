@@ -5,13 +5,13 @@ import org.enso.syntax.text.ast.DSL._
 
 object Main extends App {
 
-  println(AST.Number("fpo", 50).show)
+  println(AST.Number("fpo", 50).show())
 
   println(
-    s"Show app: ${("inc" $_ AST.Number(50)).show}"
+    s"Show app: ${("inc" $_ AST.Number(50)).show()}"
   )
   println(
-    s"Show import: ${AST.Import(AST.Cons("Foo"), AST.Cons("Bar")).show}"
+    s"Show import: ${AST.Import(AST.Cons("Foo"), AST.Cons("Bar")).show()}"
   )
 
   // add x y (Just z) = x + y

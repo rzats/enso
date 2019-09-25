@@ -13,7 +13,9 @@ import scala.util.Try
   *
   * SpanTree flattens nested applications into flat children lists and describes
   * possible actions, i.e. which nodes can be replaced when creating a
-  * connection or where a new variable can be inserted.
+  * connection or where a new variable can be inserted. It also handles macros,
+  * describing how its invocation can be edited.
+  *
   *
   * It is expected that this structure facilitates, with possible help of
   * additional layers, the following GUI parts:
@@ -102,7 +104,7 @@ object SpanTree {
   /** Just a [[SpanTree]] with a sequence of [[Action]] that are supported for
     * it.
     */
-  trait NodeInfoCommon {
+  trait NodeInfoUtil {
     val spanTree: SpanTree
     val actions: Set[Action]
 
@@ -118,7 +120,7 @@ object SpanTree {
   final case class NodeInfo(
     spanTree: SpanTree,
     actions: Set[Action] = Set()
-  ) extends NodeInfoCommon {
+  ) extends NodeInfoUtil {
     def addPath(path: SpanTree.Path): NodeInfoWithPath =
       NodeInfoWithPath(spanTree, path, actions)
   }
@@ -130,7 +132,7 @@ object SpanTree {
     spanTree: SpanTree,
     path: SpanTree.Path,
     actions: Set[Action] = Set()
-  ) extends NodeInfoCommon
+  ) extends NodeInfoUtil
 
   object NodeInfo {
 
@@ -196,10 +198,8 @@ object SpanTree {
   ) extends ApplicationLike {
 
     private def describeOperand(operand: SpanTree): NodeInfo = operand match {
-      case _: EmptyEndpoint =>
-        NodeInfo(operand, Action.Insert)
-      case _ =>
-        NodeInfo(operand, Actions.All)
+      case _: EmptyEndpoint => NodeInfo(operand, Action.Insert)
+      case _                => NodeInfo(operand, Actions.All)
     }
 
     override def describeChildren: Seq[SpanTree.NodeInfo] = {
@@ -243,7 +243,7 @@ object SpanTree {
   /** Helper trait to facilitate recognizing leaf nodes in span tree. */
   sealed trait Leaf {
     this -> SpanTree
-    def describeChildren: Seq[SpanTree.NodeInfo] = Seq()
+    final def describeChildren: Seq[SpanTree.NodeInfo] = Seq()
   }
 
   /** A leaf representing an AST element that cannot be decomposed any
@@ -302,7 +302,7 @@ object SpanTree {
   //////////////////////////////////////////////////////////////////////////////
   //////////////////////////////////////////////////////////////////////////////
 
-  def apply(pos: TextPosition, s: AST.Macro.Match.Segment): MacroSegment = {
+  def apply(s: AST.Macro.Match.Segment, pos: TextPosition): MacroSegment = {
     import Ops._
     val bodyPos  = pos + TextLength(s.head)
     var children = patternStructure(bodyPos, s.body)
@@ -333,7 +333,7 @@ object SpanTree {
           throw new Exception("impossible: failed to find application target")
       }
 
-    case m @ AST.Macro.Match(optPrefix, segments, resolved) =>
+    case m @ AST.Macro.Match(optPrefix, segments, resolved @ _) =>
       val optPrefixNode = optPrefix.map { m =>
         val children = patternStructure(pos, m)
         MacroSegment(pos, None, m, children)
@@ -342,8 +342,8 @@ object SpanTree {
           .map(_.span.length)
           .getOrElse(TextLength.Empty)
 
-      val segmentNodes = segments.toList(0).map { s =>
-        val node = SpanTree(i + s.off, s.el)
+      val segmentNodes = segments.toList().map { s =>
+        val node = SpanTree(s.el, i + s.off)
         i += node.span.length + TextLength(s.off)
         node
       }
@@ -384,13 +384,15 @@ object SpanTree {
           throw new Exception("internal error: not supported ast")
       }
   }
+
+  /** Sequence of nodes with their possible actions for a macro pattern. */
   def patternStructure(
     pos: TextPosition,
     patMatch: Pattern.Match
   ): Seq[NodeInfo] = patMatch match {
-    case Pattern.Match.Or(pat, elem) =>
+    case Pattern.Match.Or(_, elem) =>
       patternStructure(pos, elem.fold(identity, identity))
-    case Pattern.Match.Seq(pat, elems) =>
+    case Pattern.Match.Seq(_, elems) =>
       val left       = patternStructure(pos, elems._1)
       val leftLength = TextLength(elems._1)
       val right      = patternStructure(pos + leftLength, elems._2)

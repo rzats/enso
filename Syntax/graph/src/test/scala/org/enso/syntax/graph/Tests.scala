@@ -1,7 +1,6 @@
 package org.enso.syntax.graph
 
 import org.enso.syntax.graph.API._
-import org.enso.syntax.graph.SpanTree.OperatorChain
 import org.scalatest._
 
 import scala.reflect.ClassTag
@@ -172,10 +171,7 @@ class Tests extends FunSuite with TestUtils {
             val leftChildNode =
               asExpected[SpanTree.AstLeaf](bracketContents.spanTree)
             leftChildNode.text shouldEqual testedCase.literal
-            bracketContents.actions shouldEqual Set(
-              Action.Set,
-              Action.Erase
-            )
+            bracketContents.actions shouldEqual Set(Action.Set, Action.Erase)
 
             rightSegment.text shouldEqual testedCase.rightSegment
             rightInfo.actions shouldEqual Set()
@@ -311,6 +307,7 @@ class Tests extends FunSuite with TestUtils {
   test("mixed infix and app") {
     // three insertion points for a+b and two before/after `foo` argument.
     testSpanTreeMarkdown("‹⎀«a»‹+›⎀«b»⎀› ⎀«foo»⎀")
+    testSpanTreeMarkdown("‹foo› ⎀«⎀«a»‹+›⎀«b»⎀»⎀")
   }
 
   test("flattening prefix application") {
@@ -389,6 +386,7 @@ class Tests extends FunSuite with TestUtils {
               b shouldBe a[SpanTree.AstLeaf]
               c.text shouldEqual "c"
               insertPoint shouldBe a[SpanTree.EmptyEndpoint]
+              nestedInsertPoint shouldBe a[SpanTree.EmptyEndpoint]
             case _ =>
               fail(s"wrong children count for ${bTimesC.text}")
           }
