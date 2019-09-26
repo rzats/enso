@@ -5,7 +5,6 @@ import mouse.boolean._
 import org.enso.syntax.graph.API._
 import org.enso.syntax.graph.AstOps._
 import org.enso.syntax.graph.SpanTree.Pathed
-import org.enso.syntax.graph.SpanTree.WithActions
 
 import scala.collection.mutable
 import scala.reflect.ClassTag

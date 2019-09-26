@@ -105,6 +105,12 @@ object SpanTree {
   ///////////////////////////////////////
   object Node {
 
+    /** Base for leaves. */
+    sealed trait Leaf {
+      this -> SpanTree
+      final def describeChildren: Seq[WithActions[SpanTree]] = Seq()
+    }
+
     /** Node denoting a location that could contain some value but currently is
       * empty. Its span has length zero and it is not paired with any
       * AST. Typically it supports only [[Action.Insert]].
@@ -136,8 +142,8 @@ object SpanTree {
       *            multiple operators in chain, any of them might be referenced.
       * @param self Left- or right-most operand, depending on opr's
       *             associativity.
-      * @param parts Subsequent pairs of children (operator, operand), beginning
-      *              with the ones near-most to self operand.
+      * @param parts Subsequent pairs (operator, operand), beginning with the
+      *              ones near-most to self operand.
       */
     final case class OprChain(
       info: Positioned[AST],
@@ -152,7 +158,7 @@ object SpanTree {
           case _        => WithActions(operand, Actions.All)
         }
 
-      override def describeChildren: Seq[SpanTree.WithActions[SpanTree]] = {
+      override def describeChildren: Seq[WithActions[SpanTree]] = {
         val leftmostOperandInfo = describeOperand(self)
         var childrenInfos = parts.foldLeft(Seq(leftmostOperandInfo)) {
           case (acc, part) =>
@@ -181,12 +187,17 @@ object SpanTree {
       case class Part(operator: AstLeaf, operand: SpanTree)
     }
 
+    /** E.g. `foo bar baz`.
+      *
+      * @param callee In the example: foo
+      * @param arguments In the example: Seq(bar, baz)
+      */
     final case class AppChain(
       info: Positioned[AST],
       callee: SpanTree,
       arguments: Seq[SpanTree]
     ) extends App {
-      def describeChildren: Seq[SpanTree.WithActions[SpanTree]] = {
+      def describeChildren: Seq[WithActions[SpanTree]] = {
         val calleeInfo           = WithActions(callee, Actions.Function)
         val argumentsInfo        = arguments.map(WithActions.withAll)
         val potentialNewArgument = WithActions.insertionPoint(end)
@@ -194,14 +205,8 @@ object SpanTree {
       }
     }
 
-    /** Helper trait to facilitate recognizing leaf nodes in span tree. */
-    sealed trait Leaf {
-      this -> SpanTree
-      final def describeChildren: Seq[SpanTree.WithActions[SpanTree]] = Seq()
-    }
-
-    /** A leaf representing an AST element that cannot be decomposed any
-      * further.
+    /** A leaf representing an AST element that Span Tree does not decompose
+      * any further.
       */
     final case class AstLeaf(info: Positioned[AST]) extends Ast with Leaf
     object AstLeaf {
@@ -242,35 +247,9 @@ object SpanTree {
     }
   }
 
-  case class WithActions[+T](elem: T, actions: Set[Action]) {
-    def supports(action: Action): Boolean = actions.contains(action)
-    def settable: Boolean                 = supports(Action.Set)
-    def erasable: Boolean                 = supports(Action.Erase)
-    def insertable: Boolean               = supports(Action.Insert)
-  }
-  object WithActions {
-    implicit def unwrap[T](t: WithActions[T]): T                 = t.elem
-    implicit def unwrapWithPath[T](t: WithActions[Pathed[T]]): T = t.elem
-
-    def apply[T](elem: T, action: Action): WithActions[T] =
-      WithActions(elem, Set(action))
-
-    def withAll[T](elem: T): WithActions[T] =
-      WithActions(elem, Actions.All)
-
-    def withNone[T](elem: T): WithActions[T] =
-      WithActions(elem, Actions.None)
-
-    /** Create empty node that supports only [[Set]]. */
-    def insertionPoint(position: TextPosition): WithActions[SpanTree] =
-      WithActions(Node.Empty(position), Action.Insert)
-  }
-
-  case class Pathed[+T](elem: T, path: Path)
-  object Pathed {
-    implicit def unwrap[T](t: Pathed[T]): T                         = t.elem
-    implicit def unwrapWithActions[T](t: Pathed[WithActions[T]]): T = t.elem
-  }
+  //////////////
+  //// Path ////
+  //////////////
 
   /** An index in the sequence returned by [[SpanTree.children]] method. */
   type ChildIndex = Int
@@ -282,6 +261,16 @@ object SpanTree {
 
   /** [[Path]] to the root of the [[SpanTree]], i.e. empty path. */
   val RootPath: Path = Seq()
+
+  ////////////////
+  //// Pathed ////
+  ////////////////
+
+  case class Pathed[+T](elem: T, path: Path)
+  object Pathed {
+    implicit def unwrap[T](t: Pathed[T]): T                         = t.elem
+    implicit def unwrapWithActions[T](t: Pathed[WithActions[T]]): T = t.elem
+  }
 
   //////////////////////////
   //// Building Span Tree //
