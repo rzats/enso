@@ -300,7 +300,7 @@ object API {
     }
 
     /**  port that we don't really know anything about */
-    def Empty                           = Description(None, None, Seq())
+    def Empty: Description              = Description(None, None, Seq())
     def Empty(n: Int): Seq[Description] = Seq.fill(n)(Port.Empty)
   }
 

@@ -101,7 +101,10 @@ final case class DoubleRepresentation(
     metadata: SessionManager.Metadata,
     expr: String
   ): Node.Id = ???
-  def setMetadata(node: Node.Location, newMetadata: SessionManager.Metadata) = {
+  def setMetadata(
+    node: Node.Location,
+    newMetadata: SessionManager.Metadata
+  ): Unit = {
     state.setMetadata(node.context.module, node.node, newMetadata)
     val notification =
       GraphAPI.Notification.Node.Changed.Metadata(node, newMetadata)
@@ -188,17 +191,15 @@ final case class DoubleRepresentation(
     if (rhs.toImport.nonEmpty)
       return None
 
+    // ignore definitions, i.e. assignments with arguments on left side
     if (lhs.exists(_.is[AST.App.Prefix]))
       return None
 
     val id       = ast.unsafeID
     val spanTree = SpanTree(rhs, TextPosition.Start)
     val output   = lhs.map(SpanTree(_, TextPosition.Start))
-
-    // TODO [mwu] need to obtain metadata for node
     val metadata = state.getMetadata(module, id)
-
-    val node = Node.Description(id, spanTree, output, metadata)
+    val node     = Node.Description(id, spanTree, output, metadata)
     Some(node)
   }
 }

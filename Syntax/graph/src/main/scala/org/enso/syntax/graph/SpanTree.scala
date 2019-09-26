@@ -345,7 +345,7 @@ object SpanTree {
                     "internal error: unexpected elements in infix app"
                   )
               }.toSeq
-              Node.OprChain(nodeInfo, info.operatorAst, leftmost, parts)
+              Node.OprChain(nodeInfo, info.operator, leftmost, parts)
             case _ =>
               throw new Exception(
                 "internal error: missing leftmost operand in infix app"

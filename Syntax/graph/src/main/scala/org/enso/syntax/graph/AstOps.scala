@@ -1,14 +1,16 @@
 package org.enso.syntax.graph
 
 import org.enso.data.List1
+import org.enso.data.Shifted
 import org.enso.data.List1.List1_ops
 import org.enso.syntax.graph.API.Module
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.App
+import org.enso.syntax.text.AST.Import
+import org.enso.syntax.text.AST.SAST
+import org.enso.syntax.text.AST.UnapplyByType
 import org.enso.syntax.text.AST.Block.Line
 import org.enso.syntax.text.AST.Block.OptLine
-import org.enso.syntax.text.AST.Import
-import org.enso.syntax.text.AST.UnapplyByType
 import org.enso.syntax.text.ast.opr.Assoc
 import org.enso.syntax.text.ast.Repr._
 
@@ -20,6 +22,10 @@ object KnownOperators {
   val Access     = "."
   val Minus      = "-"
 }
+
+/////////////////
+//// AST ops ////
+/////////////////
 
 object AstOps {
   implicit class Opr_ops(opr: AST.Opr) {
@@ -68,7 +74,7 @@ object AstOps {
       * or a section.
       */
     def usedInfixOperator: Option[AST.Opr] =
-      GeneralizedInfix(ast).map(_.operatorAst)
+      GeneralizedInfix(ast).map(_.operator)
 
     def isInfixOperatorUsage: Boolean =
       ast.usedInfixOperator.nonEmpty
@@ -95,10 +101,18 @@ object AstOps {
     }
   }
 
+  /////////////////////////
+  //// Module name ops ////
+  /////////////////////////
+
   // FIXME: [mwu] is this safe if module name is List1 ?
   implicit class ModuleName_ops(moduleName: API.Module.Name) {
     def nameAsString(): String = moduleName.toList.map(_.name).mkString(".")
   }
+
+  ////////////////////
+  //// Module ops ////
+  ////////////////////
 
   implicit class Module_ops(module: AST.Module) {
     def imports: List[Import] = module.flatTraverse(_.toImport)
@@ -215,32 +229,33 @@ final case class FlattenedInfixChain(
 //////////////////////////////////////////////////////////////////////////////
 
 /** A helper type to abstract away differences between proper infix operator
-  * application and ones with missing argument (section apps). */
+  * application and ones with missing argument (section apps).
+  *
+  * @note SAST's offset refer to spacing between operand and operator
+  */
 final case class GeneralizedInfix(
-  leftArgAst: Option[AST],
-  leftSpace: Int,
-  operatorAst: AST.Opr,
-  rightSpace: Int,
-  rightArgAst: Option[AST]
+  leftArg: Option[SAST],
+  operator: AST.Opr,
+  rightArg: Option[SAST]
 ) {
   import AstOps._
 
-  def assoc: Assoc                = Assoc.of(operatorAst.name)
-  def name: String                = operatorAst.name
-  def span(ast: Option[AST]): Int = ast.map(_.span).getOrElse(0)
+  def assoc: Assoc = Assoc.of(name)
+  def name: String = operator.name
 
-  def operatorOffset: Int = span(leftArgAst) + leftSpace
+  def operatorOffset: Int =
+    leftArg.map(arg => arg.el.span + arg.off).getOrElse(0)
   def rightArgumentOffset: Int =
-    operatorOffset + operatorAst.span + rightSpace
+    operatorOffset + operator.span + rightArg.map(_.off).getOrElse(0)
 
   def sameOperatorAsIn(ast: AST): Boolean =
-    ast.isInfixOperatorUsage(operatorAst.name)
+    ast.isInfixOperatorUsage(name)
 
   def getParts(offset: TextPosition): InfixExpressionParts = {
     InfixExpressionParts(
-      ExpressionPartOrPoint(offset, leftArgAst),
-      ExpressionPart(offset + operatorOffset, operatorAst),
-      ExpressionPartOrPoint(offset + rightArgumentOffset, rightArgAst)
+      ExpressionPartOrPoint(offset, leftArg.map(_.el)),
+      ExpressionPart(offset + operatorOffset, operator),
+      ExpressionPartOrPoint(offset + rightArgumentOffset, rightArg.map(_.el))
     )
   }
 
@@ -274,19 +289,17 @@ object GeneralizedInfix {
     case AST.App.Infix.any(ast) =>
       Some(
         GeneralizedInfix(
-          Some(ast.larg),
-          ast.loff,
+          Some(Shifted(ast.loff, ast.larg)),
           ast.opr,
-          ast.roff,
-          Some(ast.rarg)
+          Some(Shifted(ast.roff, ast.rarg))
         )
       )
     case AST.App.Section.Left.any(ast) =>
-      Some(GeneralizedInfix(Some(ast.arg), ast.off, ast.opr, 0, None))
+      Some(GeneralizedInfix(Some(Shifted(ast.off, ast.arg)), ast.opr, None))
     case AST.App.Section.Right.any(ast) =>
-      Some(GeneralizedInfix(None, 0, ast.opr, ast.off, Some(ast.arg)))
+      Some(GeneralizedInfix(None, ast.opr, Some(Shifted(ast.off, ast.arg))))
     case AST.App.Section.Sides(opr) =>
-      Some(GeneralizedInfix(None, 0, opr, 0, None))
+      Some(GeneralizedInfix(None, opr, None))
     case _ => None
   }
 }

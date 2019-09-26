@@ -88,3 +88,11 @@ case class Positioned[+T](elem: T, position: TextPosition)
 object Positioned {
   implicit def unwrap[T](t: Positioned[T]): T = t.elem
 }
+
+////////////////////
+//// Spanned ////
+////////////////////
+case class Spanned[+T](elem: T, span: TextSpan)
+object Spanned {
+  implicit def unwrap[T](t: Positioned[T]): T = t.elem
+}
