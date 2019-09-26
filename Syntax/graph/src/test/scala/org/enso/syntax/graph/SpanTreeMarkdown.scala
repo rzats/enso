@@ -81,6 +81,7 @@ object SpanTreeMarkdown {
         index += 1
     }
 
+    /** prepends element if action is enabled on root */
     def perhapsWith[T <: Ordered[T]](
       rootElem: T,
       elems: Seq[T],
@@ -91,16 +92,12 @@ object SpanTreeMarkdown {
       finalElems.sorted
     }
 
-    val rootSpan = TextSpan(program)
-
+    val rootSpan      = TextSpan(program)
+    val settableSpans = settable.spans ++ settableErasable.spans
     SpanTreeMarkdown(
       program,
       perhapsWith(TextPosition.Start, insertable, Action.Insert),
-      perhapsWith(
-        rootSpan,
-        settable.spans ++ settableErasable.spans,
-        Action.Set
-      ),
+      perhapsWith(rootSpan, settableSpans, Action.Set),
       perhapsWith(rootSpan, settableErasable.spans, Action.Erase)
     )
   }

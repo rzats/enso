@@ -6,13 +6,14 @@ import org.enso.syntax.graph.API._
 import org.enso.syntax.graph.AstOps._
 import org.enso.syntax.graph.SpanTree.Pathed
 
-import scala.collection.mutable
 import scala.reflect.ClassTag
 
 trait TestUtils extends org.scalatest.Matchers {
   type ProgramText = String
 
   val mockModule: Module.Id = StateManagerMock.mainModule
+
+  /** Runs action with DoubleRepresentation being set up with given program */
   def withDR[R](program: ProgramText)(
     action: DoubleRepresentation => R
   ): (R, StateManagerMock, NotificationSinkMock) = {
@@ -155,8 +156,7 @@ trait TestUtils extends org.scalatest.Matchers {
     * @param tree A root node of the span tree.
     */
   def verifyTreeIndices(tree: SpanTree): Unit = {
-    def verifyNode(node: SpanTree): Unit = {
-//      println(s"Checking node $node")
+    def go(node: SpanTree): Unit = {
       val textFromSpan = tree.text.substring(node.span)
       textFromSpan shouldEqual node.text
       node match {
@@ -167,10 +167,11 @@ trait TestUtils extends org.scalatest.Matchers {
         case _ =>
           Unit
       }
-      node.children.foreach(verifyNode)
+      node.children.foreach(go)
     }
-    verifyNode(tree)
+    go(tree)
   }
+
   def verifyTreeIndices(node: Node.Description): Unit =
     verifyTreeIndices(node.expr)
 
