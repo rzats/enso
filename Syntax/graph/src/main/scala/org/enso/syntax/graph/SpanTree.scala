@@ -1,6 +1,8 @@
 package org.enso.syntax.graph
 
+import org.enso.syntax.graph
 import org.enso.syntax.graph.AstOps._
+import org.enso.syntax.graph.SpanTree.Node.AstLeaf
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Opr
 import org.enso.syntax.text.ast.meta.Pattern
@@ -278,7 +280,7 @@ object SpanTree {
 
   def apply(s: AST.Macro.Match.Segment, pos: TextPosition): MacroSegment = {
     val bodyPos  = pos + TextLength(s.head)
-    var children = patternStructure(bodyPos, s.body)
+    var children = patternStructure(s.body, bodyPos)
     if (s.body.pat.matchesEmpty)
       children = children.map { child =>
         child.copy(actions = child.actions + Action.Erase)
@@ -307,7 +309,7 @@ object SpanTree {
 
     case m @ AST.Macro.Match(optPrefix, segments, resolved @ _) =>
       val optPrefixNode = optPrefix.map { m =>
-        val children = patternStructure(pos, m)
+        val children = patternStructure(m, pos)
         Node.MacroSegment(pos, None, m, children)
       }
       var i = pos + optPrefixNode
@@ -325,48 +327,39 @@ object SpanTree {
     case _ =>
       GeneralizedInfix(ast) match {
         case Some(info) =>
-          val childrenAsts = info.flattenInfix(pos).toSeq
-          val childrenNodes = childrenAsts.map {
-            case part: ExpressionPart =>
-              SpanTree(part.ast, part.pos)
-            case part: EmptyPlace =>
-              Node.Empty(part.pos)
-          }
+          def toNode(operand: GeneralizedInfix.Operand): SpanTree =
+            operand.elem match {
+              case Some(operandAST) =>
+                SpanTree(operandAST, operand.position)
+              case None =>
+                Node.Empty(operand.position)
+            }
 
           val nodeInfo = Positioned(ast, pos)
-          childrenNodes match {
-            case leftmost :: otherChildren =>
-              val pairs = otherChildren.sliding(2, 2)
-              val parts = pairs.map {
-                case (opr: AstLeaf) :: (arg: SpanTree) :: Nil =>
-                  Node.OprChain.Part(opr, arg)
-                case _ =>
-                  throw new Exception(
-                    "internal error: unexpected elements in infix app"
-                  )
-              }.toSeq
-              Node.OprChain(nodeInfo, info.operator, leftmost, parts)
-            case _ =>
-              throw new Exception(
-                "internal error: missing leftmost operand in infix app"
-              )
+          val chain    = info.flattenInfix(pos)
+          val selfNode = toNode(chain.self)
+          val parts = chain.parts.map { part =>
+            val operatorNode = AstLeaf(part.operator)
+            val operandNode  = toNode(part.operand)
+            Node.OprChain.Part(operatorNode, operandNode)
           }
+          Node.OprChain(nodeInfo, info.oprAST, selfNode, parts)
         case _ =>
-          throw new Exception("internal error: not supported ast")
+          throw new Exception(s"internal error: not supported ast: $ast")
       }
   }
 
   /** Sequence of nodes with their possible actions for a macro pattern. */
   def patternStructure(
-    pos: TextPosition,
-    patMatch: Pattern.Match
+    patMatch: Pattern.Match,
+    pos: TextPosition
   ): Seq[WithActions[SpanTree]] = patMatch match {
     case Pattern.Match.Or(_, elem) =>
-      patternStructure(pos, elem.fold(identity, identity))
+      patternStructure(elem.fold(identity, identity), pos)
     case Pattern.Match.Seq(_, elems) =>
-      val left       = patternStructure(pos, elems._1)
+      val left       = patternStructure(elems._1, pos)
       val leftLength = TextLength(elems._1)
-      val right      = patternStructure(pos + leftLength, elems._2)
+      val right      = patternStructure(elems._2, pos + leftLength)
       left ++ right
     case Pattern.Match.Build(_, elem) =>
       val node = SpanTree(elem.el, pos + elem.off)
