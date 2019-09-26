@@ -2,11 +2,9 @@ package org.enso.syntax.graph
 
 import org.enso.data.List1
 import org.enso.data.List1.List1_ops
-import org.enso.syntax.graph.API.Flag
 import org.enso.syntax.graph.API.Module
-import org.enso.syntax.graph.API.Node
 import org.enso.syntax.text.AST
-import org.enso.syntax.text.AST.App.Infix
+import org.enso.syntax.text.AST.App
 import org.enso.syntax.text.AST.Block.Line
 import org.enso.syntax.text.AST.Block.OptLine
 import org.enso.syntax.text.AST.Import
@@ -63,7 +61,7 @@ object AstOps {
 
     /** Checks if this AST imports a given module. */
     def doesImport(module: Module.Name): Boolean = {
-      ast.toImport.exists(_.path sameTarget module)
+      ast.toImport.exists(_.path == module)
     }
 
     /** [[AST.Opr]] node when this AST is infix operator usage (full application
@@ -78,21 +76,21 @@ object AstOps {
     def isInfixOperatorUsage(oprName: String): Boolean =
       ast.usedInfixOperator.exists(_.name == oprName)
 
-    /** Linearizes nested sequence of App.Prefix.
+    /** Linearizes nested sequence of [[AST.App.Prefix]].
       *
       * For example structures for code like `foo a b c` will be flattened to
       * sequence like Seq(foo, a, b, c).
       */
     def flattenPrefix(
       pos: TextPosition,
-      ast: AST.App.Prefix
-    ): Seq[(TextPosition, AST)] = {
+      ast: App.Prefix
+    ): Seq[Positioned[AST]] = {
       val init = ast.fn match {
         case AST.App.Prefix.any(lhsApp) => flattenPrefix(pos, lhsApp)
-        case nonAppAst                  => Seq(pos -> nonAppAst)
+        case nonAppAst                  => Seq(Positioned(nonAppAst, pos))
       }
       val rhsPos = pos + ast.fn.span + ast.off
-      val last   = rhsPos -> ast.arg
+      val last   = Positioned(ast.arg, rhsPos)
       init :+ last
     }
   }
@@ -100,15 +98,6 @@ object AstOps {
   // FIXME: [mwu] is this safe if module name is List1 ?
   implicit class ModuleName_ops(moduleName: API.Module.Name) {
     def nameAsString(): String = moduleName.toList.map(_.name).mkString(".")
-
-    /** Checks both names designate the same module.
-      *
-      * Can be non-trivial due to node comparing `id`.
-      * FIXME [mwu] other changes made comparison id-insensitive, might not
-      *  be needed anymore if change will be kept
-      */
-    def sameTarget(rhs: API.Module.Name): Boolean =
-      moduleName.map(_.shape) == rhs.map(_.shape)
   }
 
   implicit class Module_ops(module: AST.Module) {

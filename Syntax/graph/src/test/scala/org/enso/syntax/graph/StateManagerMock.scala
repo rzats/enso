@@ -4,7 +4,11 @@ import org.enso.syntax.graph.API.Module
 import org.enso.syntax.graph.SessionManager.Metadata
 import org.enso.syntax.text.AST
 
-/** Mock project state - contains a single module named `Main` with given body.
+/** Mock project state - contains a single module named `Main` with given
+  * program body text.
+  *
+  * Initially no metadata is present, however whatever is set, will be visible
+  * afterwards.
   */
 final case class StateManagerMock(var program: String) extends StateManager {
   var ast: AST.Module                              = ParserUtils.parse(program)
@@ -14,8 +18,7 @@ final case class StateManagerMock(var program: String) extends StateManager {
     Seq(StateManagerMock.mainModule)
 
   override def getModule(module: Module.Id): AST.Module = {
-    if (module == StateManagerMock.mainModule)
-      ast
+    if (module == StateManagerMock.mainModule) ast
     else throw StateManager.ModuleNotFoundException(module)
   }
 

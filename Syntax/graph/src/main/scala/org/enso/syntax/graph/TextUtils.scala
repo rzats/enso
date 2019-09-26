@@ -80,3 +80,11 @@ object TextSpan {
       text.substring(span.begin.index, span.end.index)
   }
 }
+
+////////////////////
+//// Positioned ////
+////////////////////
+case class Positioned[+T](elem: T, position: TextPosition)
+object Positioned {
+  implicit def unwrap[T](t: Positioned[T]): T = t.elem
+}

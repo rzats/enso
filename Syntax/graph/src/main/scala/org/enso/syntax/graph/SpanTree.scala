@@ -87,9 +87,9 @@ sealed trait SpanTree {
 }
 
 object SpanTree {
-  ///////////////////////////////////////
-  // Node subtypes hierarchy ////////////
-  ///////////////////////////////////////
+  /////////////////////////////////////
+  // Node subtypes aliases ////////////
+  /////////////////////////////////////
   type Empty        = Node.Empty
   type Ast          = Node.Ast
   type App          = Node.App
@@ -118,8 +118,8 @@ object SpanTree {
 
     /** Node describing certain AST subtree, has non-zero span. */
     sealed trait Ast extends SpanTree {
-      def info: LocatedAST
-      def ast: AST       = info.ast
+      def info: Positioned[AST]
+      def ast: AST       = info.elem
       def text: String   = ast.show()
       def span: TextSpan = TextSpan(info.position, TextLength(ast))
     }
@@ -134,12 +134,13 @@ object SpanTree {
       *
       * @param opr The infix operator on which we apply operands. If there are
       *            multiple operators in chain, any of them might be referenced.
-      * @param self Left- or right-most operand, depending on opr's associativity.
+      * @param self Left- or right-most operand, depending on opr's
+      *             associativity.
       * @param parts Subsequent pairs of children (operator, operand), beginning
       *              with the ones near-most to self operand.
       */
     final case class OprChain(
-      info: LocatedAST,
+      info: Positioned[AST],
       opr: Opr,
       self: SpanTree,
       parts: Seq[OprChain.Part]
@@ -147,7 +148,7 @@ object SpanTree {
 
       private def describeOperand(operand: SpanTree): WithActions[SpanTree] =
         operand match {
-          case _: Empty => WithActions(operand, Action.Insert)
+          case Empty(_) => WithActions(operand, Action.Insert)
           case _        => WithActions(operand, Actions.All)
         }
 
@@ -164,7 +165,8 @@ object SpanTree {
         if (Assoc.of(opr.name) == Assoc.Right)
           childrenInfos = childrenInfos.reverse
 
-        // If we already miss last the argument, don't add additional placeholder.
+        // If we already miss last the argument, don't add additional
+        // placeholder.
         val insertAfterLast = childrenInfos.lastOption.map(_.elem) match {
           case Some(Empty(_)) => None
           case _              => Some(WithActions.insertionPoint(end))
@@ -174,11 +176,13 @@ object SpanTree {
       }
     }
     object OprChain {
+
+      /** A single link from the chain. */
       case class Part(operator: AstLeaf, operand: SpanTree)
     }
 
     final case class AppChain(
-      info: LocatedAST,
+      info: Positioned[AST],
       callee: SpanTree,
       arguments: Seq[SpanTree]
     ) extends App {
@@ -199,15 +203,15 @@ object SpanTree {
     /** A leaf representing an AST element that cannot be decomposed any
       * further.
       */
-    final case class AstLeaf(info: LocatedAST) extends Ast with Leaf
+    final case class AstLeaf(info: Positioned[AST]) extends Ast with Leaf
     object AstLeaf {
-      def apply(textPosition: TextPosition, ast: AST): SpanTree.AstLeaf =
-        AstLeaf(LocatedAST(textPosition, ast))
+      def apply(position: TextPosition, ast: AST): SpanTree.AstLeaf =
+        AstLeaf(Positioned(ast, position))
     }
 
     /** Node representing a macro usage. */
     final case class MacroMatch(
-      info: LocatedAST,
+      info: Positioned[AST],
       prefix: Option[MacroSegment],
       segments: Seq[MacroSegment]
     ) extends Ast {
@@ -268,11 +272,6 @@ object SpanTree {
     implicit def unwrapWithActions[T](t: Pathed[WithActions[T]]): T = t.elem
   }
 
-  final case class LocatedAST(
-    position: TextPosition,
-    ast: AST
-  )
-
   /** An index in the sequence returned by [[SpanTree.children]] method. */
   type ChildIndex = Int
 
@@ -298,22 +297,21 @@ object SpanTree {
     Node.MacroSegment(pos, Some(s.head.show()), s.body, children)
   }
 
+  def apply(last: Positioned[AST]): SpanTree =
+    SpanTree(last.elem, last.position)
+
   def apply(ast: AST, pos: TextPosition): SpanTree = ast match {
     case AST.Opr.any(opr)          => Node.AstLeaf(pos, opr)
     case AST.Blank.any(_)          => Node.AstLeaf(pos, ast)
     case AST.Literal.Number.any(_) => Node.AstLeaf(pos, ast)
     case AST.Var.any(_)            => Node.AstLeaf(pos, ast)
     case AST.App.Prefix.any(app) =>
-      val info         = LocatedAST(pos, ast)
-      val childrenAsts = ast.flattenPrefix(pos, app)
-      val childrenNodes = childrenAsts.map {
-        case (childPos, childAst) =>
-          SpanTree(childAst, childPos)
-      }
+      val info          = Positioned(ast, pos)
+      val childrenAsts  = ast.flattenPrefix(pos, app)
+      val childrenNodes = childrenAsts.map(SpanTree(_))
       childrenNodes match {
-        case callee :: args =>
-          Node.AppChain(info, callee, args)
-        case _ =>
+        case callee :: args => Node.AppChain(info, callee, args)
+        case _              =>
           // app prefix always has two children, flattening can only add more
           throw new Exception("impossible: failed to find application target")
       }
@@ -333,7 +331,7 @@ object SpanTree {
         node
       }
 
-      Node.MacroMatch(LocatedAST(pos, m), optPrefixNode, segmentNodes)
+      Node.MacroMatch(Positioned(m, pos), optPrefixNode, segmentNodes)
 
     case _ =>
       GeneralizedInfix(ast) match {
@@ -346,7 +344,7 @@ object SpanTree {
               Node.Empty(part.pos)
           }
 
-          val nodeInfo = LocatedAST(pos, ast)
+          val nodeInfo = Positioned(ast, pos)
           childrenNodes match {
             case leftmost :: otherChildren =>
               val pairs = otherChildren.sliding(2, 2)
