@@ -133,7 +133,6 @@ class Tests extends FunSuite with TestUtils {
     checkModuleSingleNodeGraph("15") { node =>
       node.expr.text shouldEqual "15"
       node.outputs shouldEqual None
-      node.flags shouldBe empty
     }
   }
   test("atom in in brackets") {
@@ -279,7 +278,6 @@ class Tests extends FunSuite with TestUtils {
   test("get trivial named node") {
     checkModuleSingleNodeGraph("a = 15") { node =>
       node.expr.text should equal("15")
-      node.flags shouldBe empty
     }
   }
 

@@ -5,52 +5,20 @@ import org.enso.syntax.text.AST
 import org.enso.syntax.text.ast.meta.Pattern
 
 import scala.annotation.tailrec
-import scala.collection.GenIterable
-
-object Ops {
-  implicit class GenIterableOps[A](seq: GenIterable[A]) {
-    // FIXME sample
-    def mapPairs[B](f: (A, A) => B): GenIterable[B] =
-      seq.zip(seq.drop(1)).map { case (a, b) => f(a, b) }
-  }
-
-  // TODO -> move to Pattern
-  implicit class PatternOps(pat: Pattern) {
-
-    /** Tests if given [[Pattern]] matches an empty
-      * string.
-      */
-    def matchesEmpty: Boolean = matches(List())
-
-    /** Tests if pat matches given token sequence. */
-    def matches(tokens: AST.Stream): Boolean =
-      pat.matchOpt(tokens, lineBegin = false, reversed = false).nonEmpty
-  }
-}
-
-// FIXME: Dont use "Utils"
-object TextUtils {
-
-  // https://github.com/typelevel/mouse
-  // https://stackoverflow.com/questions/19690531/scala-boolean-to-option
-  def perhaps[T](isSome: Boolean, someValue: T): Option[T] =
-    if (isSome) Some(someValue)
-    else None
-}
 
 ////////////////////
 //// TextLength ////
 ////////////////////
 
 case class TextLength(value: Int) extends Ordered[TextLength] {
-  def +(offset: TextLength):    TextLength = TextLength(value + offset.value)
-  def compare(rhs: TextLength): Int        = value compare rhs.value
+  def +(offset: TextLength): TextLength = TextLength(value + offset.value)
+  def compare(rhs: TextLength): Int     = value compare rhs.value
 }
 object TextLength {
-  val Empty = TextLength(0)
+  val Empty                                 = TextLength(0)
   def apply(pat: Pattern.Match): TextLength = TextLength(pat.toStream)
-  def apply(ast: AST):           TextLength = TextLength(ast.span)
-  def apply(text: String):       TextLength = TextLength(text.length)
+  def apply(ast: AST): TextLength           = TextLength(ast.span)
+  def apply(text: String): TextLength       = TextLength(text.length)
   def apply(sast: Shifted[AST]): TextLength =
     TextLength(sast.off) + TextLength(sast.el) // FIXME: SAST.span
   def apply[A](elems: Seq[Shifted[AST]]): TextLength = {
@@ -66,7 +34,7 @@ object TextLength {
 
 /** Strongly typed index position in a text. */
 case class TextPosition(index: Int) extends Ordered[TextPosition] {
-  def +(offset: Int):        TextPosition = TextPosition(index + offset)
+  def +(offset: Int): TextPosition        = TextPosition(index + offset)
   def +(offset: TextLength): TextPosition = TextPosition(index + offset.value)
   def -(offset: TextLength): TextPosition = TextPosition(index - offset.value)
 

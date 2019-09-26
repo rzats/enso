@@ -150,10 +150,10 @@ object API {
       final case class Context(id: Module.Context)       extends Graph.Context
       final case class Location(module: Module.Location) extends Graph.Location
 
-      final case class Info(
+      final case class Description(
         nodes: Seq[API.Node.Description],
         links: Seq[API.Connection]
-      ) extends API.Graph.Info
+      ) extends API.Graph.Description
     }
   }
 
@@ -177,16 +177,16 @@ object API {
     type Id      = AST.Id
     final case class Location(context: Context, id: Id)
 
-    final case class Info(name: String, id: Id)
+    final case class Description(name: String, id: Id)
 
     /** Definition's graph. It has output and may have inputs. */
     object Graph {
-      final case class Info(
+      final case class Description(
         nodes: Seq[Node.Description],
         links: Seq[Connection],
-        inputs: Seq[API.Graph.Input.Info],
-        output: API.Graph.Output.Info
-      ) extends API.Graph.Info
+        inputs: Seq[API.Graph.Input.Description],
+        output: API.Graph.Output.Description
+      ) extends API.Graph.Description
 
       val Graph: API.Graph.type = API.Graph
       final case class Id(id: Definition.Id)             extends Graph.Id
@@ -205,7 +205,7 @@ object API {
     sealed trait Context
     sealed trait Location
 
-    sealed trait Info {
+    sealed trait Description {
       def nodes: Seq[Node.Description]
       def links: Seq[Connection]
     }
@@ -215,19 +215,19 @@ object API {
       type Id      = API.Port.Id
       type Context = API.Port.GraphSocket
       final case class Location(context: Context, id: Id)
-      type Info = API.Port.Description
+      type Description = API.Port.Description
     }
     object Output {
       type Id      = API.Port.OutputPath
       type Context = Port.Context
       final case class Location(context: Context, id: Id)
-      type Info = Port.Info
+      type Description = Port.Description
     }
     object Input {
       type Id      = API.Port.InputPath
       type Context = Port.Context
       final case class Location(context: Context, id: Id)
-      type Info = Port.Info
+      type Description = Port.Description
     }
   }
 
@@ -236,15 +236,12 @@ object API {
     type Context = Graph.Location
     final case class Location(context: Context, node: Id)
 
-    final case class Metadata(visibleParts: TODO)
-    final case class Stats() // progress, debug, profiling - TODO
+    final case class Metadata()
     final case class Description(
       id: Id,
       expr: SpanTree,
       outputs: Option[SpanTree], // TODO rename
-      flags: Set[Flag],
-      stats: Option[Stats],
-      marker: Any
+      metadata: Metadata
     )
   }
 
@@ -277,7 +274,7 @@ object API {
     }
 
     /**  port that we don't really know anything about */
-    def Empty = Description(None, None, Seq())
+    def Empty                           = Description(None, None, Seq())
     def Empty(n: Int): Seq[Description] = Seq.fill(n)(Port.Empty)
   }
 
@@ -387,9 +384,9 @@ trait TextAPI {
 
   // modify
   def insertText(module: Module.Location, at: TextPosition, text: String): Unit
-  def eraseText(module: Module.Location, span: TextSpan): Unit
-  def copyText(module: Module.Location, span: TextSpan): String
-  def pasteText(module: Module.Location, at: TextPosition, text: String): Unit // FIXME We can get both plain text or metadata from graph
+  def eraseText(module: Module.Location, span: TextSpan):                  Unit
+  def copyText(module: Module.Location, span: TextSpan):                   String
+  def pasteText(module: Module.Location, at: TextPosition, text: String):  Unit // FIXME We can get both plain text or metadata from graph
 
   // TODO should we represent here that text notifications are emitted?
 }
@@ -398,17 +395,17 @@ trait GraphAPI {
   import API._
 
   /////////////////////////////////////////////////////////////////////////////
-  def getGraph(loc: Graph.Location): Graph.Info = loc match {
+  def getGraph(loc: Graph.Location): Graph.Description = loc match {
     case ctx @ Definition.Graph.Location(_) => getGraph(ctx)
     case ctx @ Module.Graph.Location(_)     => getGraph(ctx)
   }
-  def getGraph(loc: Definition.Graph.Location): Definition.Graph.Info
-  def getGraph(loc: Module.Graph.Location): Module.Graph.Info
-  def getDefinitions(loc: Module.Location): Seq[Definition.Info]
+  def getGraph(loc: Definition.Graph.Location): Definition.Graph.Description
+  def getGraph(loc: Module.Graph.Location):     Module.Graph.Description
+  def getDefinitions(loc: Module.Location):     Seq[Definition.Description]
   // TODO other entities? (visible through Graph API)
   /** Manage Imports */
-  def importedModules(module: Module.Location): Seq[Module.Name]
-  def importModule(context: Module.Id, importee: Module.Name): Unit
+  def importedModules(module: Module.Location):                      Seq[Module.Name]
+  def importModule(context: Module.Id, importee: Module.Name):       Unit
   def removeImport(context: Module.Id, importToRemove: Module.Name): Unit
   //////////////////////////////////////////////////////////////////////////////
   def addNode(
@@ -417,8 +414,6 @@ trait GraphAPI {
     expr: String
   ): Node.Id
   def setMetadata(node: Node.Location, newMetadata: Node.Metadata)
-  def enableFlag(node: Node.Location, flag: Flag)
-  def disableFlag(node: Node.Location, flag: Flag)
   def setExpression(node: Node.Location, expression: String)
   def removeNode(node: Node.Location)
   def extractToFunction(

@@ -90,22 +90,22 @@ final case class DoubleRepresentation(
   ): Unit =
     insertText(module, at, clipboard)
 
-  def getGraph(loc: API.Definition.Graph.Location): Definition.Graph.Info = ???
-  def getGraph(loc: Module.Graph.Location): Module.Graph.Info = {
+  def getGraph(
+    loc: API.Definition.Graph.Location
+  ): Definition.Graph.Description = ???
+  def getGraph(loc: Module.Graph.Location): Module.Graph.Description = {
     val ast   = state.getModule(loc.module)
     val nodes = ast.flatTraverse(_.asNode)
-    Module.Graph.Info(nodes, Seq())
+    Module.Graph.Description(nodes, Seq())
   }
 
-  def getDefinitions(loc: Module.Location): List[Definition.Info] = ???
+  def getDefinitions(loc: Module.Location): List[Definition.Description] = ???
   def addNode(
     context: Node.Context,
     metadata: Node.Metadata,
     expr: String
   ): Node.Id                                                       = ???
   def setMetadata(node: Node.Location, newMetadata: Node.Metadata) = ???
-  def enableFlag(node: Node.Location, flag: Flag)                  = ???
-  def disableFlag(node: Node.Location, flag: Flag)                 = ???
   def setExpression(node: Node.Location, expression: String)       = ???
   def removeNode(node: Node.Location)                              = ???
   def extractToFunction(
@@ -132,8 +132,6 @@ final case class DoubleRepresentation(
     val currentImports = module.imports
     if (currentImports.exists(_ doesImport importee))
       throw ImportAlreadyExistsException(importee)
-
-    // TODO perhaps here zippers could be useful?
 
     val lastImportPosition = currentImports.lastOption.flatMap(
       lastImport => module.lineIndexWhere(_.doesImport(lastImport.path))

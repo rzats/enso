@@ -1,8 +1,10 @@
 package org.enso.syntax.graph
 
+import mouse.boolean._
+
 import org.enso.syntax.graph.API._
-import org.enso.syntax.graph.Ops._
 import org.enso.syntax.graph.AstOps._
+import org.enso.syntax.graph.SpanTree.Pathed
 import org.enso.syntax.graph.SpanTree.WithActions
 
 import scala.collection.mutable
@@ -122,13 +124,9 @@ trait TestUtils extends org.scalatest.Matchers {
       testSpanTreeFor(programAndMarks.program) { root =>
         val nodes = root.toSeq()
         def collect[T <: Ordered[T]](
-          pred: SpanTree.Pathed[WithActions[SpanTree]] => Boolean,
-          value: SpanTree.Pathed[WithActions[SpanTree]] => T
-        ): Seq[T] = {
-          nodes.flatMap { node =>
-            TextUtils.perhaps(pred(node), value(node))
-          }.sorted
-        }
+          pred: Pathed[WithActions[SpanTree]] => Boolean,
+          value: Pathed[WithActions[SpanTree]] => T
+        ): Seq[T] = nodes.flatMap(node => pred(node).option(value(node))).sorted
 
         val settable   = collect(_.settable, _.span)
         val erasable   = collect(_.erasable, _.span)

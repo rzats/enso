@@ -6,9 +6,6 @@ import org.enso.syntax.text.AST.Opr
 import org.enso.syntax.text.ast.meta.Pattern
 import org.enso.syntax.text.ast.opr.Assoc
 
-import scala.util.Success
-import scala.util.Try
-
 /** A GUI-friendly structure describing expression with nodes mapped to
   * expression text spans.
   *
@@ -292,7 +289,6 @@ object SpanTree {
   //////////////////////////
 
   def apply(s: AST.Macro.Match.Segment, pos: TextPosition): MacroSegment = {
-    import Ops._
     val bodyPos  = pos + TextLength(s.head)
     var children = patternStructure(bodyPos, s.body)
     if (s.body.pat.matchesEmpty)

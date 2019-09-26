@@ -30,7 +30,7 @@ object AstOps {
     def isMinus: Boolean      = opr.name == KnownOperators.Minus
   }
 
-  implicit class Ast_opsttttttttt(ast: AST) {
+  implicit class AstOps_syntax_graph(ast: AST) {
 
     /** Gets [[AST.ID]] from this AST, throwing [[MissingIdException]] if ID
       * has not been set. */
@@ -99,9 +99,6 @@ object AstOps {
       if (rhs.toImport.nonEmpty)
         return None
 
-      // FIXME: [mwu] Provisional rule to not generate nodes for function
-      //  definitions. However, smarter rules are needed to deal with operator
-      //  definitions and behave when `lhs` involves macros like brackets.
       if (lhs.exists(_.is[AST.App.Prefix]))
         return None
 
@@ -109,17 +106,10 @@ object AstOps {
       val spanTree = SpanTree(rhs, TextPosition.Start)
       val output   = lhs.map(SpanTree(_, TextPosition.Start))
 
-      // TODO [mwu] check the expression for flag-represented macro usage
-      val flags: Set[Flag] = Set.empty
-
-      // FIXME [mwu] consider whether this should be present on this API level
-      //  if it is, then it's just FIXME to implement
-      val stats = None
-
       // TODO [mwu] need to obtain metadata for node
-      val metadata = null
+      val metadata = Node.Metadata()
 
-      val node = Node.Description(id, spanTree, output, flags, stats, metadata)
+      val node = Node.Description(id, spanTree, output, metadata)
       Some(node)
     }
   }
