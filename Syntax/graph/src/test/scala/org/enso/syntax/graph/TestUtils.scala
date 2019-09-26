@@ -3,6 +3,7 @@ package org.enso.syntax.graph
 import org.enso.syntax.graph.API._
 import org.enso.syntax.graph.Ops._
 import org.enso.syntax.graph.AstOps._
+import org.enso.syntax.graph.SpanTree.WithActions
 
 import scala.collection.mutable
 import scala.reflect.ClassTag
@@ -119,19 +120,19 @@ trait TestUtils extends org.scalatest.Matchers {
       val programAndMarks = SpanTreeTestCase(markedProgram)
       println(s"testing program: `${programAndMarks.program}`")
       testSpanTreeFor(programAndMarks.program) { root =>
-        val nodes = root.toSeq
+        val nodes = root.toSeq()
         def collect[T <: Ordered[T]](
-          pred: SpanTree.LocatedSpanTreeWithActions => Boolean,
-          value: SpanTree.LocatedSpanTreeWithActions => T
+          pred: SpanTree.Pathed[WithActions[SpanTree]] => Boolean,
+          value: SpanTree.Pathed[WithActions[SpanTree]] => T
         ): Seq[T] = {
           nodes.flatMap { node =>
             TextUtils.perhaps(pred(node), value(node))
           }.sorted
         }
 
-        val settable   = collect(_.settable, _.spanTree.span)
-        val erasable   = collect(_.erasable, _.spanTree.span)
-        val insertable = collect(_.insertable, _.spanTree.begin)
+        val settable   = collect(_.settable, _.span)
+        val erasable   = collect(_.erasable, _.span)
+        val insertable = collect(_.insertable, _.begin)
 
         withClue("insertion points: ") {
           insertable shouldEqual programAndMarks.expectedInsertionPoints

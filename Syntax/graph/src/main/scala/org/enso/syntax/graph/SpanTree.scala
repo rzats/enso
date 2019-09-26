@@ -45,9 +45,9 @@ sealed trait SpanTree {
   def span: TextSpan
 
   /** Left-to-right ordered sequence of children with available actions. */
-  def describeChildren: Seq[SpanTreeWithActions]
+  def describeChildren: Seq[WithActions[SpanTree]]
 
-  def children: Seq[SpanTree] = describeChildren.map(_.spanTree)
+  def children: Seq[SpanTree] = describeChildren.map(_.elem)
 
   /** Index of the first character in the [[span]]. */
   def begin: TextPosition = span.begin
@@ -64,92 +64,60 @@ sealed trait SpanTree {
   }
 
   /** Calls function `f` for all nodes in the tree. */
-  def foreach[U](f: LocatedSpanTreeWithActions => U): Unit = {
+  def foreach[U](f: Pathed[WithActions[SpanTree]] => U): Unit = {
     def go(node: SpanTree, pathSoFar: Path): Unit =
       node.describeChildren.zipWithIndex.foreach {
         case (childInfo, index) =>
           val childPath = pathSoFar :+ index
-          f(childInfo.addPath(childPath))
-          go(childInfo.spanTree, childPath)
+          f(Pathed(childInfo, childPath))
+          go(childInfo, childPath)
       }
 
-    f(LocatedSpanTreeWithActions(this, RootPath, Actions.Root))
+    f(Pathed(WithActions(this, Actions.Root), RootPath))
     go(this, RootPath)
   }
 
-  def foldLeft[B](z: B)(op: (B, LocatedSpanTreeWithActions) => B): B = {
+  def foldLeft[B](z: B)(op: (B, Pathed[WithActions[SpanTree]]) => B): B = {
     var result = z
     foreach(nodeInfo => result = op(result, nodeInfo))
     result
   }
 
-  def toSeq(): Seq[LocatedSpanTreeWithActions] =
-    foldLeft(Seq[LocatedSpanTreeWithActions]()) { (acc, node) =>
+  def toSeq(): Seq[Pathed[WithActions[SpanTree]]] =
+    foldLeft(Seq[Pathed[WithActions[SpanTree]]]()) { (acc, node) =>
       node +: acc
     }
 }
 
 object SpanTree {
-
-  /** Just a [[SpanTree]] with a sequence of [[Action]] that are supported for
-    * it.
-    */
-  trait NodeInfoUtil {
-    val spanTree: SpanTree
-    val actions: Set[Action]
-
+  case class WithActions[+T](elem: T, actions: Set[Action]) {
     def supports(action: Action): Boolean = actions.contains(action)
     def settable: Boolean                 = supports(Action.Set)
     def erasable: Boolean                 = supports(Action.Erase)
     def insertable: Boolean               = supports(Action.Insert)
   }
-
-  case class WithActions[T](elem: T, actions: Set[Action])
   object WithActions {
-    implicit def unwrap[T](t: WithActions[T]): T                   = t.elem
-    implicit def unwrapWithPath[T](t: WithActions[WithPath[T]]): T = t.elem
+    implicit def unwrap[T](t: WithActions[T]): T                 = t.elem
+    implicit def unwrapWithPath[T](t: WithActions[Pathed[T]]): T = t.elem
+
+    def apply[T](elem: T, action: Action): WithActions[T] =
+      WithActions(elem, Set(action))
+
+    def withAll[T](elem: T): WithActions[T] =
+      WithActions(elem, Actions.All)
+
+    def withNone[T](elem: T): WithActions[T] =
+      WithActions(elem, Actions.None)
+
+    /** Create empty node that supports only [[Set]]. */
+    def insertionPoint(position: TextPosition): WithActions[SpanTree] =
+      WithActions(Empty(position), Action.Insert)
   }
 
-  case class WithPath[T](elem: T, path: Path)
-  object WithPath {
-    implicit def unwrap[T](t: WithPath[T]): T                         = t.elem
-    implicit def unwrapWithActions[T](t: WithPath[WithActions[T]]): T = t.elem
-
-  }
-
-  /** Type used to describe node's children and actions it can be target of.
-    * @see [[SpanTree.describeChildren]]
-    */
-  final case class SpanTreeWithActions(
-    spanTree: SpanTree,
-    actions: Set[Action] = Set()
-  ) extends NodeInfoUtil {
-    def addPath(path: SpanTree.Path): LocatedSpanTreeWithActions =
-      LocatedSpanTreeWithActions(spanTree, path, actions)
-  }
-
-  /** Like [[SpanTreeWithActions]] but with [[Path]] - so it also allows to uniquely
-    * denote the node position in the tree.
-    */
-  final case class LocatedSpanTreeWithActions(
-    spanTree: SpanTree,
-    path: SpanTree.Path,
-    actions: Set[Action] = Set()
-  ) extends NodeInfoUtil
-
-  object SpanTreeWithActions {
-    def apply(spanTree: SpanTree, action: Action): SpanTreeWithActions =
-      SpanTreeWithActions(spanTree, Set(action))
-
-    def withAllActions(spanTree: SpanTree): SpanTreeWithActions =
-      SpanTreeWithActions(
-        spanTree,
-        Set(Action.Set, Action.Erase, Action.Insert)
-      )
-
-    /** Create info for node that supports only [[Set]] [[Action]]. */
-    def insertionPoint(position: TextPosition): SpanTreeWithActions =
-      SpanTreeWithActions(Empty(position), Action.Insert)
+  case class Pathed[+T](elem: T, path: Path)
+  object Pathed {
+    implicit def unwrap[T](t: Pathed[T]): T                         = t.elem
+    implicit def unwrapWithActions[T](t: Pathed[WithActions[T]]): T = t.elem
   }
 
   final case class LocatedAST(
@@ -201,17 +169,17 @@ object SpanTree {
     parts: Seq[OprAppPart]
   ) extends App {
 
-    private def describeOperand(operand: SpanTree): SpanTreeWithActions =
+    private def describeOperand(operand: SpanTree): WithActions[SpanTree] =
       operand match {
-        case _: Empty => SpanTreeWithActions(operand, Action.Insert)
-        case _        => SpanTreeWithActions(operand, Actions.All)
+        case _: Empty => WithActions(operand, Action.Insert)
+        case _        => WithActions(operand, Actions.All)
       }
 
-    override def describeChildren: Seq[SpanTree.SpanTreeWithActions] = {
+    override def describeChildren: Seq[SpanTree.WithActions[SpanTree]] = {
       val leftmostOperandInfo = describeOperand(self)
       var childrenInfos = parts.foldLeft(Seq(leftmostOperandInfo)) {
         case (acc, OprAppPart(oprAtom, operand)) =>
-          val operatorInfo = SpanTreeWithActions(oprAtom, Actions.Function)
+          val operatorInfo = WithActions(oprAtom, Actions.Function)
           val operandInfo  = describeOperand(operand)
           acc :+ operatorInfo :+ operandInfo
       }
@@ -221,9 +189,9 @@ object SpanTree {
         childrenInfos = childrenInfos.reverse
 
       // If we already miss last the argument, don't add additional placeholder.
-      val insertAfterLast = childrenInfos.lastOption.map(_.spanTree) match {
+      val insertAfterLast = childrenInfos.lastOption.map(_.elem) match {
         case Some(Empty(_)) => None
-        case _              => Some(SpanTreeWithActions.insertionPoint(end))
+        case _              => Some(WithActions.insertionPoint(end))
       }
 
       childrenInfos ++ insertAfterLast
@@ -235,10 +203,10 @@ object SpanTree {
     callee: SpanTree,
     arguments: Seq[SpanTree]
   ) extends App {
-    def describeChildren: Seq[SpanTree.SpanTreeWithActions] = {
-      val calleeInfo           = SpanTreeWithActions(callee, Actions.Function)
-      val argumentsInfo        = arguments.map(SpanTreeWithActions.withAllActions)
-      val potentialNewArgument = SpanTreeWithActions.insertionPoint(end)
+    def describeChildren: Seq[SpanTree.WithActions[SpanTree]] = {
+      val calleeInfo           = WithActions(callee, Actions.Function)
+      val argumentsInfo        = arguments.map(WithActions.withAll)
+      val potentialNewArgument = WithActions.insertionPoint(end)
       calleeInfo +: argumentsInfo :+ potentialNewArgument
     }
   }
@@ -246,7 +214,7 @@ object SpanTree {
   /** Helper trait to facilitate recognizing leaf nodes in span tree. */
   sealed trait Leaf {
     this -> SpanTree
-    final def describeChildren: Seq[SpanTree.SpanTreeWithActions] = Seq()
+    final def describeChildren: Seq[SpanTree.WithActions[SpanTree]] = Seq()
   }
 
   /** A leaf representing an AST element that cannot be decomposed any
@@ -264,10 +232,10 @@ object SpanTree {
     prefix: Option[MacroSegment],
     segments: Seq[MacroSegment]
   ) extends Ast {
-    override def describeChildren: Seq[SpanTreeWithActions] = {
-      prefix.map(SpanTreeWithActions(_)).toSeq ++ segments.map(
-        SpanTreeWithActions(_)
-      )
+    override def describeChildren: Seq[WithActions[SpanTree]] = {
+      val prefixChild     = prefix.map(WithActions.withNone)
+      val segmentChildren = segments.map(WithActions.withNone)
+      prefixChild.toSeq ++ segmentChildren
     }
   }
 
@@ -278,7 +246,7 @@ object SpanTree {
     override val begin: TextPosition,
     introducer: Option[String],
     patternMatch: Pattern.Match,
-    override val describeChildren: Seq[SpanTreeWithActions]
+    override val describeChildren: Seq[WithActions[SpanTree]]
   ) extends SpanTree {
     override def span: TextSpan = {
       val introLength = TextLength(introducer.map(_.length).getOrElse(0))
@@ -391,7 +359,7 @@ object SpanTree {
   def patternStructure(
     pos: TextPosition,
     patMatch: Pattern.Match
-  ): Seq[SpanTreeWithActions] = patMatch match {
+  ): Seq[WithActions[SpanTree]] = patMatch match {
     case Pattern.Match.Or(_, elem) =>
       patternStructure(pos, elem.fold(identity, identity))
     case Pattern.Match.Seq(_, elems) =>
@@ -401,7 +369,7 @@ object SpanTree {
       left ++ right
     case Pattern.Match.Build(_, elem) =>
       val node = SpanTree(elem.el, pos + elem.off)
-      Seq(SpanTreeWithActions(node, Action.Set))
+      Seq(WithActions(node, Action.Set))
     case Pattern.Match.End(_) =>
       Seq()
     case Pattern.Match.Nothing(_) =>

@@ -158,9 +158,9 @@ class Tests extends FunSuite with TestUtils {
         children match {
           case Seq(leftInfo, rightInfo) =>
             val rightSegment =
-              asExpected[SpanTree.MacroSegment](rightInfo.spanTree)
+              asExpected[SpanTree.MacroSegment](rightInfo.elem)
             val leftSegment =
-              asExpected[SpanTree.MacroSegment](leftInfo.spanTree)
+              asExpected[SpanTree.MacroSegment](leftInfo.elem)
 
             leftSegment.text shouldEqual testedCase.leftSegment
             leftInfo.actions shouldEqual Set()
@@ -169,7 +169,7 @@ class Tests extends FunSuite with TestUtils {
             leftChildren should have size 1
             val bracketContents = leftChildren.head
             val leftChildNode =
-              asExpected[SpanTree.AstLeaf](bracketContents.spanTree)
+              asExpected[SpanTree.AstLeaf](bracketContents.elem)
             leftChildNode.text shouldEqual testedCase.literal
             bracketContents.actions shouldEqual Set(Action.Set, Action.Erase)
 
@@ -223,7 +223,7 @@ class Tests extends FunSuite with TestUtils {
     children.zip(expectedActionsPerChild).map {
       case (child, expectedActions) =>
         child.actions shouldEqual expectedActions
-        child.spanTree
+        child.elem
     }
   }
   test("span tree: if foo bar baz then   a+b") {
