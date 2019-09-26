@@ -292,16 +292,27 @@ class Tests extends FunSuite with TestUtils {
   }
 
   test("infix operator chains") {
-    testSpanTreeMarkdown("⎀‹+›⎀")
-    testSpanTreeMarkdown("⎀«a»‹+›⎀")
-    testSpanTreeMarkdown("⎀‹+›⎀«b»⎀")
-    testSpanTreeMarkdown("⎀‹+›⎀«5»⎀")
-    testSpanTreeMarkdown("⎀‹+›⎀«b»‹+›⎀")
-    testSpanTreeMarkdown("⎀‹+›⎀«b»‹+›⎀«c»⎀")
-    testSpanTreeMarkdown("⎀«a»‹+›⎀«b»‹+›⎀")
-    testSpanTreeMarkdown("⎀«a»‹+›⎀«b»⎀")
-    testSpanTreeMarkdown("⎀‹+›⎀ ‹+›⎀")
-    testSpanTreeMarkdown("⎀‹+›⎀«a»‹+›⎀«b»‹+›⎀")
+    // test programs that are independent whether operator is left- or
+    // right-associative
+    def generalCases(opr: String) =
+      Seq(
+        "⎀‹+›⎀",
+        "⎀«a»‹+›⎀",
+        "⎀‹+›⎀«b»⎀",
+        "⎀‹+›⎀«5»⎀",
+        "⎀‹+› ⎀«5»⎀",
+        "⎀‹+›⎀«b»‹+›⎀",
+        "⎀‹+›⎀«b»‹+›⎀«c»⎀",
+        "⎀«a»‹+›⎀«b»‹+›⎀",
+        "⎀«a»‹+›⎀«b»⎀",
+        "⎀‹+›⎀«a»‹+›⎀«b»‹+›⎀"
+      ).map(_.replace("+", opr))
+
+    val leftAssocCases = Seq("⎀‹+›⎀ ‹+›⎀") ++ generalCases("+")
+    leftAssocCases.foreach(testSpanTreeMarkdown)
+
+    val rightAssocCases = Seq("⎀‹,› ⎀‹,›⎀") ++ generalCases(",")
+    rightAssocCases.foreach(testSpanTreeMarkdown)
   }
 
   test("mixed infix and app") {

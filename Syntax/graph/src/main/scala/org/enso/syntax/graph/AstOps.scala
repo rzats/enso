@@ -26,8 +26,8 @@ object KnownOperators {
 object AstOps {
   implicit class Opr_ops(opr: AST.Opr) {
     def isAssignment: Boolean = opr.name == KnownOperators.Assignment
-    def isAccess:     Boolean = opr.name == KnownOperators.Access
-    def isMinus:      Boolean = opr.name == KnownOperators.Minus
+    def isAccess: Boolean     = opr.name == KnownOperators.Access
+    def isMinus: Boolean      = opr.name == KnownOperators.Minus
   }
 
   implicit class Ast_opsttttttttt(ast: AST) {
@@ -88,13 +88,6 @@ object AstOps {
 
     def isInfixOperatorUsage(oprName: String): Boolean =
       ast.usedInfixOperator.exists(_.name == oprName)
-
-    def flattenInfix(
-      pos: TextPosition
-    ): Seq[ExpressionPartOrPoint] = GeneralizedInfix(ast) match {
-      case None       => Seq(ExpressionPart(pos, ast))
-      case Some(info) => info.flattenInfix(pos)
-    }
 
     def asNode: Option[Node.Description] = {
       val (lhs, rhs) = ast.toAssignment match {
@@ -210,7 +203,7 @@ object AstOps {
   * expression. Used e.g. to represent infix operator operands.
   */
 sealed trait ExpressionPartOrPoint {
-  def span: TextSpan
+  def span:   TextSpan
   def astOpt: Option[AST]
 }
 object ExpressionPartOrPoint {
@@ -223,13 +216,13 @@ object ExpressionPartOrPoint {
 
 final case class ExpressionPart(pos: TextPosition, ast: AST)
     extends ExpressionPartOrPoint {
-  override def span:   TextSpan    = TextSpan(pos, ast)
+  override def span: TextSpan      = TextSpan(pos, ast)
   override def astOpt: Option[AST] = Some(ast)
 }
 
 /** Place in expression where some AST could have been present but was not. */
 final case class EmptyPlace(pos: TextPosition) extends ExpressionPartOrPoint {
-  override def span:   TextSpan    = TextSpan(pos, TextLength.Empty)
+  override def span: TextSpan      = TextSpan(pos, TextLength.Empty)
   override def astOpt: Option[AST] = None
 }
 
@@ -238,6 +231,22 @@ final case class InfixExpressionParts(
   operator: ExpressionPart,
   right: ExpressionPartOrPoint
 )
+
+case class InfixChainPart(
+  operator: ExpressionPart,
+  operand: ExpressionPartOrPoint
+)
+final case class FlattenedInfixChain(
+  self: ExpressionPartOrPoint,
+  parts: Seq[InfixChainPart]
+) {
+  def toSeq: Seq[ExpressionPartOrPoint] = {
+    val tail = parts.foldLeft(Seq[ExpressionPartOrPoint]()) { (acc, part) =>
+      part.operator +: part.operand +: acc
+    }
+    self +: tail
+  }
+}
 
 //////////////////////////////////////////////////////////////////////////////
 //// GeneralizedInfix ////////////////////////////////////////////////////////
@@ -254,8 +263,8 @@ final case class GeneralizedInfix(
 ) {
   import AstOps._
 
-  def name:                   String = operatorAst.name
-  def span(ast: Option[AST]): Int    = ast.map(_.span).getOrElse(0)
+  def name: String                = operatorAst.name
+  def span(ast: Option[AST]): Int = ast.map(_.span).getOrElse(0)
 
   def operatorOffset: Int = span(leftArgAst) + leftSpace
   def rightArgumentOffset: Int =
@@ -273,19 +282,27 @@ final case class GeneralizedInfix(
   }
 
   /** Converts nested operator applications into a flat list of all operands. */
-  def flattenInfix(pos: TextPosition): Seq[ExpressionPartOrPoint] = {
-    def flatten(child: ExpressionPartOrPoint): Seq[ExpressionPartOrPoint] =
-      child.astOpt match {
-        case Some(ast) if sameOperatorAsIn(ast) =>
-          ast.flattenInfix(child.span.begin)
-        case _ => Seq(child)
-      }
-
+  def flattenInfix(pos: TextPosition): FlattenedInfixChain = {
     val parts = getParts(pos)
-    Assoc.of(operatorAst.name) match {
-      case Assoc.Left  => flatten(parts.left) :+ parts.operator :+ parts.right
-      case Assoc.Right => parts.left +: parts.operator +: flatten(parts.right)
+    val assoc = Assoc.of(operatorAst.name)
+    val myElem = assoc match {
+      case Assoc.Left  => InfixChainPart(parts.operator, parts.right)
+      case Assoc.Right => InfixChainPart(parts.operator, parts.left)
     }
+    val selfPart = assoc match {
+      case Assoc.Left  => parts.left
+      case Assoc.Right => parts.right
+    }
+
+    val selfSubtreeAsInfix = selfPart.astOpt.flatMap(GeneralizedInfix(_))
+    val selfSubtreeFlattened = selfSubtreeAsInfix match {
+      case Some(selfInfix) if selfInfix.name == name =>
+        selfInfix.flattenInfix(selfPart.span.begin)
+      case _ =>
+        FlattenedInfixChain(selfPart, Seq())
+    }
+
+    selfSubtreeFlattened.copy(parts = myElem +: selfSubtreeFlattened.parts)
   }
 }
 object GeneralizedInfix {

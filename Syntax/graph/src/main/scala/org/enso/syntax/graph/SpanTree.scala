@@ -4,6 +4,7 @@ import org.enso.syntax.graph.AstOps._
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Opr
 import org.enso.syntax.text.ast.meta.Pattern
+import org.enso.syntax.text.ast.opr.Assoc
 
 import scala.util.Success
 import scala.util.Try
@@ -38,15 +39,14 @@ sealed trait SpanTree {
   /** The span of expression part being described by this node. Indices are
     * relative to the beginning of the expression described by the tree root.
     *
-    * For some nodes, like [[SpanTree.Empty]] span can be of zero
-    * length — in such case they only represent a point within a string.
+    * For some nodes, like [[SpanTree.Empty]] span can be of zero length — in
+    * such case the node represents a point within a string.
     */
   def span: TextSpan
 
-  /** Sequence of children and operations that can be performed on them. */
+  /** Left-to-right ordered sequence of children with available actions. */
   def describeChildren: Seq[SpanTreeWithActions]
 
-  /** Children nodes. */
   def children: Seq[SpanTree] = describeChildren.map(_.spanTree)
 
   /** Index of the first character in the [[span]]. */
@@ -99,20 +99,20 @@ object SpanTree {
     val actions: Set[Action]
 
     def supports(action: Action): Boolean = actions.contains(action)
-    def settable:                 Boolean = supports(Action.Set)
-    def erasable:                 Boolean = supports(Action.Erase)
-    def insertable:               Boolean = supports(Action.Insert)
+    def settable: Boolean                 = supports(Action.Set)
+    def erasable: Boolean                 = supports(Action.Erase)
+    def insertable: Boolean               = supports(Action.Insert)
   }
 
   case class WithActions[T](elem: T, actions: Set[Action])
   object WithActions {
-    implicit def unwrap[T](t: WithActions[T]):                   T = t.elem
+    implicit def unwrap[T](t: WithActions[T]): T                   = t.elem
     implicit def unwrapWithPath[T](t: WithActions[WithPath[T]]): T = t.elem
   }
 
   case class WithPath[T](elem: T, path: Path)
   object WithPath {
-    implicit def unwrap[T](t: WithPath[T]):                         T = t.elem
+    implicit def unwrap[T](t: WithPath[T]): T                         = t.elem
     implicit def unwrapWithActions[T](t: WithPath[WithActions[T]]): T = t.elem
 
   }
@@ -173,29 +173,32 @@ object SpanTree {
   /** Node describing certain AST subtree, has non-zero span. */
   sealed trait Ast extends SpanTree {
     def info: LocatedAST
-    def ast:  AST      = info.ast
+    def ast: AST       = info.ast
     def text: String   = ast.show()
     def span: TextSpan = TextSpan(info.position, TextLength(ast))
   }
 
-  /** Generalization over prefix application (e.g. `print "Hello"`) and
-    * infix operator application (e.g. `a + b`).
+  /** Includes prefix applications and generalized infix applications, like:
+    * `foo bar`, `a + b`, `1,2,3`, `+`
     */
   sealed trait App extends Ast
+
+  case class OprAppPart(opr: AstLeaf, operand: SpanTree)
 
   /** E.g. `a + b + c` flattened to a single 5-child node. Operands can be
     * set and erased. New operands can be inserted next to existing operands.
     *
     * @param opr The infix operator on which we apply operands. If there are
     *            multiple operators in chain, any of them might be referenced.
-    * @param leftmostOperand The left-most operand and the first input.
-    * @param parts Subsequent pairs of children (operator, operand).
+    * @param self Left- or right-most operand, depending on opr's associativity.
+    * @param parts Subsequent pairs of children (operator, operand), beginning
+    *              with the ones near-most to self operand.
     */
   final case class OprChain(
     info: LocatedAST,
     opr: Opr,
-    leftmostOperand: SpanTree,
-    parts: Seq[(AstLeaf, SpanTree)]
+    self: SpanTree,
+    parts: Seq[OprAppPart]
   ) extends App {
 
     private def describeOperand(operand: SpanTree): SpanTreeWithActions =
@@ -205,13 +208,17 @@ object SpanTree {
       }
 
     override def describeChildren: Seq[SpanTree.SpanTreeWithActions] = {
-      val leftmostOperandInfo = describeOperand(leftmostOperand)
-      val childrenInfos = parts.foldLeft(Seq(leftmostOperandInfo)) {
-        case (acc, (oprAtom, operand)) =>
+      val leftmostOperandInfo = describeOperand(self)
+      var childrenInfos = parts.foldLeft(Seq(leftmostOperandInfo)) {
+        case (acc, OprAppPart(oprAtom, operand)) =>
           val operatorInfo = SpanTreeWithActions(oprAtom, Actions.Function)
           val operandInfo  = describeOperand(operand)
           acc :+ operatorInfo :+ operandInfo
       }
+
+      // to make children left-to-right
+      if (Assoc.of(opr.name) == Assoc.Right)
+        childrenInfos = childrenInfos.reverse
 
       // If we already miss last the argument, don't add additional placeholder.
       val insertAfterLast = childrenInfos.lastOption.map(_.spanTree) match {
@@ -349,7 +356,7 @@ object SpanTree {
     case _ =>
       GeneralizedInfix(ast) match {
         case Some(info) =>
-          val childrenAsts = info.flattenInfix(pos)
+          val childrenAsts = info.flattenInfix(pos).toSeq
           val childrenNodes = childrenAsts.map {
             case part: ExpressionPart =>
               SpanTree(part.ast, part.pos)
@@ -358,23 +365,23 @@ object SpanTree {
           }
 
           val nodeInfo = LocatedAST(pos, ast)
-
-          // FIXME wrap sliding
-          val self = childrenNodes.headOption.getOrElse(
-            throw new Exception(
-              "internal error: infix with no children nodes"
-            )
-          )
-          val calls = childrenNodes
-            .drop(1)
-            .sliding(2, 2)
-            .map {
-              case (opr: AstLeaf) :: (arg: SpanTree) :: Nil =>
-                (opr, arg)
-            }
-            .toSeq
-
-          OprChain(nodeInfo, info.operatorAst, self, calls)
+          childrenNodes match {
+            case leftmost :: otherChildren =>
+              val pairs = otherChildren.sliding(2, 2)
+              val parts = pairs.map {
+                case (opr: AstLeaf) :: (arg: SpanTree) :: Nil =>
+                  OprAppPart(opr, arg)
+                case _ =>
+                  throw new Exception(
+                    "internal error: unexpected elements in infix app"
+                  )
+              }.toSeq
+              OprChain(nodeInfo, info.operatorAst, leftmost, parts)
+            case _ =>
+              throw new Exception(
+                "internal error: missing leftmost operand in infix app"
+              )
+          }
         case _ =>
           throw new Exception("internal error: not supported ast")
       }
