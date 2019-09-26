@@ -151,7 +151,7 @@ object SpanTree {
       info: Positioned[AST],
       opr: Opr,
       self: SpanTree,
-      parts: Seq[OprChain.Part]
+      parts: Seq[OprChain.Elem]
     ) extends App {
 
       private def describeOperand(operand: SpanTree): WithActions[SpanTree] =
@@ -161,8 +161,8 @@ object SpanTree {
         }
 
       override def describeChildren: Seq[WithActions[SpanTree]] = {
-        val leftmostOperandInfo = describeOperand(self)
-        var childrenInfos = parts.foldLeft(Seq(leftmostOperandInfo)) {
+        val selfOperandInfo = describeOperand(self)
+        var childrenInfos = parts.foldLeft(Seq(selfOperandInfo)) {
           case (acc, part) =>
             val operatorInfo = WithActions(part.operator, Actions.Function)
             val operandInfo  = describeOperand(part.operand)
@@ -184,9 +184,7 @@ object SpanTree {
       }
     }
     object OprChain {
-
-      /** A single link from the chain. */
-      case class Part(operator: AstLeaf, operand: SpanTree)
+      case class Elem(operator: AstLeaf, operand: SpanTree)
     }
 
     /** E.g. `foo bar baz`.
@@ -341,11 +339,13 @@ object SpanTree {
           val parts = chain.parts.map { part =>
             val operatorNode = AstLeaf(part.operator)
             val operandNode  = toNode(part.operand)
-            Node.OprChain.Part(operatorNode, operandNode)
+            Node.OprChain.Elem(operatorNode, operandNode)
           }
           Node.OprChain(nodeInfo, info.oprAST, selfNode, parts)
         case _ =>
-          throw new Exception(s"internal error: not supported ast: $ast")
+          throw new NotImplementedError(
+            s"internal error: not supported ast: $ast"
+          )
       }
   }
 
@@ -368,8 +368,9 @@ object SpanTree {
       Seq()
     case Pattern.Match.Nothing(_) =>
       Seq()
-    case a =>
-      println(a)
-      null
+    case _ =>
+      throw new NotImplementedError(
+        s"internal error: not supported pattern: $patMatch"
+      )
   }
 }

@@ -44,9 +44,9 @@ object AstOps {
     def as[T: UnapplyByType]: Option[T] = UnapplyByType[T].unapply(ast)
     def is[T: UnapplyByType]: Boolean   = ast.as[T].isDefined
 
-    ////////////////////////////////////////////
-    //// parts being specific to double rep ////
-    ////////////////////////////////////////////
+    //////////////////////////////////////
+    //// parts specific to double rep ////
+    //////////////////////////////////////
 
     def toImport: Option[AST.Import] =
       // FIXME [mwu] I doubt we can use here resolved macro
@@ -62,18 +62,6 @@ object AstOps {
     def doesImport(module: Module.Name): Boolean = {
       ast.toImport.exists(_.path == module)
     }
-
-    /** [[AST.Opr]] node when this AST is infix operator usage (full application
-      * or a section.
-      */
-    def usedInfixOperator: Option[AST.Opr] =
-      GeneralizedInfix(ast).map(_.oprAST)
-
-    def isInfixOperatorUsage: Boolean =
-      ast.usedInfixOperator.nonEmpty
-
-    def isInfixOperatorUsage(oprName: String): Boolean =
-      ast.usedInfixOperator.exists(_.name == oprName)
 
     /** Linearizes nested sequence of [[AST.App.Prefix]].
       *
@@ -189,42 +177,33 @@ final case class GeneralizedInfix(
   oprAST: AST.Opr,
   rightAST: Option[SAST]
 ) {
-  import AstOps._
   import GeneralizedInfix._
 
   def assoc: Assoc = Assoc.of(name)
   def name: String = oprAST.name
-
   def leftOperand(offset: TextPosition): Operand =
     Positioned(leftAST.map(_.el), offset)
   def operator(offset: TextPosition): Operator =
     Positioned(oprAST, offset + operatorOffset)
   def rightOperand(offset: TextPosition): Operand =
     Positioned(rightAST.map(_.el), offset + rightArgumentOffset)
-
   def selfOperand(offset: TextPosition): Operand = assoc match {
     case Assoc.Left  => leftOperand(offset)
     case Assoc.Right => rightOperand(offset)
   }
-
-  /** non-self operand */
-  def otherOperand(offset: TextPosition): Operand = assoc match {
+  def nonSelfOperand(offset: TextPosition): Operand = assoc match {
     case Assoc.Left  => rightOperand(offset)
     case Assoc.Right => leftOperand(offset)
   }
-
   def operatorOffset: Int =
     leftAST.map(arg => arg.el.span + arg.off).getOrElse(0)
   def rightArgumentOffset: Int =
     operatorOffset + oprAST.span + rightAST.map(_.off).getOrElse(0)
 
-  def sameOperatorAsIn(ast: AST): Boolean =
-    ast.isInfixOperatorUsage(name)
-
   /** Converts nested operator applications into a flat list of all operands. */
   def flattenInfix(pos: TextPosition): Chain = {
     val self      = selfOperand(pos)
-    val otherPart = ChainElem(operator(pos), otherOperand(pos))
+    val otherPart = ChainElem(operator(pos), nonSelfOperand(pos))
 
     val selfSubtreeAsInfix = self.flatMap(GeneralizedInfix(_))
     val selfSubtreeFlattened = selfSubtreeAsInfix match {

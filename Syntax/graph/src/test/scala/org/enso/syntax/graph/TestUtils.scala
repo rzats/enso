@@ -45,7 +45,7 @@ trait TestUtils extends org.scalatest.Matchers {
   ): R = {
     val (result, state, notifier) = withDR(initialProgram)(action)
     state.ast.show should be(ParserUtils.preprocess(expectedProgram))
-    notification.foreach(notifier.notificationsReceived.head should be(_))
+    notification.foreach(notifier.received.head should be(_))
     result
   }
 

@@ -313,6 +313,11 @@ class Tests extends FunSuite with TestUtils {
     rightAssocCases.foreach(testSpanTreeMarkdown)
   }
 
+  test("arrow macro") {
+    // not like other operators, as it is a macro
+    testSpanTreeMarkdown("‹a›->‹b›")
+  }
+
   test("mixed infix and app") {
     // three insertion points for a+b and two before/after `foo` argument.
     testSpanTreeMarkdown("‹⎀«a»‹+›⎀«b»⎀› ⎀«foo»⎀")
