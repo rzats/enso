@@ -3,8 +3,11 @@ package org.enso.syntax.graph
 import java.util.UUID
 
 import org.enso.data.List1
+import org.enso.syntax.graph
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Cons
+
+import scala.annotation.tailrec
 
 /** Layer over Double Representation and other backend services. Directly under
   * GUI. */
@@ -57,6 +60,9 @@ trait SessionManager {
 
 object SessionManager {
 
+  /** Information that is assigned to given [[AST.ID]] in the module. */
+  final case class Metadata() // TODO [mwu] now just Unit, to be implemented
+
   /** Position in the graph's rendering space */
   final case class Position(x: Double, y: Double)
 }
@@ -69,15 +75,22 @@ object SessionManager {
   * */
 trait StateManager {
   import API.Module
+  import SessionManager.Metadata
 
   /** Lists modules in a project. */
-  def availableModules(): Seq[Module.Id]
+  def moduleInProject(): Seq[Module.Id]
 
   /** Obtains the AST for a given [[Module.Id]] */
   def getModule(module: Module.Id): AST.Module
 
   /** Overwrites module's AST with a new one. */
   def setModule(module: Module.Id, ast: AST.Module): Unit
+
+  def getMetadata(module: Module.Id, id: AST.ID): Option[Metadata]
+
+  def setMetadata(module: Module.Id, id: AST.ID, metadata: Metadata)
+
+  def removeMetadata(module: Module.Id, id: AST.ID)
 
   // TODO: external update notifications
 }
@@ -146,9 +159,9 @@ object API {
     /** Module's root-level graph. It has no inputs nor outputs. */
     object Graph {
       val Graph: API.Graph.type = API.Graph
-      final case class Id(id: Module.Id)                 extends Graph.Id
-      final case class Context(id: Module.Context)       extends Graph.Context
-      final case class Location(module: Module.Location) extends Graph.Location
+      final case class Id(id: Module.Id)              extends Graph.Id
+      final case class Context(id: Module.Context)    extends Graph.Context
+      final case class Location(loc: Module.Location) extends Graph.Location
 
       final case class Description(
         nodes: Seq[API.Node.Description],
@@ -173,8 +186,17 @@ object API {
   // TODO: this is about graph-having defintions (functions, perhaps vars)
   // what about other kinds of "definitions"? TODO unify vocabulary
   object Definition {
-    type Context = Either[Module.Location, Definition.Location]
-    type Id      = AST.Id
+    trait Context {
+      @tailrec
+      final def module: Module.Location = this match {
+        case ModuleContext(moduleId)  => moduleId
+        case DefinitionContext(defId) => defId.context.module
+      }
+    }
+    case class ModuleContext(id: Module.Location)         extends Context
+    case class DefinitionContext(id: Definition.Location) extends Context
+
+    type Id = AST.Id
     final case class Location(context: Context, id: Id)
 
     final case class Description(name: String, id: Id)
@@ -203,7 +225,12 @@ object API {
   object Graph {
     sealed trait Id
     sealed trait Context
-    sealed trait Location
+    sealed trait Location {
+      def module: Module.Location = this match {
+        case Module.Graph.Location(loc)        => loc
+        case Definition.Graph.Location(defLoc) => defLoc.context.module
+      }
+    }
 
     sealed trait Description {
       def nodes: Seq[Node.Description]
@@ -236,12 +263,11 @@ object API {
     type Context = Graph.Location
     final case class Location(context: Context, node: Id)
 
-    final case class Metadata()
     final case class Description(
       id: Id,
       expr: SpanTree,
       outputs: Option[SpanTree], // TODO rename
-      metadata: Metadata
+      metadata: Option[SessionManager.Metadata]
     )
   }
 
@@ -321,7 +347,8 @@ object API {
           ) extends Node
           case class Output(node: Location, output: Port.Description)
               extends Node
-          case class Metadata(loc: Location, metadata: Metadata) extends Node
+          case class Metadata(loc: Location, metadata: SessionManager.Metadata)
+              extends Node
         }
 
         sealed trait Flag extends Node
@@ -410,10 +437,10 @@ trait GraphAPI {
   //////////////////////////////////////////////////////////////////////////////
   def addNode(
     context: Node.Context,
-    metadata: Node.Metadata,
+    metadata: graph.SessionManager.Metadata,
     expr: String
   ): Node.Id
-  def setMetadata(node: Node.Location, newMetadata: Node.Metadata)
+  def setMetadata(node: Node.Location, newMetadata: SessionManager.Metadata)
   def setExpression(node: Node.Location, expression: String)
   def removeNode(node: Node.Location)
   def extractToFunction(

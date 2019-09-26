@@ -5,13 +5,9 @@ import AstOps._
 import org.enso.syntax.graph.API._
 import org.enso.syntax.text.AST.Import
 import org.enso.syntax.text.AST
+import org.enso.syntax.text.AST.App.Infix
 import org.enso.syntax.text.Parser
 import org.enso.syntax.text.ast.Repr._
-
-case class MissingIdException(ast: AST) extends Exception {
-  override def getMessage: String =
-    s"missing id for node with expression `${ast.show()}`"
-}
 
 object ParserUtils {
   def prettyPrint(ast: AST.Module): Unit = {
@@ -95,19 +91,24 @@ final case class DoubleRepresentation(
   ): Definition.Graph.Description = ???
   def getGraph(loc: Module.Graph.Location): Module.Graph.Description = {
     val ast   = state.getModule(loc.module)
-    val nodes = ast.flatTraverse(_.asNode)
+    val nodes = ast.flatTraverse(describeNode(loc.module, _))
     Module.Graph.Description(nodes, Seq())
   }
 
   def getDefinitions(loc: Module.Location): List[Definition.Description] = ???
   def addNode(
     context: Node.Context,
-    metadata: Node.Metadata,
+    metadata: SessionManager.Metadata,
     expr: String
-  ): Node.Id                                                       = ???
-  def setMetadata(node: Node.Location, newMetadata: Node.Metadata) = ???
-  def setExpression(node: Node.Location, expression: String)       = ???
-  def removeNode(node: Node.Location)                              = ???
+  ): Node.Id = ???
+  def setMetadata(node: Node.Location, newMetadata: SessionManager.Metadata) = {
+    state.setMetadata(node.context.module, node.node, newMetadata)
+    val notification =
+      GraphAPI.Notification.Node.Changed.Metadata(node, newMetadata)
+    notifier.notify(notification)
+  }
+  def setExpression(node: Node.Location, expression: String) = ???
+  def removeNode(node: Node.Location)                        = ???
   def extractToFunction(
     context: Node.Context,
     node: Set[Node.Id]
@@ -168,5 +169,36 @@ final case class DoubleRepresentation(
     val offset = TextPosition(module.lineOffset(lineIx))
     val span   = TextSpan(offset, TextLength(line.span))
     notifier.notify(TextAPI.Notification.Erased(context, span))
+  }
+
+  /////////////////
+  //// Helpers ////
+  /////////////////
+
+  def describeNode(
+    module: Module.Location,
+    ast: AST
+  ): Option[API.Node.Description] = {
+    val (lhs, rhs) = ast.toAssignment match {
+      case Some(Infix(l, _, r)) => (Some(l), r)
+      case None                 => (None, ast)
+    }
+
+    // FIXME: [mwu] provisional rule to not generate nodes from imports
+    if (rhs.toImport.nonEmpty)
+      return None
+
+    if (lhs.exists(_.is[AST.App.Prefix]))
+      return None
+
+    val id       = ast.unsafeID
+    val spanTree = SpanTree(rhs, TextPosition.Start)
+    val output   = lhs.map(SpanTree(_, TextPosition.Start))
+
+    // TODO [mwu] need to obtain metadata for node
+    val metadata = state.getMetadata(module, id)
+
+    val node = Node.Description(id, spanTree, output, metadata)
+    Some(node)
   }
 }

@@ -32,6 +32,14 @@ object AstOps {
 
   implicit class AstOps_syntax_graph(ast: AST) {
 
+    ////////////////////////////////////////////////////////
+    ///// Parts to be moved to AST operations from here ////
+    ////////////////////////////////////////////////////////
+    case class MissingIdException(ast: AST) extends Exception {
+      override def getMessage: String =
+        s"missing id for node with expression `${ast.show()}`"
+    }
+
     /** Gets [[AST.ID]] from this AST, throwing [[MissingIdException]] if ID
       * has not been set. */
     def unsafeID: AST.ID = ast.id.getOrElse(throw MissingIdException(ast))
@@ -39,10 +47,9 @@ object AstOps {
     def as[T: UnapplyByType]: Option[T] = UnapplyByType[T].unapply(ast)
     def is[T: UnapplyByType]: Boolean   = ast.as[T].isDefined
 
-    ///////////////////////////////////////////////////////////////////////////////
-    ///////////////////////////////////////////////////////////////////////////////
-    ///////////////////////////////////////////////////////////////////////////////
-    ///////////////////////////////////////////////////////////////////////////////
+    ////////////////////////////////////////////
+    //// parts being specific to double rep ////
+    ////////////////////////////////////////////
 
     def toImport: Option[AST.Import] =
       // FIXME [mwu] I doubt we can use here resolved macro
@@ -59,6 +66,18 @@ object AstOps {
       ast.toImport.exists(_.path sameTarget module)
     }
 
+    /** [[AST.Opr]] node when this AST is infix operator usage (full application
+      * or a section.
+      */
+    def usedInfixOperator: Option[AST.Opr] =
+      GeneralizedInfix(ast).map(_.operatorAst)
+
+    def isInfixOperatorUsage: Boolean =
+      ast.usedInfixOperator.nonEmpty
+
+    def isInfixOperatorUsage(oprName: String): Boolean =
+      ast.usedInfixOperator.exists(_.name == oprName)
+
     /** Linearizes nested sequence of App.Prefix.
       *
       * For example structures for code like `foo a b c` will be flattened to
@@ -72,45 +91,9 @@ object AstOps {
         case AST.App.Prefix.any(lhsApp) => flattenPrefix(pos, lhsApp)
         case nonAppAst                  => Seq(pos -> nonAppAst)
       }
-      val rhsPos = pos + ast.fn.repr.span + ast.off
+      val rhsPos = pos + ast.fn.span + ast.off
       val last   = rhsPos -> ast.arg
       init :+ last
-    }
-
-    /** [[AST.Opr]] node when this AST is infix operator usage (full application
-      * or a section.
-      */
-    def usedInfixOperator: Option[AST.Opr] =
-      GeneralizedInfix(ast).map(_.operatorAst)
-
-    def isInfixOperatorUsage: Boolean =
-      ast.usedInfixOperator.nonEmpty
-
-    def isInfixOperatorUsage(oprName: String): Boolean =
-      ast.usedInfixOperator.exists(_.name == oprName)
-
-    def asNode: Option[Node.Description] = {
-      val (lhs, rhs) = ast.toAssignment match {
-        case Some(Infix(l, _, r)) => (Some(l), r)
-        case None                 => (None, ast)
-      }
-
-      // FIXME: [mwu] provisional rule to not generate nodes from imports
-      if (rhs.toImport.nonEmpty)
-        return None
-
-      if (lhs.exists(_.is[AST.App.Prefix]))
-        return None
-
-      val id       = ast.unsafeID
-      val spanTree = SpanTree(rhs, TextPosition.Start)
-      val output   = lhs.map(SpanTree(_, TextPosition.Start))
-
-      // TODO [mwu] need to obtain metadata for node
-      val metadata = Node.Metadata()
-
-      val node = Node.Description(id, spanTree, output, metadata)
-      Some(node)
     }
   }
 
@@ -253,6 +236,7 @@ final case class GeneralizedInfix(
 ) {
   import AstOps._
 
+  def assoc: Assoc                = Assoc.of(operatorAst.name)
   def name: String                = operatorAst.name
   def span(ast: Option[AST]): Int = ast.map(_.span).getOrElse(0)
 
@@ -274,14 +258,13 @@ final case class GeneralizedInfix(
   /** Converts nested operator applications into a flat list of all operands. */
   def flattenInfix(pos: TextPosition): FlattenedInfixChain = {
     val parts = getParts(pos)
-    val assoc = Assoc.of(operatorAst.name)
-    val myElem = assoc match {
-      case Assoc.Left  => InfixChainPart(parts.operator, parts.right)
-      case Assoc.Right => InfixChainPart(parts.operator, parts.left)
-    }
     val selfPart = assoc match {
       case Assoc.Left  => parts.left
       case Assoc.Right => parts.right
+    }
+    val otherPart = assoc match {
+      case Assoc.Left  => InfixChainPart(parts.operator, parts.right)
+      case Assoc.Right => InfixChainPart(parts.operator, parts.left)
     }
 
     val selfSubtreeAsInfix = selfPart.astOpt.flatMap(GeneralizedInfix(_))
@@ -292,7 +275,7 @@ final case class GeneralizedInfix(
         FlattenedInfixChain(selfPart, Seq())
     }
 
-    selfSubtreeFlattened.copy(parts = myElem +: selfSubtreeFlattened.parts)
+    selfSubtreeFlattened.copy(parts = otherPart +: selfSubtreeFlattened.parts)
   }
 }
 object GeneralizedInfix {
