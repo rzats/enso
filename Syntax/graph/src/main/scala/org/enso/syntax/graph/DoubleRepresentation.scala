@@ -100,7 +100,7 @@ final case class DoubleRepresentation(
     context: Node.Context,
     metadata: SessionManager.Metadata,
     expr: String
-  ): Node.Id = ???
+  ): Node.ID = ???
   def setMetadata(
     node: Node.Location,
     newMetadata: SessionManager.Metadata
@@ -114,14 +114,14 @@ final case class DoubleRepresentation(
   def removeNode(node: Node.Location)                        = ???
   def extractToFunction(
     context: Node.Context,
-    node: Set[Node.Id]
-  ): Definition.Id                                                       = ???
+    node: Set[Node.ID]
+  ): Definition.ID                                                       = ???
   def setPortName(port: Graph.Port.Location, name: String)               = ???
   def addPort(port: Graph.Port.Location, name: String, tp: Option[Type]) = ???
   def removePort(port: Graph.Port.Location)                              = ???
-  def addConnection(graph: Port.Context, from: Output.Id, to: Input.Id) =
+  def addConnection(graph: Port.Context, from: Output.ID, to: Input.ID) =
     ???
-  def removeConnection(graph: Port.Context, from: Output.Id, to: Input.Id) =
+  def removeConnection(graph: Port.Context, from: Output.ID, to: Input.ID) =
     ???
 
   override def importedModules(module: Module.Location): Seq[Module.Name] = {
@@ -131,7 +131,7 @@ final case class DoubleRepresentation(
     paths
   }
 
-  override def importModule(context: Module.Id, importee: Module.Name): Unit = {
+  override def importModule(context: Module.ID, importee: Module.Name): Unit = {
     val module         = state.getModule(context)
     val currentImports = module.imports
     if (currentImports.exists(_ doesImport importee))
@@ -155,7 +155,7 @@ final case class DoubleRepresentation(
   }
 
   override def removeImport(
-    context: Module.Id,
+    context: Module.ID,
     importToRemove: Module.Name
   ): Unit = {
     val module = state.getModule(context)
