@@ -11,40 +11,40 @@ import org.enso.syntax.text.AST
   * afterwards.
   */
 final case class StateManagerMock(var program: String) extends StateManager {
-  var ast: AST.Module                              = ParserUtils.parse(program)
-  var metadata: Map[(Module.ID, AST.ID), Metadata] = Map()
 
-  override def moduleInProject(): Seq[Module.ID] =
-    Seq(StateManagerMock.mainModule)
+  val module = new ModuleManager {
+    var ast: AST.Module = ParserUtils.parse(program)
 
-  override def getModule(module: Module.ID): AST.Module = {
-    if (module == StateManagerMock.mainModule) ast
-    else throw StateManager.ModuleNotFoundException(module)
+    override def list: Seq[Module.ID] =
+      Seq(StateManagerMock.mainModule)
+
+    override def apply(module: Module.ID): AST.Module =
+      if (module == StateManagerMock.mainModule) ast
+      else throw StateManager.ModuleNotFoundException(module)
+
+    override def update(module: Module.ID, ast: AST.Module): Unit = {
+      if (module != StateManagerMock.mainModule)
+        throw new Exception(s"no such module: $module")
+
+      program  = ast.show()
+      this.ast = ast
+      println(s"New AST for module $module: $ast")
+      println(s"New Program text for module $module:\n$program")
+    }
   }
 
-  override def setModule(module: Module.ID, ast: AST.Module): Unit = {
-    if (module != StateManagerMock.mainModule)
-      throw new Exception(s"no such module: $module")
+  val metadata = new MetadataManager {
+    var metadata: Map[(Module.ID, AST.ID), Metadata] = Map()
 
-    this.program = ast.show()
-    this.ast     = ast
-    println(s"New AST for module $module: $ast")
-    println(s"New Program text for module $module:\n$program")
+    override def apply(loc: Module.ID, id: AST.ID): Option[Metadata] =
+      metadata.get(loc -> id)
+
+    override def update(loc: Module.ID, id: AST.ID, data: Metadata): Unit =
+      metadata = metadata + (loc -> id -> data)
+
+    override def remove(module: Module.ID, id: AST.ID): Unit =
+      metadata = metadata - (module -> id)
   }
-
-  override def getMetadata(module: Module.ID, id: AST.ID): Option[Metadata] =
-    metadata.get(module -> id)
-
-  override def setMetadata(
-    module: Module.ID,
-    id: AST.ID,
-    newMetadata: Metadata
-  ): Unit = {
-    metadata = metadata + (module -> id -> newMetadata)
-  }
-
-  override def removeMetadata(module: Module.ID, id: AST.ID): Unit =
-    metadata = metadata - (module -> id)
 }
 
 object StateManagerMock {

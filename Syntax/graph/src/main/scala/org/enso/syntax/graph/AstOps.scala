@@ -4,6 +4,7 @@ import org.enso.data.List1
 import org.enso.data.Shifted
 import org.enso.data.List1.List1_ops
 import org.enso.syntax.graph.API.Module
+import org.enso.syntax.graph.API.Node
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.App
 import org.enso.syntax.text.AST.Import
@@ -158,6 +159,25 @@ object AstOps {
           }
       }
       AST.Module(List1(go(module.lines.toList)).get)
+    }
+
+    def replaceAt(at: Node.ID)(fun: OptLine => List[OptLine]): AST.Module =
+      module.findAndReplace { line =>
+        line.elem.flatMap(_.id) match {
+          case Some(id) if id == at => Some(fun(id))
+          case _                    => None
+        }
+      }
+
+    def replaceAt(at: TextPosition)(
+      fun: (TextPosition, OptLine) => List[OptLine]
+    ): AST.Module = {
+      var span = 0
+      module.findAndReplace { line =>
+        span += line.span
+        if (span < at.index) None
+        else Some(fun(TextPosition(span - line.span), line))
+      }
     }
   }
 }

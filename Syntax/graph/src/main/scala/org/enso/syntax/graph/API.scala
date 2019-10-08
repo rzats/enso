@@ -4,6 +4,7 @@ import java.util.UUID
 
 import org.enso.data.List1
 import org.enso.syntax.graph
+import org.enso.syntax.graph.SessionManager.Metadata
 import org.enso.syntax.text.AST
 import org.enso.syntax.text.AST.Cons
 
@@ -73,24 +74,35 @@ object SessionManager {
   * Managers can be deployed and are expected to converge.
   *
   * */
-trait StateManager {
+
+trait ModuleManager {
+  import API.Module
+
+  /** Lists modules in a project. */
+  def list: Seq[Module.ID]
+
+  /** Obtains the AST for a given [[Module.ID]] */
+  def apply(module: Module.ID): AST.Module
+
+  /** Overwrites module's AST with a new one. */
+  def update(module: Module.ID, ast: AST.Module): Unit
+}
+
+trait MetadataManager {
   import API.Module
   import SessionManager.Metadata
 
-  /** Lists modules in a project. */
-  def moduleInProject(): Seq[Module.ID]
+  def apply(module: Module.ID, id: AST.ID): Option[Metadata]
 
-  /** Obtains the AST for a given [[Module.ID]] */
-  def getModule(module: Module.ID): AST.Module
+  def update(module: Module.ID, id: AST.ID, metadata: Metadata)
 
-  /** Overwrites module's AST with a new one. */
-  def setModule(module: Module.ID, ast: AST.Module): Unit
+  def remove(module: Module.ID, id: AST.ID)
+}
 
-  def getMetadata(module: Module.ID, id: AST.ID): Option[Metadata]
+trait StateManager {
 
-  def setMetadata(module: Module.ID, id: AST.ID, metadata: Metadata)
-
-  def removeMetadata(module: Module.ID, id: AST.ID)
+  val module : ModuleManager
+  val metadata : MetadataManager
 
   // TODO: external update notifications
 }
@@ -431,9 +443,9 @@ trait GraphAPI {
   def getDefinitions(loc: Module.Location):     Seq[Definition.Description]
   // TODO other entities? (visible through Graph API)
   /** Manage Imports */
-  def importedModules(module: Module.Location):                      Seq[Module.Name]
-  def importModule(context: Module.ID, importee: Module.Name):       Unit
-  def removeImport(context: Module.ID, importToRemove: Module.Name): Unit
+  def importedModules(loc: Module.Location):                      Seq[Module.Name]
+  def importModule(loc: Module.ID, importee: Module.Name):       Unit
+  def removeImport(loc: Module.ID, importToRemove: Module.Name): Unit
   //////////////////////////////////////////////////////////////////////////////
   def addNode(
     context: Node.Context,
