@@ -29,6 +29,7 @@ final case class DoubleRepresentation(
   notifier: NotificationSink
 ) extends GraphAPI
     with TextAPI {
+  import ParserUtils.parse
 
   def getText(loc: Module.Location): String = state.module(loc).show()
 
@@ -50,7 +51,7 @@ final case class DoubleRepresentation(
     state.module(loc) = state.module(loc).replaceAt(span.begin) { (pos, line) =>
       val (line1, line2) = line.show.splitAt(pos.index + span.begin.index)
       val result =
-        Parser().run(new Reader(line1 + line2.drop(span.length.value)))
+        parse(line1 + line2.drop(span.length.value))
       result.lines.toList
     }
     notifier.notify(TextAPI.Notification.Erased(loc, span))
@@ -88,7 +89,9 @@ final case class DoubleRepresentation(
     context: Node.Context,
     metadata: SessionManager.Metadata,
     expr: String
-  ): Node.ID = ???
+  ): Node.ID = {
+
+  }
   def setMetadata(
     node: Node.Location,
     newMetadata: SessionManager.Metadata
@@ -99,17 +102,20 @@ final case class DoubleRepresentation(
     notifier.notify(notification)
   }
   def setExpression(node: Node.Location, expression: String) = {
-    val loc = state.module(node.context.module)
+    val loc   = state.module(node.context.module)
     var found = false
     state.module(loc) = state.module(loc).replaceAt(node.node) { line =>
       line.elem.get match {
-        case Infix(lhs, m, _) =>
+        case Infix.any(infix) =>
           found = true
-          val term = Parser().run(new Reader(expression))
-          List(line.copy(elem = Some(Infix(lhs, m, term)))) //FIXME keep offsets
+          val term = parse(expression).lines.head.elem match {
+            case Some(term) => term
+            case None       => infix.rarg
+          }
+          val elem = infix.copy(shape = infix.shape.copy(rarg = term))
+          List(line.copy(elem = Some(elem)))
         case _ => List(line)
       }
-
     }
     if (!found) addNode(node.context, SessionManager.Metadata(), expression)
   }
