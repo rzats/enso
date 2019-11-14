@@ -105,7 +105,10 @@ final case class DoubleRepresentation(
     Module.Graph.Description(nodes, Seq())
   }
 
-  def getDefinitions(loc: Module.Location): List[Definition.Description] = ???
+  def getDefinitions(loc: Module.Location): List[Definition.Description] = {
+    val ast = state.getModule(loc)
+    ast.flatTraverse(describeDefinition)
+  }
   def addNode(
     context: Node.Context,
     metadata: SessionManager.Metadata,
@@ -188,6 +191,12 @@ final case class DoubleRepresentation(
   //// Helpers ////
   /////////////////
 
+  def describeDefinition(ast: AST): Option[API.Definition.Description] =
+    for {
+      info <- DefinitionInfo(ast)
+      id   <- ast.id
+    } yield Definition.Description(info.name.name, id)
+
   def describeNode(
     module: Module.Location,
     ast: AST
@@ -205,11 +214,12 @@ final case class DoubleRepresentation(
     if (lhs.exists(_.is[AST.App.Prefix]))
       return None
 
-    val id       = ast.unsafeID
-    val spanTree = SpanTree(rhs, TextPosition.Start)
-    val output   = lhs.map(SpanTree(_, TextPosition.Start))
-    val metadata = state.getMetadata(module, id)
-    val node     = Node.Description(id, spanTree, output, metadata)
-    Some(node)
+    ast.id.map { id =>
+      val spanTree = SpanTree(rhs, TextPosition.Start)
+      val output   = lhs.map(SpanTree(_, TextPosition.Start))
+      val metadata = state.getMetadata(module, id)
+      val node     = Node.Description(id, spanTree, output, metadata)
+      node
+    }
   }
 }
