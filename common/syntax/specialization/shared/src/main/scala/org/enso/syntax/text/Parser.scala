@@ -347,6 +347,7 @@ class Parser {
 
 object Parser {
   type IDMap = Seq[(Span, AST.ID)]
+
   private val newEngine = flexer.Parser.compile(ParserDef())
 
   def apply(): Parser = new Parser()

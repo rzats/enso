@@ -36,16 +36,16 @@ case class ParserService() extends Server with Protocol {
 
   def serializeAst(ast: AST.Module): String = ast.toJson().noSpaces
 
-  def runParser(program: String, ids: Parser.IDMap): AST.Module =
-    new Parser().run(new Reader(program), ids)
+  def runParser(program: String, ids: Seq[((Int, Int), AST.ID)]): AST.Module =
+    new Parser().run(new Reader(program), Parser.idMap(ids))
 
   def handleRequest(request: Request): Response = {
     request match {
       case ParseRequest(program, idsJson) =>
-        val ids = decode(idsJson).getOrElse {
+        val ids = decode[Seq[((Int, Int), AST.ID)]](idsJson).getOrElse {
           throw new Exception("Could not decode IDMap from json.")
         }
-        val ast  = runParser(program, Parser.idMap(ids))
+        val ast  = runParser(program, ids)
         val json = serializeAst(ast)
         Protocol.Success(json)
       case _ =>

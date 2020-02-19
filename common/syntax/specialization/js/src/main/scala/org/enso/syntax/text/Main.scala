@@ -11,7 +11,7 @@ object Parse {
   @JSExportTopLevel("parse")
   def parse(program: String, idsJson: String): String = {
     try {
-      val ids = decode(idsJson).getOrElse {
+      val ids = decode[Seq[((Int, Int), AST.ID)]](idsJson).getOrElse {
         throw new Exception("Could not decode IDMap from json.")
       }
       val ast = new text.Parser().run(new Reader(program), text.Parser.idMap(ids))
