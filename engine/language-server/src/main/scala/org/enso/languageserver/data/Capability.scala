@@ -49,6 +49,14 @@ object CapabilityRegistration {
 
   type Id = UUID
 
+  /**
+    * Creates a new registration from a given capability, assigning it a random
+    * ID.
+    *
+    * @param capability the capability being registered
+    * @param idGenerator a generator for the capability ID.
+    * @return a new registration for the given capability.
+    */
   def apply(
     capability: Capability
   )(implicit idGenerator: IdGenerator): CapabilityRegistration =

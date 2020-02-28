@@ -28,6 +28,7 @@ case class Config(contentRoots: Map[UUID, File] = Map.empty) {
   * The state of the running Language Server instance.
   *
   * @param clients the list of currently connected clients.
+  * @param openFiles the collection of all currently opened files.
   */
 case class Environment(
   clients: List[Client],
@@ -52,6 +53,13 @@ case class Environment(
   def removeClient(clientId: Client.Id): Environment =
     copy(clients = clients.filter(_.id != clientId))
 
+  /**
+    * Finds all the capability registrations accepted by a given predicate.
+    *
+    * @param predicate the predicate to test registrations against.
+    * @return a list of matching registrations, together with the clients they
+    *         are registered for.
+    */
   def findCapabilitiesBy(
     predicate: CapabilityRegistration => Boolean
   ): List[(Client, CapabilityRegistration)] =
