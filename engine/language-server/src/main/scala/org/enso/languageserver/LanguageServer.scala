@@ -4,7 +4,12 @@ import akka.actor.{Actor, ActorLogging, ActorRef, Stash}
 import cats.effect.IO
 import org.enso.languageserver.data._
 import org.enso.languageserver.filemanager.FileManagerProtocol._
-import org.enso.languageserver.filemanager.{FileSystemApi, FileSystemObject}
+import org.enso.languageserver.filemanager.FileSystemObject
+import org.enso.languageserver.filemanager.{
+  FileSystemApi,
+  FileSystemFailure,
+  Path
+}
 
 object LanguageProtocol {
 
@@ -64,6 +69,31 @@ object LanguageProtocol {
     * @param registration the capability being granted.
     */
   case class CapabilityGranted(registration: CapabilityRegistration)
+
+  /** Requests the language server to open a file on behalf of a given user.
+    *
+    * @param clientId the client opening the file.
+    * @param path the file path.
+    */
+  case class OpenFile(clientId: Client.Id, path: Path)
+
+  /** Sent by the server in response to [[OpenFile]]
+    *
+    * @param result either a file system failure, or successful opening data.
+    */
+  case class OpenFileResponse(result: Either[FileSystemFailure, OpenFileResult])
+
+  /** The data carried by a successful file open operation.
+    *
+    * @param buffer file contents and current version.
+    * @param writeCapability a write capability that could have been
+    *                        automatically granted.
+    */
+  case class OpenFileResult(
+    buffer: Buffer,
+    writeCapability: Option[CapabilityRegistration]
+  )
+
 }
 
 /**
@@ -71,8 +101,9 @@ object LanguageProtocol {
   *
   * @param config the configuration used by this Language Server.
   */
-class LanguageServer(config: Config, fs: FileSystemApi[IO])
-    extends Actor
+class LanguageServer(config: Config, fs: FileSystemApi[IO])(
+  implicit idGenerator: IdGenerator
+) extends Actor
     with Stash
     with ActorLogging {
   import LanguageProtocol._
@@ -157,10 +188,44 @@ class LanguageServer(config: Config, fs: FileSystemApi[IO])
 
       sender ! CreateFileResult(result)
 
+    case OpenFile(client, path) =>
+      val existingBuffer = env.getFile(path)
+      existingBuffer match {
+        case Some(buffer) => addClientToBuffer(env, client, buffer, path)
+        case None =>
+          val fileContents = for {
+            rootPath <- config.findContentRoot(path.rootId)
+            content  <- fs.read(path.toFile(rootPath)).unsafeRunSync()
+          } yield content
+          fileContents
+            .map { contents =>
+              addClientToBuffer(env, client, OpenBuffer(contents), path)
+            }
+            .left
+            .foreach { error =>
+              sender ! OpenFileResponse(Left(error))
+            }
+      }
   }
   /* Note [Usage of unsafe methods]
      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
      It invokes side-effecting function, all exceptions are caught and
      explicitly returned as left side of disjunction.
- */
+   */
+
+  private def addClientToBuffer(
+    env: Environment,
+    client: Client.Id,
+    buffer: OpenBuffer,
+    path: Path
+  ): Unit = {
+    val envWithFileOpened =
+      env.setFile(path, buffer.addClient(client))
+    val (capability, newEnv) =
+      envWithFileOpened.grantCanEditIfVacant(client, path)
+    sender ! OpenFileResponse(
+      Right(OpenFileResult(buffer.buffer, capability))
+    )
+    context.become(initialized(config, newEnv))
+  }
 }

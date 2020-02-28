@@ -5,7 +5,8 @@ import java.util.UUID
 
 import org.enso.languageserver.filemanager.{
   ContentRootNotFound,
-  FileSystemFailure
+  FileSystemFailure,
+  Path
 }
 
 /**
@@ -28,7 +29,10 @@ case class Config(contentRoots: Map[UUID, File] = Map.empty) {
   *
   * @param clients the list of currently connected clients.
   */
-case class Environment(clients: List[Client]) {
+case class Environment(
+  clients: List[Client],
+  openFiles: Map[Path, OpenBuffer]
+) {
 
   /**
     * Adds a new client to this `Env`
@@ -47,6 +51,13 @@ case class Environment(clients: List[Client]) {
     */
   def removeClient(clientId: Client.Id): Environment =
     copy(clients = clients.filter(_.id != clientId))
+
+  def findCapabilitiesBy(
+    predicate: CapabilityRegistration => Boolean
+  ): List[(Client, CapabilityRegistration)] =
+    clients.flatMap(
+      client => client.capabilities.filter(predicate).map((client, _))
+    )
 
   /**
     * Removes all registered capabilities matching a given predicate.
@@ -121,6 +132,50 @@ case class Environment(clients: List[Client]) {
         capabilities = client.capabilities.filter(_.id != capabilityId)
       )
     })
+
+  /** Gets an open file buffer for a given path.
+    *
+    * @param path the file path.
+    * @return the open file buffer, if it exists.
+    */
+  def getFile(path: Path): Option[OpenBuffer] = openFiles.get(path)
+
+  /** Set a file buffer at a given path.
+    *
+    * @param path the file path.
+    * @param buffer the buffer to use.
+    * @return new environment, including the new buffer.
+    */
+  def setFile(path: Path, buffer: OpenBuffer): Environment =
+    copy(openFiles = openFiles + (path -> buffer))
+
+  /** Grants a [[CanEdit]] capability to a client at a given path, if there's no
+    * other client already holding the capability.
+    *
+    * @param client the client being granted the capability.
+    * @param path the path to grant the capability for.
+    * @param idGenerator a random IDs generator.
+    * @return the capability registration, if granted, and a new environment
+    *         with the capability registered.
+    */
+  def grantCanEditIfVacant(
+    client: Client.Id,
+    path: Path
+  )(
+    implicit idGenerator: IdGenerator
+  ): (Option[CapabilityRegistration], Environment) = {
+    val existingWriteCapabilities = findCapabilitiesBy(
+      _.capability match {
+        case CanEdit(capabilityPath) => path == capabilityPath
+        case _                       => false
+      }
+    )
+    if (existingWriteCapabilities.isEmpty) {
+      val capability = CapabilityRegistration(CanEdit(path))
+      val newEnv     = grantCapability(client, capability)
+      (Some(capability), newEnv)
+    } else (None, this)
+  }
 }
 
 object Environment {
@@ -130,5 +185,5 @@ object Environment {
     *
     * @return an empty env.
     */
-  def empty: Environment = Environment(List())
+  def empty: Environment = Environment(clients = List(), openFiles = Map())
 }

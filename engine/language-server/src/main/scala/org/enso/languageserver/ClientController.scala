@@ -6,6 +6,7 @@ import akka.actor.{Actor, ActorLogging, ActorRef, Stash}
 import akka.pattern.ask
 import akka.util.Timeout
 import org.enso.languageserver.ClientApi._
+import org.enso.languageserver.LanguageProtocol.OpenFileResponse
 import org.enso.languageserver.data.{CapabilityRegistration, Client}
 import org.enso.languageserver.filemanager.FileManagerApi._
 import org.enso.languageserver.filemanager.FileManagerProtocol.{
@@ -14,7 +15,8 @@ import org.enso.languageserver.filemanager.FileManagerProtocol.{
 }
 import org.enso.languageserver.filemanager.{
   FileManagerProtocol,
-  FileSystemFailureMapper
+  FileSystemFailureMapper,
+  Path
 }
 import org.enso.languageserver.jsonrpc.Errors.ServiceError
 import org.enso.languageserver.jsonrpc._
@@ -63,12 +65,28 @@ object ClientApi {
     }
   }
 
+  case object OpenFile extends Method("text/openFile") {
+    case class Params(path: Path)
+    case class Result(
+      writeCapability: Option[CapabilityRegistration],
+      content: String,
+      currentVersion: UUID
+    )
+    implicit val hasParams = new HasParams[this.type] {
+      type Params = OpenFile.Params
+    }
+    implicit val hasResult = new HasResult[this.type] {
+      type Result = OpenFile.Result
+    }
+  }
+
   val protocol: Protocol = Protocol.empty
     .registerRequest(AcquireCapability)
     .registerRequest(ReleaseCapability)
     .registerRequest(WriteFile)
     .registerRequest(ReadFile)
     .registerRequest(CreateFile)
+    .registerRequest(OpenFile)
     .registerNotification(ForceReleaseCapability)
     .registerNotification(GrantCapability)
 
@@ -131,6 +149,9 @@ class ClientController(
 
     case Request(CreateFile, id, params: CreateFile.Params) =>
       createFile(webActor, id, params)
+
+    case Request(OpenFile, id, params: OpenFile.Params) =>
+      openFile(webActor, id, params)
   }
 
   private def readFile(
@@ -196,6 +217,36 @@ class ClientController(
 
         case Failure(th) =>
           log.error("An exception occurred during creating a file", th)
+          webActor ! ResponseError(Some(id), ServiceError)
+      }
+  }
+
+  private def openFile(
+    webActor: ActorRef,
+    id: Id,
+    params: OpenFile.Params
+  ): Unit = {
+    (server ? LanguageProtocol.OpenFile(clientId, params.path))
+      .onComplete {
+        case Success(
+            LanguageProtocol.OpenFileResponse(
+              Right(LanguageProtocol.OpenFileResult(buffer, capability))
+            )
+            ) =>
+          webActor ! ResponseResult(
+            OpenFile,
+            id,
+            OpenFile.Result(capability, buffer.contents, buffer.version)
+          )
+
+        case Success(OpenFileResponse(Left(failure))) =>
+          webActor ! ResponseError(
+            Some(id),
+            FileSystemFailureMapper.mapFailure(failure)
+          )
+
+        case Failure(th) =>
+          log.error("An exception occurred during opening file", th)
           webActor ! ResponseError(Some(id), ServiceError)
       }
   }

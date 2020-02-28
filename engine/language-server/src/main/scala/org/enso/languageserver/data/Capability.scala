@@ -2,6 +2,7 @@ package org.enso.languageserver.data
 import java.util.UUID
 
 import io.circe._
+import org.enso.languageserver.filemanager.Path
 
 /**
   * A superclass for all capabilities in the system.
@@ -9,12 +10,11 @@ import io.circe._
   */
 sealed abstract class Capability(val method: String)
 
-//TODO[MK]: Migrate to actual Path, once it is implemented.
 /**
   * A capability allowing the user to modify a given file.
-  * @param path
+  * @param path the file path this capability is granted for.
   */
-case class CanEdit(path: String) extends Capability(CanEdit.methodName)
+case class CanEdit(path: Path) extends Capability(CanEdit.methodName)
 
 object CanEdit {
   val methodName = "canEdit"
@@ -48,6 +48,11 @@ object CapabilityRegistration {
   import io.circe.syntax._
 
   type Id = UUID
+
+  def apply(
+    capability: Capability
+  )(implicit idGenerator: IdGenerator): CapabilityRegistration =
+    CapabilityRegistration(idGenerator.capabilityRegistrationId, capability)
 
   private val idField      = "id"
   private val methodField  = "method"
