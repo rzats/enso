@@ -12,12 +12,8 @@ import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import cats.effect.IO
 import io.circe.Json
 import io.circe.parser.parse
-import org.enso.languageserver.data.{
-  Buffer,
-  CapabilityRegistration,
-  Config,
-  IdGenerator
-}
+import org.enso.languageserver.data.Config
+
 import org.enso.languageserver.{
   LanguageProtocol,
   LanguageServer,

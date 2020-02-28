@@ -1,7 +1,7 @@
 package org.enso.languageserver.data
 import java.util.UUID
 
-import Buffer.Rope
+import org.enso.languageserver.data.buffer.Rope
 
 /**
   * Represents a buffer open in the current environment.
@@ -51,7 +51,6 @@ object OpenBuffer {
 case class Buffer(contents: Rope, version: Buffer.Version)
 
 object Buffer {
-  type Rope    = String
   type Version = UUID
 
   /**
@@ -63,4 +62,14 @@ object Buffer {
     */
   def apply(contents: Rope)(implicit idGenerator: IdGenerator): Buffer =
     Buffer(contents, idGenerator.bufferVersion)
+
+  /**
+    * Creates a new buffer with a freshly generated version.
+    *
+    * @param contents the contents of this buffer.
+    * @param idGenerator a random generator for version initialization.
+    * @return a new buffer instance.
+    */
+  def apply(contents: String)(implicit idGenerator: IdGenerator): Buffer =
+    Buffer(Rope(contents))
 }

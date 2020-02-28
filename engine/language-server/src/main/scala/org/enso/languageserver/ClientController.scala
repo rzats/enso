@@ -236,7 +236,8 @@ class ClientController(
           webActor ! ResponseResult(
             OpenFile,
             id,
-            OpenFile.Result(capability, buffer.contents, buffer.version)
+            OpenFile
+              .Result(capability, buffer.contents.toString, buffer.version)
           )
 
         case Success(OpenFileResponse(Left(failure))) =>
