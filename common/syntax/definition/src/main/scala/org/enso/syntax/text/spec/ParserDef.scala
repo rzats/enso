@@ -212,7 +212,7 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
 
     def onNoModNoSfx(ast: AST.Ident): Unit = logger.trace {
       ident.current = Some(ast)
-      ident.onNoErrSfx()
+      ident.submit()
     }
 
     val char: Pattern          = anyOf("!$%&*+-/<>?^~|:\\")
