@@ -182,23 +182,14 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
       on(cons(currentMatch))
     }
 
-    def onGrp(cons: String => AST.Ident): Unit = logger.trace {
-      ident.current = Some(cons(currentMatch))
-      ident.onNoErrSfx()
-    }
-
-    def onNoMod(cons: String => AST.Ident): Unit = logger.trace {
-      onNoMod(cons(currentMatch))
-    }
-
     def on(ast: AST.Ident): Unit = logger.trace {
       ident.current = Some(ast)
       state.begin(MOD_CHECK)
     }
 
-    def onNoMod(ast: AST.Ident): Unit = logger.trace {
-      ident.current = Some(ast)
-      state.begin(SFX_CHECK)
+    def onGrp(cons: String => AST.Ident): Unit = logger.trace {
+      ident.current = Some(cons(currentMatch))
+      ident.onNoErrSfx()
     }
 
     def onMod(): Unit = logger.trace {
@@ -206,27 +197,47 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
       ident.current = Some(opr)
     }
 
-    val char: Pattern     = anyOf("!$%&*+-/<>?^~|:\\")
-    val errChar: Pattern  = char | "=" | "," | "."
-    val errSfx: Pattern   = errChar.many1
-    val body: Pattern     = char.many1
-    val opsEq: Pattern    = "=" | "==" | ">=" | "<=" | "/=" | "#="
-    val opsDot: Pattern   = "." | ".." | "..." | ","
-    val opsGrp: Pattern   = anyOf("()[]{}")
-    val opsCmm: Pattern   = "#" | "##"
-    val opsNoMod: Pattern = opsEq | opsDot | opsCmm
+    def onNoMod(cons: String => AST.Ident): Unit = logger.trace {
+      onNoMod(cons(currentMatch))
+    }
+
+    def onNoMod(ast: AST.Ident): Unit = logger.trace {
+      ident.current = Some(ast)
+      state.begin(SFX_CHECK)
+    }
+
+    def onNoModNoSfx(cons: String => AST.Ident): Unit = logger.trace {
+      onNoModNoSfx(cons(currentMatch))
+    }
+
+    def onNoModNoSfx(ast: AST.Ident): Unit = logger.trace {
+      ident.current = Some(ast)
+      ident.onNoErrSfx()
+    }
+
+    val char: Pattern          = anyOf("!$%&*+-/<>?^~|:\\")
+    val errChar: Pattern       = char | "=" | "," | "."
+    val errSfx: Pattern        = errChar.many1
+    val body: Pattern          = char.many1
+    val opsEq: Pattern         = "=" | "==" | ">=" | "<=" | "/=" | "#="
+    val opsDot: Pattern        = "." | ".." | "..." | ","
+    val opsGrp: Pattern        = anyOf("()[]{}")
+    val opsCmm: Pattern        = "#" | "##"
+    val opsNoMod: Pattern      = opsEq
+    val opsNoModNoSfx: Pattern = opsDot | opsCmm
 
     val SFX_CHECK = state.define("Operator Suffix Check")
     val MOD_CHECK = state.define("Operator Modifier Check")
     MOD_CHECK.parent = SFX_CHECK
   }
 
-  ROOT          || opr.body     || opr.on(AST.Opr(_))
-  ROOT          || opr.opsNoMod || opr.onNoMod(AST.Opr(_))
-  ROOT          || opr.opsGrp   || opr.onGrp(AST.Opr(_))
-  opr.MOD_CHECK || "="          || opr.onMod()
-  opr.SFX_CHECK || opr.errSfx   || ident.onErrSfx()
-  opr.SFX_CHECK || always       || ident.onNoErrSfx()
+  ROOT          || opr.body          || opr.on(AST.Opr(_))
+  ROOT          || opr.opsNoMod      || opr.onNoMod(AST.Opr(_))
+  ROOT          || opr.opsNoModNoSfx || opr.onNoModNoSfx(AST.Opr(_))
+  ROOT          || opr.opsGrp        || opr.onGrp(AST.Opr(_))
+  opr.MOD_CHECK || "="               || opr.onMod()
+  opr.SFX_CHECK || opr.errSfx        || ident.onErrSfx()
+  opr.SFX_CHECK || always            || ident.onNoErrSfx()
 
   ////////////////
   //// NUMBER ////
@@ -578,7 +589,6 @@ case class ParserDef() extends flexer.Parser[AST.Module] {
   text.FMT || "\\'"           || text.onEscapeQuote()
   text.FMT || "\\" >> any     || text.onEscapeInvalid()
   text.FMT || "\\"            || text.onEscapeUnfinished()
-
 
   text.RAW_LINE || "\\\""      || text.onEscapeRawQuote()
   text.RAW_LINE || "\\\\"      || text.onEscapeSlash()
