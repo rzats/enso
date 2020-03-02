@@ -332,21 +332,12 @@ object AstToIR {
         val realBody = translateExpression(body)
         Function.Lambda(realArgs, realBody, callable.location)
       case AST.App.Infix(left, fn, right) =>
-        // TODO [AA] We should accept all ops when translating to core
-        val validInfixOps = List("+", "/", "-", "*", "%")
-
-        if (validInfixOps.contains(fn.name)) {
-          Application.Operator.Binary(
-            translateExpression(left),
-            fn.name,
-            translateExpression(right),
-            callable.location
-          )
-        } else {
-          throw new RuntimeException(
-            s"${fn.name} is not currently a valid infix operator"
-          )
-        }
+        Application.Operator.Binary(
+          translateExpression(left),
+          fn.name,
+          translateExpression(right),
+          callable.location
+        )
       case AST.App.Prefix(_, _) =>
         throw new RuntimeException(
           "Enso does not support arbitrary prefix expressions"
