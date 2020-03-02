@@ -6,9 +6,10 @@ import com.oracle.truffle.api.TruffleFile
 import com.oracle.truffle.api.source.Source
 import org.enso.compiler.core.IR.{Expression, Module}
 import org.enso.compiler.codegen.{AstToIR, IRToTruffle}
+import org.enso.compiler.core.IR
 import org.enso.flexer.Reader
 import org.enso.interpreter.Language
-import org.enso.interpreter.node.ExpressionNode
+import org.enso.interpreter.node.{ExpressionNode => RuntimeExpression}
 import org.enso.interpreter.runtime.Context
 import org.enso.interpreter.runtime.error.ModuleDoesNotExistException
 import org.enso.interpreter.runtime.scope.{
@@ -30,6 +31,9 @@ class Compiler(
   val context: Context
 ) {
 
+  /** A list of the compiler phases, in the order they should be run. */
+  val compilerPhaseOrdering = List()
+
   /**
     * Processes the provided language sources, registering any bindings in the
     * given scope.
@@ -40,10 +44,11 @@ class Compiler(
     *         executable functionality in the module corresponding to `source`.
     */
   def run(source: Source, scope: ModuleScope): Unit = {
-    val parsedAST = parse(source)
-    val expr      = translate(parsedAST)
+    val parsedAST      = parse(source)
+    val expr           = generateIR(parsedAST)
+    val compilerOutput = runCompilerPhases(expr)
 
-    new IRToTruffle(language, source, scope).run(expr)
+    truffleCodegen(compilerOutput, source, scope)
   }
 
   /**
@@ -88,17 +93,15 @@ class Compiler(
     * Processes the source in the context of given local and module scopes.
     *
     * @param srcString string representing the expression to process
-    * @param language current language instance
     * @param localScope local scope to process the source in
     * @param moduleScope module scope to process the source in
     * @return an expression node representing the parsed and analyzed source
     */
   def runInline(
     srcString: String,
-    language: Language,
     localScope: LocalScope,
     moduleScope: ModuleScope
-  ): Option[ExpressionNode] = {
+  ): Option[RuntimeExpression] = {
     val source = Source
       .newBuilder(
         LanguageInfo.ID,
@@ -108,11 +111,17 @@ class Compiler(
       .build()
     val parsed: AST = parse(source)
 
-    translateInline(parsed).flatMap { ast =>
-      Some(
-        new IRToTruffle(language, source, moduleScope)
-          .runInline(ast, localScope, "<inline_source>")
-      )
+    generateIRInline(parsed).flatMap { ir =>
+      Some({
+        val compilerOutput = runCompilerPhases(ir)
+
+        truffleCodegenInline(
+          compilerOutput,
+          source,
+          moduleScope,
+          localScope
+        )
+      })
     }
   }
 
@@ -156,7 +165,7 @@ class Compiler(
     * @param sourceAST the parser AST input
     * @return an IR representation of the program represented by `sourceAST`
     */
-  def translate(sourceAST: AST): Module =
+  def generateIR(sourceAST: AST): Module =
     AstToIR.translate(sourceAST)
 
   /**
@@ -166,6 +175,48 @@ class Compiler(
     * @param sourceAST the parser AST representing the program source
     * @return an IR representation of the program represented by `sourceAST`
     */
-  def translateInline(sourceAST: AST): Option[Expression] =
+  def generateIRInline(sourceAST: AST): Option[Expression] =
     AstToIR.translateInline(sourceAST)
+
+  /** Runs the various compiler passes.
+    *
+    * @param ir the compiler intermediate representation to transform
+    * @return the output result of the
+    */
+  def runCompilerPhases[T <: IR](ir: T): T = {
+    ir
+  }
+
+  /** Generates code for the truffle interpreter.
+    *
+    * @param ir the program to translate
+    * @param source the source code of the program represented by `ir`
+    * @param scope the module scope in which the code is to be generated
+    */
+  def truffleCodegen(
+    ir: IR.Module,
+    source: Source,
+    scope: ModuleScope
+  ): Unit = {
+    new IRToTruffle(language, source, scope).run(ir)
+  }
+
+  /** Generates code for the truffle interpreter in an inline context.
+    *
+    * @param ir the prorgam to translate
+    * @param source the source code of the program represented by `ir`
+    * @param moduleScope the module scope in which the code is to be generated
+    * @param localScope the local scope in which the inline code is to be
+    *                   located
+    * @return the runtime representation of the program represented by `ir`
+    */
+  def truffleCodegenInline(
+    ir: IR.Expression,
+    source: Source,
+    moduleScope: ModuleScope,
+    localScope: LocalScope
+  ): RuntimeExpression = {
+    new IRToTruffle(this.language, source, moduleScope)
+      .runInline(ir, localScope, "<inline_source>")
+  }
 }

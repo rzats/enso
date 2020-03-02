@@ -11,9 +11,13 @@ trait IRPass {
   /** Executes the pass on the provided `ir`, and returns a possibly transformed
     * or annotated version of `ir`.
     *
+    * Please note that a pass must return the _same_ type of IR entity that it
+    * was run on.
+    *
     * @param ir the Enso IR to process
+    * @tparam T the input type of the IR
     * @return `ir`, possibly having made transformations or annotations to that
     *         IR.
     */
-  def run(ir: IR): IR
+  def run[T <: IR](ir: T): T
 }

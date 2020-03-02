@@ -323,10 +323,186 @@ object IR {
   // === Typing ===============================================================
 
   /** Constructs that operate on types. */
-  sealed trait Type extends IR
+  sealed trait Type extends Expression
   object Type {
-    // TODO [AA] Type ascription, context ascription, typeset member and the
-    //  typeset operators
+
+    /** The ascription of a type to a value.
+      *
+      * @param typed the expression being ascribed a type
+      * @param signature the signature being ascribed to `typed`
+      * @param location the source location that the node corresponds to
+      * @param passData the pass metadata associated with this node
+      */
+    sealed case class Ascription(
+      typed: Expression,
+      signature: Expression,
+      override val location: Option[Location],
+      override val passData: Set[Metadata] = Set()
+    ) extends Type
+        with IRKind.Primitive {
+      override def addMetadata(newData: Metadata): Ascription = {
+        copy(passData = this.passData + newData)
+      }
+    }
+
+    /** A representation of the `in` portion of a type signature that represents
+      * the ascription of a monadic context.
+      *
+      * @param typed the type being ascribed a monadic context
+      * @param context the context being ascribed to `typed`
+      * @param location the source location that the node corresponds to
+      * @param passData the pass metadata associated with this node
+      */
+    sealed case class Context(
+      typed: Expression,
+      context: Expression,
+      override val location: Option[Location],
+      override val passData: Set[Metadata] = Set()
+    ) extends Type
+        with IRKind.Primitive {
+      override def addMetadata(newData: Metadata): Context = {
+        copy(passData = this.passData + newData)
+      }
+    }
+
+    sealed trait Typeset extends Type
+    object Typeset {
+
+      /** The representation of a typeset member.
+        *
+        * @param label the member's label, if given
+        * @param memberType the member's type, if given
+        * @param value the member's value, if given
+        * @param location the source location that the node corresponds to
+        * @param passData the pass metadata associated with this node
+        */
+      sealed case class Member(
+        label: Name.Literal,
+        memberType: Expression,
+        value: Expression,
+        override val location: Option[Location],
+        override val passData: Set[Metadata] = Set()
+      ) extends Typeset
+          with IRKind.Primitive {
+        override def addMetadata(newData: Metadata): Member = {
+          copy(passData = this.passData + newData)
+        }
+      }
+
+      /** The typeset subsumption judgement `<:`.
+        *
+        * @param left the left operand
+        * @param right the right operand
+        * @param location the source location that the node corresponds to
+        * @param passData the pass metadata associated with this node
+        */
+      sealed case class Subsumption(
+        left: Expression,
+        right: Expression,
+        override val location: Option[Location],
+        override val passData: Set[Metadata] = Set()
+      ) extends Typeset
+          with IRKind.Primitive {
+        override def addMetadata(newData: Metadata): Subsumption = {
+          copy(passData = this.passData + newData)
+        }
+      }
+
+      /** The typeset equality judgement `~`.
+        *
+        * @param left the left operand
+        * @param right the right operand
+        * @param location the source location that the node corresponds to
+        * @param passData the pass metadata associated with this node
+        */
+      sealed case class Equality(
+        left: Expression,
+        right: Expression,
+        override val location: Option[Location],
+        override val passData: Set[Metadata] = Set()
+      ) extends Typeset
+          with IRKind.Primitive {
+        override def addMetadata(newData: Metadata): Equality = {
+          copy(passData = this.passData + newData)
+        }
+      }
+
+      /** The typeset concatenation operator `,`.
+        *
+        * @param left the left operand
+        * @param right the right operand
+        * @param location the source location that the node corresponds to
+        * @param passData the pass metadata associated with this node
+        */
+      sealed case class Concat(
+        left: Expression,
+        right: Expression,
+        override val location: Option[Location],
+        override val passData: Set[Metadata] = Set()
+      ) extends Typeset
+          with IRKind.Primitive {
+        override def addMetadata(newData: Metadata): Concat = {
+          copy(passData = this.passData + newData)
+        }
+      }
+
+      /** The typeset union operator `|`.
+        *
+        * @param left the left operand
+        * @param right the right operand
+        * @param location the source location that the node corresponds to
+        * @param passData the pass metadata associated with this node
+        */
+      sealed case class Union(
+        left: Expression,
+        right: Expression,
+        override val location: Option[Location],
+        override val passData: Set[Metadata] = Set()
+      ) extends Typeset
+          with IRKind.Primitive {
+        override def addMetadata(newData: Metadata): Union = {
+          copy(passData = this.passData + newData)
+        }
+      }
+
+      /** The typeset intersection operator `&`.
+        *
+        * @param left the left operand
+        * @param right the right operand
+        * @param location the source location that the node corresponds to
+        * @param passData the pass metadata associated with this node
+        */
+      sealed case class Intersection(
+        left: Expression,
+        right: Expression,
+        override val location: Option[Location],
+        override val passData: Set[Metadata] = Set()
+      ) extends Typeset
+          with IRKind.Primitive {
+        override def addMetadata(newData: Metadata): Intersection = {
+          copy(passData = this.passData + newData)
+        }
+      }
+
+      /** The typeset subtraction operator `\`.
+        *
+        * @param left the left operand
+        * @param right the right operand
+        * @param location the source location that the node corresponds to
+        * @param passData the pass metadata associated with this node
+        */
+      sealed case class Subtraction(
+        left: Expression,
+        right: Expression,
+        override val location: Option[Location],
+        override val passData: Set[Metadata] = Set()
+      ) extends Typeset
+          with IRKind.Primitive {
+        override def addMetadata(newData: Metadata): Subtraction = {
+          copy(passData = this.passData + newData)
+        }
+      }
+    }
   }
 
   // === Function =============================================================
