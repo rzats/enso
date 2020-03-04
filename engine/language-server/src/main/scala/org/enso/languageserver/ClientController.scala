@@ -2,18 +2,17 @@ package org.enso.languageserver
 
 import java.util.UUID
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Stash}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props, Stash}
 import akka.pattern.ask
 import akka.util.Timeout
 import org.enso.languageserver.ClientApi._
 import org.enso.languageserver.data.{CapabilityRegistration, Client}
 import org.enso.languageserver.filemanager.FileManagerApi._
-import org.enso.languageserver.filemanager.FileManagerProtocol.{
-  CreateFileResult,
-  WriteFileResult
-}
+import org.enso.languageserver.filemanager.FileManagerProtocol.CreateFileResult
+
 import org.enso.languageserver.filemanager.{
   FileManagerProtocol,
+  FileSystemFailure,
   FileSystemFailureMapper
 }
 import org.enso.languageserver.jsonrpc.Errors.ServiceError
@@ -138,22 +137,12 @@ class ClientController(
     id: Id,
     params: ReadFile.Params
   ): Unit = {
-    (server ? FileManagerProtocol.ReadFile(params.path)).onComplete {
-      case Success(
-          FileManagerProtocol.ReadFileResult(Right(content: String))
-          ) =>
-        webActor ! ResponseResult(ReadFile, id, ReadFile.Result(content))
-
-      case Success(FileManagerProtocol.ReadFileResult(Left(failure))) =>
-        webActor ! ResponseError(
-          Some(id),
-          FileSystemFailureMapper.mapFailure(failure)
-        )
-
-      case Failure(th) =>
-        log.error("An exception occurred during reading a file", th)
-        webActor ! ResponseError(Some(id), ServiceError)
-    }
+    val handler = spawnHandler(webActor, ReadFile, id, {
+      case content: String => ReadFile.Result(content)
+    }, {
+      case err: FileSystemFailure => FileSystemFailureMapper.mapFailure(err)
+    })
+    server.tell(FileManagerProtocol.ReadFile(params.path), handler)
   }
 
   private def writeFile(
@@ -161,21 +150,14 @@ class ClientController(
     id: Id,
     params: WriteFile.Params
   ): Unit = {
-    (server ? FileManagerProtocol.WriteFile(params.path, params.contents))
-      .onComplete {
-        case Success(WriteFileResult(Right(()))) =>
-          webActor ! ResponseResult(WriteFile, id, Unused)
-
-        case Success(WriteFileResult(Left(failure))) =>
-          webActor ! ResponseError(
-            Some(id),
-            FileSystemFailureMapper.mapFailure(failure)
-          )
-
-        case Failure(th) =>
-          log.error("An exception occurred during writing to a file", th)
-          webActor ! ResponseError(Some(id), ServiceError)
-      }
+    val handler = spawnHandler(webActor, WriteFile, id, { case _ => Unused }, {
+      case err: FileSystemFailure =>
+        FileSystemFailureMapper.mapFailure(err)
+    })
+    server.tell(
+      FileManagerProtocol.WriteFile(params.path, params.contents),
+      handler
+    )
   }
 
   private def createFile(
@@ -199,5 +181,27 @@ class ClientController(
           webActor ! ResponseError(Some(id), ServiceError)
       }
   }
+
+  private def spawnHandler[M <: Method, Res](
+    client: ActorRef,
+    method: M,
+    requestId: Id,
+    successHandler: PartialFunction[Any, Res],
+    errorHandler: PartialFunction[Any, Error]
+  )(
+    implicit timeout: Timeout,
+    hasResult: HasResult.Aux[M, Res]
+  ): ActorRef =
+    context.actorOf(
+      Props(
+        new ResponseHandler(
+          client,
+          method,
+          requestId,
+          successHandler,
+          errorHandler
+        )
+      )
+    )
 
 }

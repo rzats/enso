@@ -84,6 +84,8 @@ case class Notification[+M <: Method, +Params](method: M, params: Params)(
   implicit @unused ev: HasParams.Aux[M, Params]
 )
 
+trait Response
+
 /**
   * The basic JSON RPC successful response type.
   */
@@ -92,11 +94,12 @@ case class ResponseResult[+M <: Method, +Result](
   id: Id,
   data: Result
 )(implicit @unused ev: HasResult.Aux[M, Result])
+    extends Response
 
 /**
   * The basic JSON RPC error response type.
   */
-case class ResponseError(id: Option[Id], error: Error)
+case class ResponseError(id: Option[Id], error: Error) extends Response
 
 /**
   * A basic error type for responses.

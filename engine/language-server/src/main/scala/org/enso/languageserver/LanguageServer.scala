@@ -128,7 +128,7 @@ class LanguageServer(config: Config, fs: FileSystemApi[IO])
           _        <- fs.write(path.toFile(rootPath), content).unsafeRunSync()
         } yield ()
 
-      sender ! WriteFileResult(result)
+      sender ! result
 
     case ReadFile(path) =>
       val result =
@@ -137,7 +137,7 @@ class LanguageServer(config: Config, fs: FileSystemApi[IO])
           content  <- fs.read(path.toFile(rootPath)).unsafeRunSync()
         } yield content
 
-      sender ! ReadFileResult(result)
+      sender ! result
 
     case CreateFile(FileSystemObject.File(name, path)) =>
       val result =
