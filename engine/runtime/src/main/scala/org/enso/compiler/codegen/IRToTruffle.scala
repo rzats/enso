@@ -604,15 +604,15 @@ class IRToTruffle(
           val rightExpr = this.run(right)
 
           // This will be refactored away once operator desugaring exists
-          val opExpr = if (operator == "+") {
+          val opExpr = if (operator.name == "+") {
             AddOperatorNode.build(leftExpr, rightExpr)
-          } else if (operator == "-") {
+          } else if (operator.name == "-") {
             SubtractOperatorNode.build(leftExpr, rightExpr)
-          } else if (operator == "*") {
+          } else if (operator.name == "*") {
             MultiplyOperatorNode.build(leftExpr, rightExpr)
-          } else if (operator == "/") {
+          } else if (operator.name == "/") {
             DivideOperatorNode.build(leftExpr, rightExpr)
-          } else if (operator == "%") {
+          } else if (operator.name == "%") {
             ModOperatorNode.build(leftExpr, rightExpr)
           } else {
             throw new RuntimeException(

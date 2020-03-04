@@ -61,7 +61,7 @@ class LiftSpecialOperatorsTest extends CompilerTest {
       Option[Location]
     ) => IR.Expression
   ): Unit = s"The ${opInfo.name} operator" should {
-    val op    = opInfo.name
+    val op    = IR.Name.Literal(opInfo.name, None)
     val left  = IR.Empty(None)
     val right = IR.Empty(None)
     val loc   = Location(1, 20)

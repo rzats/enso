@@ -345,7 +345,7 @@ object AstToIR {
       case AST.App.Infix(left, fn, right) =>
         Application.Operator.Binary(
           translateExpression(left),
-          fn.name,
+          Name.Literal(fn.name, fn.location),
           translateExpression(right),
           callable.location
         )

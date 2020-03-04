@@ -29,7 +29,7 @@ case class LiftSpecialOperators() extends IRPass {
   override def runExpression(ir: IR.Expression): IR.Expression =
     ir.transformExpressions({
       case IR.Application.Operator.Binary(l, op, r, loc, meta) =>
-        op match {
+        op.name match {
           case IR.Type.Ascription.name =>
             IR.Type.Ascription(runExpression(l), runExpression(r), loc, meta)
           case IR.Type.Set.Subsumption.name =>

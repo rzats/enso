@@ -327,6 +327,8 @@ object IR {
 
   /** Enso names. */
   sealed trait Name extends Expression with IRKind.Primitive {
+    val name: String
+
     override def mapExpressions(fn: Expression => Expression): Name
   }
   object Name {
@@ -338,7 +340,7 @@ object IR {
       * @param passData the pass metadata associated with this node
       */
     sealed case class Literal(
-      name: String,
+      override val name: String,
       override val location: Option[Location],
       override val passData: ISet[Metadata] = ISet()
     ) extends Name {
@@ -358,6 +360,8 @@ object IR {
       override val location: Option[Location],
       override val passData: ISet[Metadata] = ISet()
     ) extends Name {
+      override val name: String = "this"
+
       override def addMetadata(newData: Metadata): This = {
         copy(passData = this.passData + newData)
       }
@@ -375,6 +379,8 @@ object IR {
       override val location: Option[Location],
       override val passData: ISet[Metadata] = ISet()
     ) extends Name {
+      override val name: String = "here"
+
       override def addMetadata(newData: Metadata): Here = {
         copy(passData = this.passData + newData)
       }
@@ -817,7 +823,7 @@ object IR {
         */
       sealed case class Binary(
         left: Expression,
-        operator: String,
+        operator: IR.Name,
         right: Expression,
         override val location: Option[Location],
         override val passData: ISet[Metadata] = ISet()
