@@ -77,6 +77,18 @@ object FileManagerApi {
     }
   }
 
+  case object MoveFile extends Method("file/move") {
+
+    case class Params(from: Path, to: Path)
+
+    implicit val hasParams = new HasParams[this.type] {
+      type Params = MoveFile.Params
+    }
+    implicit val hasResult = new HasResult[this.type] {
+      type Result = Unused.type
+    }
+  }
+
   // Errors
 
   case class FileSystemError(override val message: String)

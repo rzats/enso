@@ -507,6 +507,194 @@ class FileManagerTest extends WebSocketServerTest {
       val to = Paths.get(testContentRoot.toString, "some", "test.txt")
       to.toFile.isFile shouldBe false
     }
+
+    "move a file" in {
+      val client = new WsTestClient(address)
+
+      // create a file
+      client.send(json"""
+          { "jsonrpc": "2.0",
+            "method": "file/create",
+            "id": 17,
+            "params": {
+              "object": {
+                "type": "File",
+                "name": "test.txt",
+                "path": {
+                  "rootId": $testContentRootId,
+                  "segments": [ "move" ]
+                }
+              }
+            }
+          }
+          """)
+      client.expectJson(json"""
+          { "jsonrpc": "2.0",
+            "id": 17,
+            "result": null
+          }
+          """)
+      val from = Paths.get(testContentRoot.toString, "move", "test.txt")
+      from.toFile.isFile shouldBe true
+
+      // move a file
+      client.send(json"""
+          { "jsonrpc": "2.0",
+            "method": "file/move",
+            "id": 18,
+            "params": {
+              "from": {
+                "rootId": $testContentRootId,
+                "segments": [ "move", "test.txt" ]
+              },
+              "to": {
+                "rootId": $testContentRootId,
+                "segments": [ "move", "test1.txt" ]
+              }
+            }
+          }
+      """)
+      client.expectJson(json"""
+          { "jsonrpc": "2.0",
+            "id": 18,
+            "result": null
+          }
+          """)
+
+      val to = Paths.get(testContentRoot.toString, "move", "test1.txt")
+      to.toFile.isFile shouldBe true
+      from.toFile.isFile shouldBe false
+    }
+
+    "move a directory" in {
+      val client = new WsTestClient(address)
+
+      val path = Paths.get(testContentRoot.toString, "move", "test1.txt")
+      val from = path.getParent()
+      path.toFile.isFile shouldBe true
+      from.toFile.isDirectory shouldBe true
+
+      // move a directory
+      client.send(json"""
+          { "jsonrpc": "2.0",
+            "method": "file/move",
+            "id": 19,
+            "params": {
+              "from": {
+                "rootId": $testContentRootId,
+                "segments": [ "move" ]
+              },
+              "to": {
+                "rootId": $testContentRootId,
+                "segments": [ "move_to" ]
+              }
+            }
+          }
+      """)
+      client.expectJson(json"""
+          { "jsonrpc": "2.0",
+            "id": 19,
+            "result": null
+          }
+          """)
+
+      val to = Paths.get(testContentRoot.toString, "move_to", "test1.txt")
+      to.toFile.isFile shouldBe true
+      from.toFile.isDirectory shouldBe false
+    }
+
+    "return failure when moving nonexistent file" in {
+      val client = new WsTestClient(address)
+
+      client.send(json"""
+          { "jsonrpc": "2.0",
+            "method": "file/move",
+            "id": 20,
+            "params": {
+              "from": {
+                "rootId": $testContentRootId,
+                "segments": [ "nonexistent", "test.txt" ]
+              },
+              "to": {
+                "rootId": $testContentRootId,
+                "segments": [ "some", "test.txt" ]
+              }
+            }
+          }
+      """)
+      client.expectJson(json"""
+          { "jsonrpc": "2.0",
+            "id": 20,
+            "error": {
+              "code": 1003,
+              "message": "File not found"
+            }
+          }
+          """)
+
+      val to = Paths.get(testContentRoot.toString, "some", "test.txt")
+      to.toFile.isFile shouldBe false
+    }
+
+    "return failure when target exists" in {
+      val client = new WsTestClient(address)
+
+      // create a file
+      client.send(json"""
+          { "jsonrpc": "2.0",
+            "method": "file/create",
+            "id": 21,
+            "params": {
+              "object": {
+                "type": "File",
+                "name": "test.txt",
+                "path": {
+                  "rootId": $testContentRootId,
+                  "segments": [ "move" ]
+                }
+              }
+            }
+          }
+          """)
+      client.expectJson(json"""
+          { "jsonrpc": "2.0",
+            "id": 21,
+            "result": null
+          }
+          """)
+      val from = Paths.get(testContentRoot.toString, "move", "test.txt")
+      from.toFile.isFile shouldBe true
+      val to = Paths.get(testContentRoot.toString, "move_to", "test1.txt")
+      to.toFile.isFile shouldBe true
+
+      // move to existing file
+      client.send(json"""
+          { "jsonrpc": "2.0",
+            "method": "file/move",
+            "id": 22,
+            "params": {
+              "from": {
+                "rootId": $testContentRootId,
+                "segments": [ "move", "test.txt" ]
+              },
+              "to": {
+                "rootId": $testContentRootId,
+                "segments": [ "move_to", "test1.txt" ]
+              }
+            }
+          }
+      """)
+      client.expectJson(json"""
+          { "jsonrpc": "2.0",
+            "id": 22,
+            "error": {
+              "code": 1004,
+              "message": "File already exists"
+            }
+          }
+          """)
+    }
+
   }
 
 }
