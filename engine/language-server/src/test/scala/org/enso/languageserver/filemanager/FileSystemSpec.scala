@@ -233,6 +233,66 @@ class FileSystemSpec extends AnyFlatSpec with Matchers {
     to.toFile.exists shouldBe false
   }
 
+  it should "move a file" in new TestCtx {
+    //given
+    val path         = Paths.get(testDirPath.toString, "move_file", "a.txt")
+    val resultCreate = objectUnderTest.createFile(path.toFile).unsafeRunSync()
+    resultCreate shouldBe Right(())
+    val to = Paths.get(testDirPath.toString, "move_file", "b.txt")
+    //when
+    val result = objectUnderTest.move(path.toFile, to.toFile).unsafeRunSync()
+    //then
+    result shouldBe Right(())
+    path.toFile.isFile shouldBe false
+    to.toFile.isFile shouldBe true
+  }
+
+  it should "move a directory" in new TestCtx {
+    //given
+    val path         = Paths.get(testDirPath.toString, "move_dir", "a.txt")
+    val resultCreate = objectUnderTest.createFile(path.toFile).unsafeRunSync()
+    resultCreate shouldBe Right(())
+    val from = path.getParent()
+    val to   = Paths.get(testDirPath.toString, "move_dir_to")
+    //when
+    val result = objectUnderTest.move(from.toFile, to.toFile).unsafeRunSync()
+    //then
+    result shouldBe Right(())
+    from.toFile.isDirectory shouldBe false
+    to.toFile.isDirectory shouldBe true
+    to.resolve(path.getFileName()).toFile.isFile shouldBe true
+  }
+
+  it should "return FileNotFound when moving nonexistent file" in new TestCtx {
+    //given
+    val path = Paths.get(testDirPath.toString, "nonexistent", "a.txt")
+    val to   = Paths.get(testDirPath.toString, "move_file", "b.txt")
+    //when
+    val result = objectUnderTest.move(path.toFile, to.toFile).unsafeRunSync()
+    //then
+    result shouldBe Left(FileNotFound)
+    path.toFile.isFile shouldBe false
+    to.toFile.isFile shouldBe false
+  }
+
+  it should "return FileExists when moving to existing destination" in new TestCtx {
+    //given
+    val path = Paths.get(testDirPath.toString, "move_file", "a.txt")
+    val resultCreateFrom =
+      objectUnderTest.createFile(path.toFile).unsafeRunSync()
+    resultCreateFrom shouldBe Right(())
+    val to             = Paths.get(testDirPath.toString, "move_file", "b.txt")
+    val resultCreateTo = objectUnderTest.createFile(to.toFile).unsafeRunSync()
+    resultCreateTo shouldBe Right(())
+    to.toFile.isFile shouldBe true
+    //when
+    val result = objectUnderTest.move(path.toFile, to.toFile).unsafeRunSync()
+    //then
+    result shouldBe Left(FileExists)
+    path.toFile.isFile shouldBe true
+    to.toFile.isFile shouldBe true
+  }
+
   def readTxtFile(path: Path): String = {
     val buffer  = Source.fromFile(path.toFile)
     val content = buffer.getLines().mkString
