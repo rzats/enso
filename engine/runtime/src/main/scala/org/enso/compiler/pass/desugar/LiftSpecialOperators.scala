@@ -32,9 +32,24 @@ case class LiftSpecialOperators() extends IRPass {
         op match {
           case IR.Type.Ascription.name =>
             IR.Type.Ascription(runExpression(l), runExpression(r), loc, meta)
-          case IR.Type.Typeset.Subsumption.name =>
-            IR.Type.Typeset
+          case IR.Type.Set.Subsumption.name =>
+            IR.Type.Set
               .Subsumption(runExpression(l), runExpression(r), loc, meta)
+          case IR.Type.Set.Equality.name =>
+            IR.Type.Set
+              .Equality(runExpression(l), runExpression(r), loc, meta)
+          case IR.Type.Set.Concat.name =>
+            IR.Type.Set
+              .Concat(runExpression(l), runExpression(r), loc, meta)
+          case IR.Type.Set.Union.name =>
+            IR.Type.Set
+              .Union(runExpression(l), runExpression(r), loc, meta)
+          case IR.Type.Set.Intersection.name =>
+            IR.Type.Set
+              .Intersection(runExpression(l), runExpression(r), loc, meta)
+          case IR.Type.Set.Subtraction.name =>
+            IR.Type.Set
+              .Subtraction(runExpression(l), runExpression(r), loc, meta)
           case _ =>
             IR.Application.Operator
               .Binary(runExpression(l), op, runExpression(r), loc, meta)

@@ -109,11 +109,17 @@ class LiftSpecialOperatorsTest extends CompilerTest {
   testOperator(IR.Type.Ascription, IR.Type.Ascription(_, _, _))
 
   testOperator(
-    IR.Type.Typeset.Subsumption,
-    IR.Type.Typeset.Subsumption(_, _, _)
+    IR.Type.Set.Subsumption,
+    IR.Type.Set.Subsumption(_, _, _)
   )
 
-//  testOperator(IR.Type.Typeset.Equality, IR.Type.Typeset.Equality(_, _, _))
-//
-//  testOperator(IR.Type.Typeset.Concat, IR.Type.Typeset.Concat(_, _, _))
+  testOperator(IR.Type.Set.Equality, IR.Type.Set.Equality(_, _, _))
+
+  testOperator(IR.Type.Set.Concat, IR.Type.Set.Concat(_, _, _))
+
+  testOperator(IR.Type.Set.Union, IR.Type.Set.Union(_, _, _))
+
+  testOperator(IR.Type.Set.Intersection, IR.Type.Set.Intersection(_, _, _))
+
+  testOperator(IR.Type.Set.Subtraction, IR.Type.Set.Subtraction(_, _, _))
 }
