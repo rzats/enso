@@ -49,6 +49,9 @@ import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.jdk.OptionConverters._
 
+// TODO [AA] Generate specialised nodes where possible for applications (e.g.
+//  "+" could resolve to an AddOperatorNode instead of an ApplicationNode)
+
 /** This is an implementation of a codegeneration pass that lowers the Enso
   * [[IR]] into the truffle [[org.enso.compiler.core.Core.Node]] structures that
   * are actually executed.
@@ -169,12 +172,27 @@ class IRToTruffle(
         typeName + Constants.SCOPE_SEPARATOR + methodDef.methodName
       )
 
-      val funNode = expressionProcessor.processFunctionBody(
-        List(thisArgument) ++ methodDef.function.arguments,
-        methodDef.function.body,
-        methodDef.function.location
-      )
-      funNode.markTail()
+      val funNode = methodDef.body match {
+        case fn: IR.Function =>
+          expressionProcessor.processFunctionBody(
+            thisArgument :: fn.arguments,
+            fn.body,
+            fn.location
+          )
+        case _ =>
+          expressionProcessor.processFunctionBody(
+            List(thisArgument),
+            methodDef.body,
+            methodDef.body.location
+          )
+      }
+
+//      val funNode = expressionProcessor.processFunctionBody(
+//        List(thisArgument) ++ methodDef.function.arguments,
+//        methodDef.function.body,
+//        methodDef.function.location
+//      )
+//      funNode.markTail()
 
       val function = new RuntimeFunction(
         funNode.getCallTarget,
@@ -274,7 +292,6 @@ class IRToTruffle(
       * @return a truffle expression that represents the same program as `ir`
       */
     def run(ir: IR): RuntimeExpression = ir match {
-      case IR.Tagged(ir, _, _, _)         => run(ir)
       case block: IR.Expression.Block     => processBlock(block)
       case literal: IR.Literal            => processLiteral(literal)
       case app: IR.Application            => processApplication(app)
@@ -480,7 +497,7 @@ class IRToTruffle(
       * @return a truffle node representing the described function
       */
     def processFunctionBody(
-      arguments: List[IR.DefinitionArgument.Specified],
+      arguments: List[IR.DefinitionArgument],
       body: IR.Expression,
       location: Option[Location]
     ): CreateFunctionNode = {
@@ -696,44 +713,50 @@ class IRToTruffle(
 
     /** Executes the code generator on the provided definition-site argument.
       *
-      * @param arg the argument to generate code for
+      * @param inputArg the argument to generate code for
       * @param position the position of `arg` at the function definition site
       * @return a truffle entity corresponding to the definition of `arg` for a
       *         given function
       */
     def run(
-      arg: IR.DefinitionArgument.Specified,
+      inputArg: IR.DefinitionArgument,
       position: Int
-    ): ArgumentDefinition = {
-      val defaultExpression = arg.defaultValue
-        .map(new ExpressionProcessor(scope, scopeName).run(_))
-        .orNull
+    ): ArgumentDefinition = inputArg match {
+      case arg: IR.DefinitionArgument.Specified =>
+        val defaultExpression = arg.defaultValue
+          .map(new ExpressionProcessor(scope, scopeName).run(_))
+          .orNull
 
-      // Note [Handling Suspended Defaults]
-      val defaultedValue = if (arg.suspended && defaultExpression != null) {
-        val defaultRootNode = ClosureRootNode.build(
-          language,
-          scope,
-          moduleScope,
-          defaultExpression,
-          null,
-          s"default::$scopeName::${arg.name}"
+        // Note [Handling Suspended Defaults]
+        val defaultedValue = if (arg.suspended && defaultExpression != null) {
+          val defaultRootNode = ClosureRootNode.build(
+            language,
+            scope,
+            moduleScope,
+            defaultExpression,
+            null,
+            s"default::$scopeName::${arg.name}"
+          )
+
+          CreateThunkNode.build(
+            Truffle.getRuntime.createCallTarget(defaultRootNode)
+          )
+        } else {
+          defaultExpression
+        }
+
+        val executionMode = if (arg.suspended) {
+          ArgumentDefinition.ExecutionMode.PASS_THUNK
+        } else {
+          ArgumentDefinition.ExecutionMode.EXECUTE
+        }
+
+        new ArgumentDefinition(
+          position,
+          arg.name,
+          defaultedValue,
+          executionMode
         )
-
-        CreateThunkNode.build(
-          Truffle.getRuntime.createCallTarget(defaultRootNode)
-        )
-      } else {
-        defaultExpression
-      }
-
-      val executionMode = if (arg.suspended) {
-        ArgumentDefinition.ExecutionMode.PASS_THUNK
-      } else {
-        ArgumentDefinition.ExecutionMode.EXECUTE
-      }
-
-      new ArgumentDefinition(position, arg.name, defaultedValue, executionMode)
     }
   }
 }

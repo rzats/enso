@@ -7,16 +7,14 @@ import com.oracle.truffle.api.source.Source
 import org.enso.compiler.core.IR.{Expression, Module}
 import org.enso.compiler.codegen.{AstToIR, IRToTruffle}
 import org.enso.compiler.core.IR
+import org.enso.compiler.pass.IRPass
+import org.enso.compiler.pass.desugar.{LiftSpecialOperators, OperatorToFunction}
 import org.enso.flexer.Reader
 import org.enso.interpreter.Language
 import org.enso.interpreter.node.{ExpressionNode => RuntimeExpression}
 import org.enso.interpreter.runtime.Context
 import org.enso.interpreter.runtime.error.ModuleDoesNotExistException
-import org.enso.interpreter.runtime.scope.{
-  LocalScope,
-  ModuleScope,
-  TopLevelScope
-}
+import org.enso.interpreter.runtime.scope.{LocalScope, ModuleScope, TopLevelScope}
 import org.enso.polyglot.LanguageInfo
 import org.enso.syntax.text.{AST, Parser}
 
@@ -32,7 +30,10 @@ class Compiler(
 ) {
 
   /** A list of the compiler phases, in the order they should be run. */
-  val compilerPhaseOrdering = List()
+  val compilerPhaseOrdering: List[IRPass] = List(
+    LiftSpecialOperators(),
+    OperatorToFunction()
+  )
 
   /**
     * Processes the provided language sources, registering any bindings in the
@@ -113,7 +114,7 @@ class Compiler(
 
     generateIRInline(parsed).flatMap { ir =>
       Some({
-        val compilerOutput = runCompilerPhases(ir)
+        val compilerOutput = runCompilerPhasesInline(ir)
 
         truffleCodegenInline(
           compilerOutput,
@@ -183,8 +184,21 @@ class Compiler(
     * @param ir the compiler intermediate representation to transform
     * @return the output result of the
     */
-  def runCompilerPhases[T <: IR](ir: T): T = {
-    ir
+  def runCompilerPhases(ir: IR.Module): IR.Module = {
+    compilerPhaseOrdering.foldLeft(ir)(
+      (intermediateIR, pass) => pass.runModule(intermediateIR)
+    )
+  }
+
+  /** Runs the various compiler passes in an inline context.
+   *
+   * @param ir the compiler intermediate representation to transform
+   * @return the output result of the
+   */
+  def runCompilerPhasesInline(ir: IR.Expression): IR.Expression = {
+    compilerPhaseOrdering.foldLeft(ir)(
+      (intermediateIR, pass) => pass.runExpression(intermediateIR)
+    )
   }
 
   /** Generates code for the truffle interpreter.

@@ -260,7 +260,7 @@ object AstToIR {
   def translateArgumentDefinition(
     arg: AST,
     isSuspended: Boolean = false
-  ): DefinitionArgument.Specified = {
+  ): DefinitionArgument = {
     arg match {
       case AstView.LazyAssignedArgumentDefinition(name, value) =>
         DefinitionArgument.Specified(
