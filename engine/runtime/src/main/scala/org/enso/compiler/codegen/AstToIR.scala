@@ -103,13 +103,13 @@ object AstToIR {
     * @param inputAST the definition to be translated
     * @return the [[Core]] representation of `inputAST`
     */
-  def translateModuleSymbol(inputAST: AST): ModuleScope.Definition = {
+  def translateModuleSymbol(inputAST: AST): Module.Scope.Definition = {
     inputAST match {
       case AST.Def(consName, args, body) =>
         if (body.isDefined) {
           throw new RuntimeException("Cannot support complex type defs yet!!!!")
         } else {
-          ModuleScope.Definition
+          Module.Scope.Definition
             .Atom(
               consName.name,
               args.map(translateArgumentDefinition(_)),
@@ -129,7 +129,7 @@ object AstToIR {
           case expr =>
             Function.Lambda(List(), expr, expr.location)
         }
-        ModuleScope.Definition.Method(path, nameStr, defExpr, inputAST.location)
+        Module.Scope.Definition.Method(path, nameStr, defExpr, inputAST.location)
       case _ =>
         throw new UnhandledEntity(inputAST, "translateModuleSymbol")
     }
@@ -488,8 +488,8 @@ object AstToIR {
     * @param imp the import to translate
     * @return the [[Core]] representation of `imp`
     */
-  def translateImport(imp: AST.Import): ModuleScope.Import = {
-    ModuleScope.Import(
+  def translateImport(imp: AST.Import): Module.Scope.Import = {
+    Module.Scope.Import(
       imp.path.map(t => t.name).reduceLeft((l, r) => l + "." + r),
       imp.location
     )

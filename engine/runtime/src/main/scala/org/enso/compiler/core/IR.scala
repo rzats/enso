@@ -87,8 +87,8 @@ object IR {
     * @param passData the pass metadata associated with this node
     */
   sealed case class Module(
-    imports: List[ModuleScope.Import],
-    bindings: List[ModuleScope.Definition],
+    imports: List[Module.Scope.Import],
+    bindings: List[Module.Scope.Definition],
     override val location: Option[Location],
     override val passData: Set[Metadata] = Set()
   ) extends IR
@@ -104,92 +104,94 @@ object IR {
       )
     }
   }
+  object Module {
+
+    /** A representation of constructs that can only occur in the top-level
+      * module scope
+      */
+    sealed trait Scope extends IR {
+      override def mapExpressions(fn: Expression => Expression): Scope
+    }
+    object Scope {
+
+      /** An import statement.
+        *
+        * @param name the full `.`-separated path representing the import
+        * @param location the source location that the node corresponds to
+        * @param passData the pass metadata associated with this node
+        */
+      sealed case class Import(
+        name: String,
+        override val location: Option[Location],
+        override val passData: Set[Metadata] = Set()
+      ) extends Scope
+          with IRKind.Primitive {
+        override def addMetadata(newData: Metadata): Import = {
+          copy(passData = this.passData + newData)
+        }
+
+        override def mapExpressions(fn: Expression => Expression): Import = this
+      }
+
+      /** A representation of top-level definitions. */
+      sealed trait Definition extends Scope {
+        override def mapExpressions(fn: Expression => Expression): Definition
+      }
+      object Definition {
+
+        /** The definition of an atom constructor and its associated arguments.
+          *
+          * @param name the name of the atom
+          * @param arguments the arguments to the atom constructor
+          * @param location the source location that the node corresponds to
+          * @param passData the pass metadata associated with this node
+          */
+        sealed case class Atom(
+          name: String,
+          arguments: List[DefinitionArgument],
+          override val location: Option[Location],
+          override val passData: Set[Metadata] = Set()
+        ) extends Definition
+            with IRKind.Primitive {
+          override def addMetadata(newData: Metadata): Atom = {
+            copy(passData = this.passData + newData)
+          }
+
+          override def mapExpressions(fn: Expression => Expression): Atom = {
+            copy(arguments = arguments.map(_.mapExpressions(fn)))
+          }
+        }
+
+        /** The definition of a method for a given constructor [[typeName]].
+          *
+          * @param typeName the name of the atom that the method is being
+          *                 defined for
+          * @param methodName the name of the method being defined on `typename`
+          * @param body the body of the method
+          * @param location the source location that the node corresponds to
+          * @param passData the pass metadata associated with this node
+          */
+        sealed case class Method(
+          typeName: String,
+          methodName: String,
+          body: Expression,
+          override val location: Option[Location],
+          override val passData: Set[Metadata] = Set()
+        ) extends Definition
+            with IRKind.Primitive {
+          override def addMetadata(newData: Metadata): Method = {
+            copy(passData = this.passData + newData)
+          }
+
+          override def mapExpressions(fn: Expression => Expression): Method = {
+            copy(body = fn(body))
+          }
+        }
+      }
+    }
+  }
 
   // === Module Scope =========================================================
-
-  /** A representation of constructs that can only occur in the top-level module
-    * scope
-    */
-  sealed trait ModuleScope extends IR {
-    override def mapExpressions(fn: Expression => Expression): ModuleScope
-  }
-  object ModuleScope {
-
-    /** An import statement.
-      *
-      * @param name the full `.`-separated path representing the import
-      * @param location the source location that the node corresponds to
-      * @param passData the pass metadata associated with this node
-      */
-    sealed case class Import(
-      name: String,
-      override val location: Option[Location],
-      override val passData: Set[Metadata] = Set()
-    ) extends ModuleScope
-        with IRKind.Primitive {
-      override def addMetadata(newData: Metadata): Import = {
-        copy(passData = this.passData + newData)
-      }
-
-      override def mapExpressions(fn: Expression => Expression): Import = this
-    }
-
-    /** A representation of top-level definitions. */
-    sealed trait Definition extends ModuleScope {
-      override def mapExpressions(fn: Expression => Expression): Definition
-    }
-    object Definition {
-
-      /** The definition of an atom constructor and its associated arguments.
-        *
-        * @param name the name of the atom
-        * @param arguments the arguments to the atom constructor
-        * @param location the source location that the node corresponds to
-        * @param passData the pass metadata associated with this node
-        */
-      sealed case class Atom(
-        name: String,
-        arguments: List[DefinitionArgument],
-        override val location: Option[Location],
-        override val passData: Set[Metadata] = Set()
-      ) extends Definition
-          with IRKind.Primitive {
-        override def addMetadata(newData: Metadata): Atom = {
-          copy(passData = this.passData + newData)
-        }
-
-        override def mapExpressions(fn: Expression => Expression): Atom = {
-          copy(arguments = arguments.map(_.mapExpressions(fn)))
-        }
-      }
-
-      /** The definition of a method for a given constructor [[typeName]].
-        *
-        * @param typeName the name of the atom that the method is being defined
-        *                 for
-        * @param methodName the name of the method being defined on `typename`
-        * @param body the body of the method
-        * @param location the source location that the node corresponds to
-        * @param passData the pass metadata associated with this node
-        */
-      sealed case class Method(
-        typeName: String,
-        methodName: String,
-        body: Expression,
-        override val location: Option[Location],
-        override val passData: Set[Metadata] = Set()
-      ) extends Definition
-          with IRKind.Primitive {
-        override def addMetadata(newData: Metadata): Method = {
-          copy(passData = this.passData + newData)
-        }
-
-        override def mapExpressions(fn: Expression => Expression): Method = {
-          copy(body = fn(body))
-        }
-      }
-    }
-  }
 
   // === Expression ===========================================================
 
@@ -673,7 +675,7 @@ object IR {
   object DefinitionArgument {
 
     /** The representation of an argument from a [[Function]] or
-      * [[IR.ModuleScope.Definition.Atom]] definition site.
+      * [[IR.Scope.Definition.Atom]] definition site.
       *
       * @param name the name of the argument
       * @param defaultValue the default value of the argument, if present

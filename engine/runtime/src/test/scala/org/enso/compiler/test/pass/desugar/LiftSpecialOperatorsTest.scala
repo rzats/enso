@@ -14,8 +14,8 @@ class LiftSpecialOperatorsTest extends CompilerTest {
     * @param ir the expression to hoist
     * @return a method containing `ir` as its body
     */
-  def asMethod(ir: IR.Expression): IR.ModuleScope.Definition.Method = {
-    IR.ModuleScope.Definition.Method("TestType", "testMethod", ir, None)
+  def asMethod(ir: IR.Expression): IR.Module.Scope.Definition.Method = {
+    IR.Module.Scope.Definition.Method("TestType", "testMethod", ir, None)
   }
 
   /** Hoists the provided expression as the default value of an atom argument.
@@ -23,8 +23,8 @@ class LiftSpecialOperatorsTest extends CompilerTest {
     * @param ir the expression to hoist
     * @return an atom with one argument `arg` with default value `ir`
     */
-  def asAtomDefaultArg(ir: IR.Expression): IR.ModuleScope.Definition.Atom = {
-    IR.ModuleScope.Definition.Atom(
+  def asAtomDefaultArg(ir: IR.Expression): IR.Module.Scope.Definition.Atom = {
+    IR.Module.Scope.Definition.Atom(
       "TestAtom",
       List(
         IR.DefinitionArgument

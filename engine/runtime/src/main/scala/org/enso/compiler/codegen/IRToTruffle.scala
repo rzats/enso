@@ -120,10 +120,10 @@ class IRToTruffle(
 
     val imports = module.imports
     val atomDefs = module.bindings.collect {
-      case atom: IR.ModuleScope.Definition.Atom => atom
+      case atom: IR.Module.Scope.Definition.Atom => atom
     }
     val methodDefs = module.bindings.collect {
-      case method: IR.ModuleScope.Definition.Method => method
+      case method: IR.Module.Scope.Definition.Method => method
     }
 
     // Register the imports in scope
