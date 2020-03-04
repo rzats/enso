@@ -103,6 +103,10 @@ object IR {
         bindings = bindings.map(_.mapExpressions(fn))
       )
     }
+
+    def transformExprs(fn: PartialFunction[Expression, Expression]): Module = {
+      copy(bindings = bindings.map(_.mapExpressions(_.transform(fn))))
+    }
   }
   object Module {
 

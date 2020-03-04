@@ -55,7 +55,7 @@ class LiftSpecialOperatorsTest extends CompilerTest {
         Some(loc)
       )
 
-//      LiftSpecialOperators().runExpression(expressionIR) shouldEqual outputIR
+      LiftSpecialOperators().runExpression(expressionIR) shouldEqual outputIR
     }
 
     "be lifted by the pass in a module context" in {}

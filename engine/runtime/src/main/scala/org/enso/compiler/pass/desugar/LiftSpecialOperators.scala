@@ -17,11 +17,8 @@ case class LiftSpecialOperators() extends IRPass {
     * @return `ir`, possibly having made transformations or annotations to that
     *         IR.
     */
-  override def runModule(ir: IR.Module): IR.Module = {
-    val bindings = ir.bindings
-
-    ir
-  }
+  override def runModule(ir: IR.Module): IR.Module =
+    ir.transformExprs({ case x => runExpression(x) })
 
   /** Executes the lifting pass in an inline context.
     *
@@ -29,6 +26,16 @@ case class LiftSpecialOperators() extends IRPass {
     * @return `ir`, possibly having made transformations or annotations to that
     *         IR.
     */
-  override def runExpression(ir: IR.Expression): IR.Expression = ir
+  override def runExpression(ir: IR.Expression): IR.Expression =
+    ir.transform({
+      case IR.Application.Operator.Binary(l, op, r, loc, meta) =>
+        op match {
+          case ":" =>
+            IR.Type.Ascription(runExpression(l), runExpression(r), loc, meta)
+          case _ =>
+            IR.Application.Operator
+              .Binary(runExpression(l), op, runExpression(r), loc, meta)
+        }
+    })
 
 }
