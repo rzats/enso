@@ -1,4 +1,4 @@
-package org.enso.languageserver.buffer
+package org.enso.languageserver.data
 
 import org.bouncycastle.jcajce.provider.digest.SHA3
 import org.bouncycastle.util.encoders.Hex

@@ -1,4 +1,4 @@
-package org.enso.languageserver.buffer
+package org.enso.languageserver.data
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must.Matchers

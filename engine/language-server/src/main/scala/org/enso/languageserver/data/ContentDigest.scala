@@ -1,4 +1,4 @@
-package org.enso.languageserver.buffer
+package org.enso.languageserver.data
 
 trait ContentDigest {
 

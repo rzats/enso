@@ -1,5 +1,6 @@
-package org.enso.languageserver.buffer
+package org.enso.languageserver.text
 
+import org.enso.languageserver.data.ContentDigest
 import org.enso.languageserver.data.buffer.Rope
 
 /**

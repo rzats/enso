@@ -118,7 +118,7 @@ case class Environment(clients: List[Client]) {
   ): Environment =
     modifyClient(clientId, { client =>
       client.copy(
-        capabilities = client.capabilities.filter(_.id != capabilityId)
+        capabilities = client.capabilities.filter(_ != capabilityId) //todo fix me
       )
     })
 }

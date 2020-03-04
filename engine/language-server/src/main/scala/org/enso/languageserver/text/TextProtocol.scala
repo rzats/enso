@@ -1,9 +1,9 @@
-package org.enso.languageserver.buffer
+package org.enso.languageserver.text
 
 import org.enso.languageserver.data.{CapabilityRegistration, Client}
 import org.enso.languageserver.filemanager.{FileSystemFailure, Path}
 
-object BufferProtocol {
+object TextProtocol {
 
   /** Requests the language server to open a file on behalf of a given user.
     *

@@ -1,5 +1,7 @@
 package org.enso.languageserver
 
+import java.util.UUID
+
 import akka.actor.{Actor, ActorLogging, ActorRef, Stash}
 import cats.effect.IO
 import org.enso.languageserver.data._
@@ -101,16 +103,16 @@ class LanguageServer(config: Config, fs: FileSystemApi[IO])
 
     case AcquireCapability(
         clientId,
-        reg @ CapabilityRegistration(_, capability: CanEdit)
+        reg @ CapabilityRegistration(capability: CanEdit)
         ) =>
       val (envWithoutCapability, releasingClients) = env.removeCapabilitiesBy {
-        case CapabilityRegistration(_, CanEdit(file)) => file == capability.path
-        case _                                        => false
+        case CapabilityRegistration(CanEdit(file)) => file == capability.path
+        case _                                     => false
       }
       releasingClients.foreach {
         case (client: Client, capabilities) =>
           capabilities.foreach { registration =>
-            client.actor ! CapabilityForceReleased(registration.id)
+            client.actor ! CapabilityForceReleased(UUID.randomUUID()) //todo fix me
           }
       }
       val newEnv = envWithoutCapability.grantCapability(clientId, reg)

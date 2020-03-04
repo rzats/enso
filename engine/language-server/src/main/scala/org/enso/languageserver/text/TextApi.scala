@@ -1,4 +1,4 @@
-package org.enso.languageserver.buffer
+package org.enso.languageserver.text
 
 import java.util.UUID
 
@@ -6,14 +6,14 @@ import org.enso.languageserver.data.CapabilityRegistration
 import org.enso.languageserver.filemanager.Path
 import org.enso.languageserver.jsonrpc.{HasParams, HasResult, Method}
 
-object BufferApi {
+object TextApi {
 
   case object OpenFile extends Method("text/openFile") {
     case class Params(path: Path)
     case class Result(
       writeCapability: Option[CapabilityRegistration],
       content: String,
-      currentVersion: UUID
+      currentVersion: String
     )
     implicit val hasParams = new HasParams[this.type] {
       type Params = OpenFile.Params

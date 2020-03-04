@@ -47,6 +47,7 @@ object WebSocketServer {
   */
 class WebSocketServer(
   languageServer: ActorRef,
+  bufferRegistry: ActorRef,
   config: WebSocketServer.Config = WebSocketServer.Config.default
 )(
   implicit val system: ActorSystem,
@@ -60,7 +61,9 @@ class WebSocketServer(
   private def newUser(): Flow[Message, Message, NotUsed] = {
     val clientId = UUID.randomUUID()
     val clientActor =
-      system.actorOf(Props(new ClientController(clientId, languageServer)))
+      system.actorOf(
+        Props(new ClientController(clientId, languageServer, bufferRegistry))
+      )
 
     val messageHandler =
       system.actorOf(

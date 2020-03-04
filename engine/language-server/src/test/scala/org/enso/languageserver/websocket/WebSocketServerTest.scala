@@ -12,14 +12,14 @@ import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import cats.effect.IO
 import io.circe.Json
 import io.circe.parser.parse
-import org.enso.languageserver.data.Config
-
+import org.enso.languageserver.data.{Config, Sha3Digest}
 import org.enso.languageserver.{
   LanguageProtocol,
   LanguageServer,
   WebSocketServer
 }
 import org.enso.languageserver.filemanager.FileSystem
+import org.enso.languageserver.text.BufferRegistry
 import org.scalatest.{Assertion, BeforeAndAfterAll, BeforeAndAfterEach}
 import org.scalatest.matchers.should.Matchers
 import org.scalatest.wordspec.AnyWordSpecLike
@@ -42,7 +42,6 @@ abstract class WebSocketServerTest
   val interface       = "127.0.0.1"
   var address: String = _
 
-
   val testContentRoot   = Files.createTempDirectory(null)
   val testContentRootId = UUID.randomUUID()
   val config            = Config(Map(testContentRootId -> testContentRoot.toFile))
@@ -58,7 +57,9 @@ abstract class WebSocketServerTest
         Props(new LanguageServer(config, new FileSystem[IO]))
       )
     languageServer ! LanguageProtocol.Initialize
-    server  = new WebSocketServer(languageServer)
+    val bufferRegistry =
+      system.actorOf(BufferRegistry.props(languageServer)(Sha3Digest))
+    server  = new WebSocketServer(languageServer, bufferRegistry)
     binding = Await.result(server.bind(interface, port = 0), 3.seconds)
     address = s"ws://$interface:${binding.localAddress.getPort}"
   }

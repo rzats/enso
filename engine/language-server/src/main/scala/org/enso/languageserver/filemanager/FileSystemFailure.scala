@@ -21,6 +21,11 @@ case object AccessDenied extends FileSystemFailure
 case object FileNotFound extends FileSystemFailure
 
 /**
+  * Signal that the operation timed out.
+  */
+case object OperationTimeout extends FileSystemFailure
+
+/**
   * Signals file system specific errors.
   *
   * @param reason a reason of failure

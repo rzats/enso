@@ -1,0 +1,37 @@
+package org.enso.languageserver
+
+import java.io.File
+
+import akka.actor.{ActorSystem, Props}
+import akka.stream.SystemMaterializer
+import cats.effect.IO
+import org.enso.languageserver.text.BufferRegistry
+import org.enso.languageserver.data.{Config, ContentDigest, Sha3Digest}
+import org.enso.languageserver.filemanager.{FileSystem, FileSystemApi}
+
+class MainModule(serverConfig: LanguageServerConfig) {
+
+  lazy val languageServerConfig = Config(
+    Map(serverConfig.contentRootUuid -> new File(serverConfig.contentRootPath))
+  )
+
+  lazy val fileSystem: FileSystemApi[IO] = new FileSystem[IO]
+
+  implicit val contentDigest: ContentDigest = Sha3Digest
+
+  implicit val system = ActorSystem()
+
+  implicit val materializer = SystemMaterializer.get(system)
+
+  lazy val languageServer =
+    system.actorOf(
+      Props(new LanguageServer(languageServerConfig, fileSystem)),
+      "server"
+    )
+
+  lazy val bufferRegistry =
+    system.actorOf(BufferRegistry.props(languageServer), "buffer-registry")
+
+  lazy val server = new WebSocketServer(languageServer, bufferRegistry)
+
+}
