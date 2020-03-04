@@ -4,6 +4,8 @@ import org.enso.compiler.core.IR.Expression
 import org.enso.syntax.text.ast.Doc
 import org.enso.syntax.text.{AST, Location}
 
+import scala.collection.{Set => DataSet}
+
 import scala.reflect.ClassTag
 
 /** [[IR]] is a temporary and fairly unsophisticated internal representation
@@ -104,8 +106,12 @@ object IR {
       )
     }
 
-    def transformExprs(fn: PartialFunction[Expression, Expression]): Module = {
-      copy(bindings = bindings.map(_.mapExpressions(_.transform(fn))))
+    def transformExpressions(
+      fn: PartialFunction[Expression, Expression]
+    ): Module = {
+      copy(
+        bindings = bindings.map(_.mapExpressions(_.transformExpressions(fn)))
+      )
     }
   }
   object Module {
@@ -195,8 +201,6 @@ object IR {
     }
   }
 
-  // === Module Scope =========================================================
-
   // === Expression ===========================================================
 
   /** Enso expressions. */
@@ -207,11 +211,13 @@ object IR {
       * @param fn the function to apply across the IR
       * @return the IR, potentially transformed
       */
-    def transform(fn: PartialFunction[Expression, Expression]): Expression = {
+    def transformExpressions(
+      fn: PartialFunction[Expression, Expression]
+    ): Expression = {
       if (fn.isDefinedAt(this)) {
         fn(this)
       } else {
-        mapExpressions(_.transform(fn))
+        mapExpressions(_.transformExpressions(fn))
       }
     }
 
@@ -385,6 +391,11 @@ object IR {
   }
   object Type {
 
+    /** Static information about the type operators. */
+    sealed trait Info {
+      val name: String
+    }
+
     /** The ascription of a type to a value.
       *
       * @param typed the expression being ascribed a type
@@ -406,6 +417,9 @@ object IR {
       override def mapExpressions(fn: Expression => Expression): Ascription = {
         copy(typed = fn(typed), signature = fn(signature))
       }
+    }
+    object Ascription extends Info {
+      override val name: String = ":"
     }
 
     /** A representation of the `in` portion of a type signature that represents
@@ -430,6 +444,9 @@ object IR {
       override def mapExpressions(fn: Expression => Expression): Context = {
         copy(typed = fn(typed), context = fn(context))
       }
+    }
+    object Context extends Info {
+      override val name: String = "in"
     }
 
     sealed trait Typeset extends Type {
@@ -465,6 +482,9 @@ object IR {
           )
         }
       }
+      object Member extends Info {
+        override val name: String = "_ : _ = _"
+      }
 
       /** The typeset subsumption judgement `<:`.
         *
@@ -490,6 +510,9 @@ object IR {
           copy(left = fn(left), right = fn(right))
         }
       }
+      object Subsumption extends Info {
+        override val name: String = "<:"
+      }
 
       /** The typeset equality judgement `~`.
         *
@@ -512,6 +535,9 @@ object IR {
         override def mapExpressions(fn: Expression => Expression): Equality = {
           copy(left = fn(left), right = fn(right))
         }
+      }
+      object Equality extends Info {
+        override val name: String = "~"
       }
 
       /** The typeset concatenation operator `,`.
@@ -536,6 +562,9 @@ object IR {
           copy(left = fn(left), right = fn(right))
         }
       }
+      object Concat extends Info {
+        override val name: String = ","
+      }
 
       /** The typeset union operator `|`.
         *
@@ -558,6 +587,9 @@ object IR {
         override def mapExpressions(fn: Expression => Expression): Union = {
           copy(left = fn(left), right = fn(right))
         }
+      }
+      object Union extends Info {
+        override val name: String = "|"
       }
 
       /** The typeset intersection operator `&`.
@@ -584,6 +616,9 @@ object IR {
           copy(left = fn(left), right = fn(right))
         }
       }
+      object Intersection extends Info {
+        override val name: String = "&"
+      }
 
       /** The typeset subtraction operator `\`.
         *
@@ -609,6 +644,9 @@ object IR {
           copy(left = fn(left), right = fn(right))
         }
       }
+    }
+    object Subtraction extends Info {
+      override val name: String = "\\"
     }
   }
 
@@ -679,7 +717,7 @@ object IR {
   object DefinitionArgument {
 
     /** The representation of an argument from a [[Function]] or
-      * [[IR.Scope.Definition.Atom]] definition site.
+      * [[IR.Module.Scope.Definition.Atom]] definition site.
       *
       * @param name the name of the argument
       * @param defaultValue the default value of the argument, if present

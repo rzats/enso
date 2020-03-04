@@ -129,7 +129,12 @@ object AstToIR {
           case expr =>
             Function.Lambda(List(), expr, expr.location)
         }
-        Module.Scope.Definition.Method(path, nameStr, defExpr, inputAST.location)
+        Module.Scope.Definition.Method(
+          path,
+          nameStr,
+          defExpr,
+          inputAST.location
+        )
       case _ =>
         throw new UnhandledEntity(inputAST, "translateModuleSymbol")
     }
@@ -307,6 +312,12 @@ object AstToIR {
     */
   def translateApplicationLike(callable: AST): Expression = {
     callable match {
+      case AstView.ContextAscription(expr, context) =>
+        Type.Context(
+          translateExpression(expr),
+          translateExpression(context),
+          callable.location
+        )
       case AstView.ForcedTerm(term) =>
         Application.Force(translateExpression(term), callable.location)
       case AstView.Application(name, args) =>

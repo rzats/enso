@@ -18,7 +18,7 @@ case class LiftSpecialOperators() extends IRPass {
     *         IR.
     */
   override def runModule(ir: IR.Module): IR.Module =
-    ir.transformExprs({ case x => runExpression(x) })
+    ir.transformExpressions({ case x => runExpression(x) })
 
   /** Executes the lifting pass in an inline context.
     *
@@ -27,11 +27,14 @@ case class LiftSpecialOperators() extends IRPass {
     *         IR.
     */
   override def runExpression(ir: IR.Expression): IR.Expression =
-    ir.transform({
+    ir.transformExpressions({
       case IR.Application.Operator.Binary(l, op, r, loc, meta) =>
         op match {
-          case ":" =>
+          case IR.Type.Ascription.name =>
             IR.Type.Ascription(runExpression(l), runExpression(r), loc, meta)
+          case IR.Type.Typeset.Subsumption.name =>
+            IR.Type.Typeset
+              .Subsumption(runExpression(l), runExpression(r), loc, meta)
           case _ =>
             IR.Application.Operator
               .Binary(runExpression(l), op, runExpression(r), loc, meta)
