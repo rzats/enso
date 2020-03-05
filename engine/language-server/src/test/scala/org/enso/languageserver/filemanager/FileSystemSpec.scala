@@ -243,7 +243,7 @@ class FileSystemSpec extends AnyFlatSpec with Matchers {
     val result = objectUnderTest.move(path.toFile, to.toFile).unsafeRunSync()
     //then
     result shouldBe Right(())
-    path.toFile.isFile shouldBe false
+    path.toFile.exists shouldBe false
     to.toFile.isFile shouldBe true
   }
 
@@ -258,7 +258,7 @@ class FileSystemSpec extends AnyFlatSpec with Matchers {
     val result = objectUnderTest.move(from.toFile, to.toFile).unsafeRunSync()
     //then
     result shouldBe Right(())
-    from.toFile.isDirectory shouldBe false
+    from.toFile.exists shouldBe false
     to.toFile.isDirectory shouldBe true
     to.resolve(path.getFileName()).toFile.isFile shouldBe true
   }
@@ -273,7 +273,6 @@ class FileSystemSpec extends AnyFlatSpec with Matchers {
     val resultCreateDirectory =
       objectUnderTest.createDirectory(to.toFile).unsafeRunSync()
     resultCreateDirectory shouldBe Right(())
-    to.toFile.isDirectory shouldBe true
     //when
     val result = objectUnderTest.move(from.toFile, to.toFile).unsafeRunSync()
     //then
@@ -312,8 +311,8 @@ class FileSystemSpec extends AnyFlatSpec with Matchers {
     val result = objectUnderTest.move(path.toFile, to.toFile).unsafeRunSync()
     //then
     result shouldBe Left(FileNotFound)
-    path.toFile.isFile shouldBe false
-    to.toFile.isFile shouldBe false
+    path.toFile.exists shouldBe false
+    to.toFile.exists shouldBe false
   }
 
   it should "return FileExists when moving to existing destination" in new TestCtx {
@@ -325,7 +324,6 @@ class FileSystemSpec extends AnyFlatSpec with Matchers {
     val to             = Paths.get(testDirPath.toString, "move_file", "b.txt")
     val resultCreateTo = objectUnderTest.createFile(to.toFile).unsafeRunSync()
     resultCreateTo shouldBe Right(())
-    to.toFile.isFile shouldBe true
     //when
     val result = objectUnderTest.move(path.toFile, to.toFile).unsafeRunSync()
     //then
