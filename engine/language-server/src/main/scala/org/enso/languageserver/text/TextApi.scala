@@ -1,7 +1,5 @@
 package org.enso.languageserver.text
 
-import java.util.UUID
-
 import org.enso.languageserver.data.CapabilityRegistration
 import org.enso.languageserver.filemanager.Path
 import org.enso.languageserver.jsonrpc.{HasParams, HasResult, Method}

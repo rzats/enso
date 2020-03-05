@@ -36,9 +36,13 @@ object LanguageProtocol {
     * @param registration the capability to grant.
     */
   case class AcquireCapability(
-    clientId: Client.Id,
+    client: Client,
     registration: CapabilityRegistration
   )
+
+  sealed trait AcquireCapabilityResponse
+  case object CapabilityAcquired              extends AcquireCapabilityResponse
+  case object CapabilityAcquisitionBadRequest extends AcquireCapabilityResponse
 
   /**
     * Notifies the Language Server about a client releasing a capability.
@@ -48,8 +52,12 @@ object LanguageProtocol {
     */
   case class ReleaseCapability(
     clientId: Client.Id,
-    capabilityId: CapabilityRegistration.Id
+    capability: CapabilityRegistration
   )
+
+  sealed trait ReleaseCapabilityResponse
+  case object CapabilityReleased          extends ReleaseCapabilityResponse
+  case object CapabilityReleaseBadRequest extends ReleaseCapabilityResponse
 
   /**
     * A notification sent by the Language Server, notifying a client about
@@ -57,7 +65,7 @@ object LanguageProtocol {
     *
     * @param capabilityId the capability being released.
     */
-  case class CapabilityForceReleased(capabilityId: CapabilityRegistration.Id)
+  case class CapabilityForceReleased(capability: CapabilityRegistration)
 
   /**
     * A notification sent by the Language Server, notifying a client about a new
@@ -101,27 +109,27 @@ class LanguageServer(config: Config, fs: FileSystemApi[IO])
       log.debug("Client disconnected [{}].", clientId)
       context.become(initialized(config, env.removeClient(clientId)))
 
-    case AcquireCapability(
-        clientId,
-        reg @ CapabilityRegistration(capability: CanEdit)
-        ) =>
-      val (envWithoutCapability, releasingClients) = env.removeCapabilitiesBy {
-        case CapabilityRegistration(CanEdit(file)) => file == capability.path
-        case _                                     => false
-      }
-      releasingClients.foreach {
-        case (client: Client, capabilities) =>
-          capabilities.foreach { registration =>
-            client.actor ! CapabilityForceReleased(UUID.randomUUID()) //todo fix me
-          }
-      }
-      val newEnv = envWithoutCapability.grantCapability(clientId, reg)
-      context.become(initialized(config, newEnv))
-
-    case ReleaseCapability(clientId, capabilityId) =>
-      context.become(
-        initialized(config, env.releaseCapability(clientId, capabilityId))
-      )
+//    case AcquireCapability(
+//        clientId,
+//        reg @ CapabilityRegistration(capability: CanEdit)
+//        ) =>
+//      val (envWithoutCapability, releasingClients) = env.removeCapabilitiesBy {
+//        case CapabilityRegistration(CanEdit(file)) => file == capability.path
+//        case _                                     => false
+//      }
+//      releasingClients.foreach {
+//        case (client: Client, capabilities) =>
+//          capabilities.foreach { registration =>
+//            client.actor ! CapabilityForceReleased(UUID.randomUUID()) //todo fix me
+//          }
+//      }
+//      val newEnv = envWithoutCapability.grantCapability(clientId, reg)
+//      context.become(initialized(config, newEnv))
+//
+//    case ReleaseCapability(clientId, capabilityId) =>
+//      context.become(
+//        initialized(config, env.releaseCapability(clientId, capabilityId))
+//      )
 
     case WriteFile(path, content) =>
       val result =

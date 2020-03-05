@@ -1,6 +1,7 @@
 package org.enso.languageserver.text
 
-import akka.actor.{Actor, ActorRef, Props, Stash}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props, Stash}
+import org.enso.languageserver.LanguageProtocol._
 import org.enso.languageserver.data.{
   CanEdit,
   CapabilityRegistration,
@@ -27,22 +28,24 @@ import scala.language.postfixOps
 class CollaborativeBuffer(bufferPath: Path, fileManager: ActorRef)(
   implicit contentDigest: ContentDigest
 ) extends Actor
-    with Stash {
+    with Stash
+    with ActorLogging {
 
   import context.dispatcher
 
   override def receive: Receive = waiting
 
   private def waiting: Receive = {
-    case OpenFile(client, path) if bufferPath == path =>
+    case OpenFile(client, path) =>
       context.system.eventStream.publish(BufferCreated(path))
       fileManager ! FileManagerProtocol.ReadFile(path)
       context.system.scheduler
         .scheduleOnce(10 seconds, self, FileReadingTimeout)
       context.become(reading(client, sender()))
+      log.info(s"Buffer $path opened for ${client.id}")
   }
 
-  private def reading(client: Client.Id, originalSender: ActorRef): Receive = {
+  private def reading(client: Client, originalSender: ActorRef): Receive = {
     case ReadFileResult(Right(content)) =>
       val buffer = Buffer(content)
       val cap    = CapabilityRegistration(CanEdit(bufferPath))
@@ -50,7 +53,7 @@ class CollaborativeBuffer(bufferPath: Path, fileManager: ActorRef)(
         Right(OpenFileResult(buffer, Some(cap)))
       )
       unstashAll()
-      context.become(editing(buffer, Set(client), client))
+      context.become(editing(buffer, Set(client), Some(client)))
 
     case ReadFileResult(Left(failure)) =>
       originalSender ! OpenFileResponse(Left(failure))
@@ -65,12 +68,51 @@ class CollaborativeBuffer(bufferPath: Path, fileManager: ActorRef)(
 
   private def editing(
     buffer: Buffer,
-    clients: Set[Client.Id],
-    writeLock: Client.Id
+    clients: Set[Client],
+    maybeWriteLock: Option[Client]
   ): Receive = {
     case OpenFile(client, _) =>
-      context.become(editing(buffer, clients + client, writeLock))
-      sender ! OpenFileResponse(Right(OpenFileResult(buffer, None)))
+      val writeCapability =
+        if (maybeWriteLock.isEmpty)
+          Some(CapabilityRegistration(CanEdit(bufferPath)))
+        else
+          None
+      sender ! OpenFileResponse(Right(OpenFileResult(buffer, writeCapability)))
+      context.become(editing(buffer, clients + client, maybeWriteLock))
+
+    case AcquireCapability(clientId, CapabilityRegistration(CanEdit(path))) =>
+      maybeWriteLock match {
+        case None =>
+          sender() ! CapabilityAcquired
+          context.become(editing(buffer, clients, Some(clientId)))
+
+        case Some(holder) if holder == clientId =>
+          sender() ! CapabilityAcquisitionBadRequest
+          context.become(editing(buffer, clients, maybeWriteLock))
+
+        case Some(holder) if holder != clientId =>
+          sender() ! CapabilityAcquired
+          holder.actor ! CapabilityForceReleased(
+            CapabilityRegistration(CanEdit(path))
+          )
+          context.become(editing(buffer, clients, Some(clientId)))
+      }
+
+    case ReleaseCapability(clientId, CapabilityRegistration(CanEdit(_))) =>
+      maybeWriteLock match {
+        case None =>
+          sender() ! CapabilityReleaseBadRequest
+          context.become(editing(buffer, clients, maybeWriteLock))
+
+        case Some(holder) if holder.id != clientId =>
+          sender() ! CapabilityReleaseBadRequest
+          context.become(editing(buffer, clients, maybeWriteLock))
+
+        case Some(holder) if holder.id == clientId =>
+          sender() ! CapabilityReleased
+          context.become(editing(buffer, clients, None))
+      }
+
   }
 
   def stop(): Unit = {

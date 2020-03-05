@@ -12,6 +12,7 @@ import akka.testkit.{ImplicitSender, TestKit, TestProbe}
 import cats.effect.IO
 import io.circe.Json
 import io.circe.parser.parse
+import org.enso.languageserver.capability.CapabilityRouter
 import org.enso.languageserver.data.{Config, Sha3Digest}
 import org.enso.languageserver.{
   LanguageProtocol,
@@ -59,7 +60,12 @@ abstract class WebSocketServerTest
     languageServer ! LanguageProtocol.Initialize
     val bufferRegistry =
       system.actorOf(BufferRegistry.props(languageServer)(Sha3Digest))
-    server  = new WebSocketServer(languageServer, bufferRegistry)
+
+    lazy val capabilityRouter =
+      system.actorOf(CapabilityRouter.props(bufferRegistry))
+
+    server =
+      new WebSocketServer(languageServer, bufferRegistry, capabilityRouter)
     binding = Await.result(server.bind(interface, port = 0), 3.seconds)
     address = s"ws://$interface:${binding.localAddress.getPort}"
   }

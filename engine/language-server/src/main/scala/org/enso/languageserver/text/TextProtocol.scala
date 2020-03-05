@@ -7,10 +7,10 @@ object TextProtocol {
 
   /** Requests the language server to open a file on behalf of a given user.
     *
-    * @param clientId the client opening the file.
+    * @param client the client opening the file.
     * @param path the file path.
     */
-  case class OpenFile(clientId: Client.Id, path: Path)
+  case class OpenFile(client: Client, path: Path)
 
   /** Sent by the server in response to [[OpenFile]]
     *

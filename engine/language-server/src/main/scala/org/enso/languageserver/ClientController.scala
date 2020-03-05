@@ -2,11 +2,12 @@ package org.enso.languageserver
 
 import java.util.UUID
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Stash}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props, Stash}
 import akka.pattern.ask
 import akka.util.Timeout
 import org.enso.languageserver.ClientApi._
-import org.enso.languageserver.data.{CapabilityRegistration, Client}
+import org.enso.languageserver.data.{CanEdit, CapabilityRegistration, Client}
+import org.enso.languageserver.event.client.ClientDisconnected
 import org.enso.languageserver.filemanager.FileManagerApi._
 import org.enso.languageserver.filemanager.FileManagerProtocol.{
   CreateFileResult,
@@ -18,6 +19,10 @@ import org.enso.languageserver.filemanager.{
 }
 import org.enso.languageserver.jsonrpc.Errors.ServiceError
 import org.enso.languageserver.jsonrpc._
+import org.enso.languageserver.requesthandler.{
+  AcquireCapabilityHandler,
+  ReleaseCapabilityHandler
+}
 import org.enso.languageserver.text.{TextApi, TextProtocol}
 import org.enso.languageserver.text.TextApi.OpenFile
 
@@ -41,11 +46,9 @@ object ClientApi {
     }
   }
 
-  case class ReleaseCapabilityParams(id: UUID)
-
   case object ReleaseCapability extends Method("capability/release") {
     implicit val hasParams = new HasParams[this.type] {
-      type Params = ReleaseCapabilityParams
+      type Params = CapabilityRegistration
     }
     implicit val hasResult = new HasResult[this.type] {
       type Result = Unused.type
@@ -55,7 +58,7 @@ object ClientApi {
   case object ForceReleaseCapability
       extends Method("capability/forceReleased") {
     implicit val hasParams = new HasParams[this.type] {
-      type Params = ReleaseCapabilityParams
+      type Params = CapabilityRegistration
     }
   }
 
@@ -89,6 +92,7 @@ class ClientController(
   val clientId: Client.Id,
   val server: ActorRef,
   val bufferRegistry: ActorRef,
+  val capabilityRouter: ActorRef,
   requestTimeout: FiniteDuration = 10.seconds
 ) extends Actor
     with Stash
@@ -97,6 +101,16 @@ class ClientController(
   import context.dispatcher
 
   implicit val timeout = Timeout(requestTimeout)
+
+  private val client = Client(clientId, self)
+
+  private val requestHandlers: Map[Any, Props] =
+    Map(
+      AcquireCapability -> AcquireCapabilityHandler
+        .props(capabilityRouter, requestTimeout, client),
+      ReleaseCapability -> ReleaseCapabilityHandler
+        .props(capabilityRouter, requestTimeout, client)
+    )
 
   override def receive: Receive = {
     case ClientApi.WebConnect(webActor) =>
@@ -108,24 +122,18 @@ class ClientController(
   def connected(webActor: ActorRef): Receive = {
     case MessageHandler.Disconnected =>
       server ! LanguageProtocol.Disconnect(clientId)
+      context.system.eventStream.publish(ClientDisconnected(clientId))
       context.stop(self)
 
-    case LanguageProtocol.CapabilityForceReleased(id) =>
-      webActor ! Notification(
-        ForceReleaseCapability,
-        ReleaseCapabilityParams(id)
-      )
+    case LanguageProtocol.CapabilityForceReleased(registration) =>
+      webActor ! Notification(ForceReleaseCapability, registration)
 
     case LanguageProtocol.CapabilityGranted(registration) =>
       webActor ! Notification(GrantCapability, registration)
 
-    case Request(AcquireCapability, id, registration: CapabilityRegistration) =>
-      server ! LanguageProtocol.AcquireCapability(clientId, registration)
-      sender ! ResponseResult(AcquireCapability, id, Unused)
-
-    case Request(ReleaseCapability, id, params: ReleaseCapabilityParams) =>
-      server ! LanguageProtocol.ReleaseCapability(clientId, params.id)
-      sender ! ResponseResult(ReleaseCapability, id, Unused)
+    case r @ Request(method, _, _) if (requestHandlers.contains(method)) =>
+      val handler = context.actorOf(requestHandlers(method))
+      handler.forward(r)
 
     case Request(OpenFile, id, params: OpenFile.Params) =>
       openFile(webActor, id, params)
@@ -145,30 +153,32 @@ class ClientController(
     id: Id,
     params: OpenFile.Params
   ): Unit = {
-    (bufferRegistry ? TextProtocol.OpenFile(clientId, params.path))
-      .onComplete {
-        case Success(
-            TextProtocol.OpenFileResponse(
-              Right(TextProtocol.OpenFileResult(buffer, capability))
-            )
-            ) =>
-          webActor ! ResponseResult(
-            OpenFile,
-            id,
-            OpenFile
-              .Result(capability, buffer.contents.toString, buffer.version)
+    (bufferRegistry ? TextProtocol.OpenFile(
+      Client(clientId, self),
+      params.path
+    )).onComplete {
+      case Success(
+          TextProtocol.OpenFileResponse(
+            Right(TextProtocol.OpenFileResult(buffer, capability))
           )
+          ) =>
+        webActor ! ResponseResult(
+          OpenFile,
+          id,
+          OpenFile
+            .Result(capability, buffer.contents.toString, buffer.version)
+        )
 
-        case Success(TextProtocol.OpenFileResponse(Left(failure))) =>
-          webActor ! ResponseError(
-            Some(id),
-            FileSystemFailureMapper.mapFailure(failure)
-          )
+      case Success(TextProtocol.OpenFileResponse(Left(failure))) =>
+        webActor ! ResponseError(
+          Some(id),
+          FileSystemFailureMapper.mapFailure(failure)
+        )
 
-        case Failure(th) =>
-          log.error("An exception occurred during opening file", th)
-          webActor ! ResponseError(Some(id), ServiceError)
-      }
+      case Failure(th) =>
+        log.error("An exception occurred during opening file", th)
+        webActor ! ResponseError(Some(id), ServiceError)
+    }
   }
 
   private def readFile(
