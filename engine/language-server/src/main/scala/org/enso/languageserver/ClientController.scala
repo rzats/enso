@@ -1,13 +1,11 @@
 package org.enso.languageserver
 
-import java.util.UUID
-
 import akka.actor.{Actor, ActorLogging, ActorRef, Props, Stash}
 import akka.pattern.ask
 import akka.util.Timeout
 import org.enso.languageserver.ClientApi._
-import org.enso.languageserver.data.{CanEdit, CapabilityRegistration, Client}
-import org.enso.languageserver.event.client.ClientDisconnected
+import org.enso.languageserver.data.{CapabilityRegistration, Client}
+import org.enso.languageserver.event.ClientDisconnected
 import org.enso.languageserver.filemanager.FileManagerApi._
 import org.enso.languageserver.filemanager.FileManagerProtocol.{
   CreateFileResult,
@@ -24,7 +22,6 @@ import org.enso.languageserver.requesthandler.{
   OpenFileHandler,
   ReleaseCapabilityHandler
 }
-import org.enso.languageserver.text.{TextApi, TextProtocol}
 import org.enso.languageserver.text.TextApi.OpenFile
 
 import scala.concurrent.duration._

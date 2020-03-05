@@ -9,7 +9,11 @@ import org.enso.languageserver.data.{
   Client,
   ContentDigest
 }
-import org.enso.languageserver.event.buffer.{BufferClosed, BufferCreated}
+import org.enso.languageserver.event.{
+  BufferClosed,
+  BufferCreated,
+  ClientDisconnected
+}
 import org.enso.languageserver.filemanager.FileManagerProtocol.ReadFileResult
 import org.enso.languageserver.filemanager.{
   FileManagerProtocol,
@@ -33,6 +37,10 @@ class CollaborativeBuffer(bufferPath: Path, fileManager: ActorRef)(
     with ActorLogging {
 
   import context.dispatcher
+
+  override def preStart(): Unit = {
+    context.system.eventStream.subscribe(self, classOf[ClientDisconnected])
+  }
 
   override def receive: Receive = waiting
 
@@ -89,6 +97,30 @@ class CollaborativeBuffer(bufferPath: Path, fileManager: ActorRef)(
     case ReleaseCapability(clientId, CapabilityRegistration(CanEdit(_))) =>
       releaseWriteLock(buffer, clients, maybeWriteLock, clientId)
 
+    case ClientDisconnected(clientId) =>
+      if (clients.contains(clientId)) {
+        removeClient(buffer, clients, maybeWriteLock, clientId)
+      }
+
+  }
+
+  private def removeClient(
+    buffer: Buffer,
+    clients: Map[Id, Client],
+    maybeWriteLock: Option[Client],
+    clientId: Id
+  ): Unit = {
+    val newLock =
+      maybeWriteLock.flatMap {
+        case holder if (holder.id == clientId) => None
+        case holder                            => Some(holder)
+      }
+    val newClientMap = clients - clientId
+    if (newClientMap.isEmpty) {
+      stop()
+    } else {
+      context.become(editing(buffer, newClientMap, newLock))
+    }
   }
 
   private def releaseWriteLock(
