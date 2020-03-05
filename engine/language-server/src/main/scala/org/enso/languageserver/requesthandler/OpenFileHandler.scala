@@ -1,7 +1,6 @@
 package org.enso.languageserver.requesthandler
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
-import org.enso.languageserver.LanguageProtocol
 import org.enso.languageserver.data.Client
 import org.enso.languageserver.filemanager.FileSystemFailureMapper
 import org.enso.languageserver.jsonrpc.Errors.ServiceError
@@ -22,7 +21,7 @@ import scala.concurrent.duration.FiniteDuration
 
 class OpenFileHandler(
   bufferRegistry: ActorRef,
-  requestTimeout: FiniteDuration,
+  timeout: FiniteDuration,
   client: Client
 ) extends Actor
     with ActorLogging {
@@ -34,8 +33,7 @@ class OpenFileHandler(
   private def requestStage: Receive = {
     case Request(OpenFile, id, params: OpenFile.Params) =>
       bufferRegistry ! TextProtocol.OpenFile(client, params.path)
-      context.system.scheduler
-        .scheduleOnce(requestTimeout, self, RequestTimeout)
+      context.system.scheduler.scheduleOnce(timeout, self, RequestTimeout)
       context.become(responseStage(id, sender()))
   }
 

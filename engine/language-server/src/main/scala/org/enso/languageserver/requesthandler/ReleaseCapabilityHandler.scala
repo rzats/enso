@@ -15,7 +15,7 @@ import scala.concurrent.duration.FiniteDuration
 
 class ReleaseCapabilityHandler(
   capabilityRouter: ActorRef,
-  requestTimeout: FiniteDuration,
+  timeout: FiniteDuration,
   client: Client
 ) extends Actor
     with ActorLogging {
@@ -26,8 +26,7 @@ class ReleaseCapabilityHandler(
   private def requestStage: Receive = {
     case Request(ReleaseCapability, id, params: CapabilityRegistration) =>
       capabilityRouter ! LanguageProtocol.ReleaseCapability(client.id, params)
-      context.system.scheduler
-        .scheduleOnce(requestTimeout, self, RequestTimeout)
+      context.system.scheduler.scheduleOnce(timeout, self, RequestTimeout)
       context.become(responseStage(id, sender()))
   }
   private def responseStage(id: Id, replyTo: ActorRef): Receive = {

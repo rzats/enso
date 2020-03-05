@@ -3,6 +3,8 @@ package org.enso.languageserver.text
 import akka.actor.{Actor, ActorRef, Props, Terminated}
 import org.enso.languageserver.LanguageProtocol.{
   AcquireCapability,
+  CapabilityAcquisitionBadRequest,
+  CapabilityReleaseBadRequest,
   ReleaseCapability
 }
 import org.enso.languageserver.text.TextProtocol.OpenFile
@@ -35,10 +37,18 @@ class BufferRegistry(fileManager: ActorRef)(
       context.become(running(registry.filter(_._2 != bufferRef)))
 
     case msg @ AcquireCapability(_, CapabilityRegistration(CanEdit(path))) =>
-      registry(path).forward(msg) //todo error handling
+      if (registry.contains(path)) {
+        registry(path).forward(msg)
+      } else {
+        sender() ! CapabilityAcquisitionBadRequest
+      }
 
     case msg @ ReleaseCapability(_, CapabilityRegistration(CanEdit(path))) =>
-      registry(path).forward(msg) //todo error handling
+      if (registry.contains(path)) {
+        registry(path).forward(msg)
+      } else {
+        sender() ! CapabilityReleaseBadRequest
+      }
   }
 
 }

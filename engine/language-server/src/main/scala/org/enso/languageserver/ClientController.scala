@@ -105,7 +105,7 @@ class ClientController(
 
   private val client = Client(clientId, self)
 
-  private val requestHandlers: Map[Any, Props] =
+  private val requestHandlers: Map[Method, Props] =
     Map(
       AcquireCapability -> AcquireCapabilityHandler
         .props(capabilityRouter, requestTimeout, client),

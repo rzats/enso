@@ -15,7 +15,7 @@ import scala.concurrent.duration.FiniteDuration
 
 class AcquireCapabilityHandler(
   capabilityRouter: ActorRef,
-  requestTimeout: FiniteDuration,
+  timeout: FiniteDuration,
   client: Client
 ) extends Actor
     with ActorLogging {
@@ -30,8 +30,7 @@ class AcquireCapabilityHandler(
         client,
         registration
       )
-      context.system.scheduler
-        .scheduleOnce(requestTimeout, self, RequestTimeout)
+      context.system.scheduler.scheduleOnce(timeout, self, RequestTimeout)
       context.become(responseStage(id, sender()))
   }
 
