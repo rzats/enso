@@ -2,6 +2,7 @@ package org.enso.languageserver.text
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props, Stash}
 import org.enso.languageserver.LanguageProtocol._
+import org.enso.languageserver.data.Client.Id
 import org.enso.languageserver.data.{
   CanEdit,
   CapabilityRegistration,
@@ -81,38 +82,57 @@ class CollaborativeBuffer(bufferPath: Path, fileManager: ActorRef)(
       context.become(editing(buffer, clients + client, maybeWriteLock))
 
     case AcquireCapability(clientId, CapabilityRegistration(CanEdit(path))) =>
-      maybeWriteLock match {
-        case None =>
-          sender() ! CapabilityAcquired
-          context.become(editing(buffer, clients, Some(clientId)))
-
-        case Some(holder) if holder == clientId =>
-          sender() ! CapabilityAcquisitionBadRequest
-          context.become(editing(buffer, clients, maybeWriteLock))
-
-        case Some(holder) if holder != clientId =>
-          sender() ! CapabilityAcquired
-          holder.actor ! CapabilityForceReleased(
-            CapabilityRegistration(CanEdit(path))
-          )
-          context.become(editing(buffer, clients, Some(clientId)))
-      }
+      acquireWriteLock(buffer, clients, maybeWriteLock, clientId, path)
 
     case ReleaseCapability(clientId, CapabilityRegistration(CanEdit(_))) =>
-      maybeWriteLock match {
-        case None =>
-          sender() ! CapabilityReleaseBadRequest
-          context.become(editing(buffer, clients, maybeWriteLock))
+      releaseWriteLock(buffer, clients, maybeWriteLock, clientId)
 
-        case Some(holder) if holder.id != clientId =>
-          sender() ! CapabilityReleaseBadRequest
-          context.become(editing(buffer, clients, maybeWriteLock))
+  }
 
-        case Some(holder) if holder.id == clientId =>
-          sender() ! CapabilityReleased
-          context.become(editing(buffer, clients, None))
-      }
+  private def releaseWriteLock(
+    buffer: Buffer,
+    clients: Set[Client],
+    maybeWriteLock: Option[Client],
+    clientId: Id
+  ): Unit = {
+    maybeWriteLock match {
+      case None =>
+        sender() ! CapabilityReleaseBadRequest
+        context.become(editing(buffer, clients, maybeWriteLock))
 
+      case Some(holder) if holder.id != clientId =>
+        sender() ! CapabilityReleaseBadRequest
+        context.become(editing(buffer, clients, maybeWriteLock))
+
+      case Some(holder) if holder.id == clientId =>
+        sender() ! CapabilityReleased
+        context.become(editing(buffer, clients, None))
+    }
+  }
+
+  private def acquireWriteLock(
+    buffer: Buffer,
+    clients: Set[Client],
+    maybeWriteLock: Option[Client],
+    clientId: Client,
+    path: Path
+  ): Unit = {
+    maybeWriteLock match {
+      case None =>
+        sender() ! CapabilityAcquired
+        context.become(editing(buffer, clients, Some(clientId)))
+
+      case Some(holder) if holder == clientId =>
+        sender() ! CapabilityAcquisitionBadRequest
+        context.become(editing(buffer, clients, maybeWriteLock))
+
+      case Some(holder) if holder != clientId =>
+        sender() ! CapabilityAcquired
+        holder.actor ! CapabilityForceReleased(
+          CapabilityRegistration(CanEdit(path))
+        )
+        context.become(editing(buffer, clients, Some(clientId)))
+    }
   }
 
   def stop(): Unit = {
