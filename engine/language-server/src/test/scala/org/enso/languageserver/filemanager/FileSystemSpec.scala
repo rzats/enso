@@ -293,7 +293,8 @@ class FileSystemSpec extends AnyFlatSpec with Matchers {
       objectUnderTest.createDirectory(to.toFile).unsafeRunSync()
     resultCreateDirectory shouldBe Right(())
     //when
-    val result = objectUnderTest.move(from.getParent.toFile, to.toFile).unsafeRunSync()
+    val result =
+      objectUnderTest.move(from.getParent.toFile, to.toFile).unsafeRunSync()
     //then
     val dest = Paths.get(testDirPath.toString, "move_to", "move_dir")
     result shouldBe Right(())
