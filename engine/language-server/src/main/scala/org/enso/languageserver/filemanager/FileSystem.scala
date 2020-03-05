@@ -156,7 +156,10 @@ class FileSystem[F[_]: Sync] extends FileSystemApi[F] {
   ): F[Either[FileSystemFailure, Unit]] =
     Sync[F].delay {
       Either.catchOnly[IOException] {
-        if (from.isDirectory) {
+        if (to.isDirectory) {
+          val createDestDir = false
+          FileUtils.moveToDirectory(from, to, createDestDir)
+        } else if (from.isDirectory) {
           FileUtils.moveDirectory(from, to)
         } else {
           FileUtils.moveFile(from, to)
