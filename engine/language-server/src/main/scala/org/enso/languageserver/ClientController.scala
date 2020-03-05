@@ -115,16 +115,13 @@ class ClientController(
     case ClientApi.WebConnect(webActor) =>
       unstashAll()
       context.become(connected(webActor))
-      log.info(s"Client $clientId connected")
     case _ => stash()
   }
 
   def connected(webActor: ActorRef): Receive = {
     case MessageHandler.Disconnected =>
-      server ! LanguageProtocol.Disconnect(clientId)
       context.system.eventStream.publish(ClientDisconnected(clientId))
       context.stop(self)
-      log.info(s"Client $clientId disconnected")
 
     case LanguageProtocol.CapabilityForceReleased(registration) =>
       webActor ! Notification(ForceReleaseCapability, registration)

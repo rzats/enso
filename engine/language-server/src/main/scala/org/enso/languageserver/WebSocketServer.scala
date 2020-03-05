@@ -82,8 +82,6 @@ class WebSocketServer(
 
     system.eventStream.publish(ClientConnected(Client(clientId, clientActor)))
 
-    languageServer ! LanguageProtocol.Connect(clientId, clientActor)
-
     val incomingMessages: Sink[Message, NotUsed] =
       Flow[Message]
         .mapConcat({
