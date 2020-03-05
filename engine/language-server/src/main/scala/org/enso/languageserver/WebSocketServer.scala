@@ -10,11 +10,12 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import akka.stream.scaladsl.{Flow, Sink, Source}
 import akka.stream.{Materializer, OverflowStrategy}
+import org.enso.languageserver.data.Client
+import org.enso.languageserver.event.client.ClientConnected
 import org.enso.languageserver.jsonrpc.MessageHandler
 
+import scala.concurrent.duration.{FiniteDuration, _}
 import scala.concurrent.{ExecutionContext, Future}
-import scala.concurrent.duration.FiniteDuration
-import scala.concurrent.duration._
 
 object WebSocketServer {
 
@@ -78,6 +79,8 @@ class WebSocketServer(
         Props(new MessageHandler(ClientApi.protocol, clientActor))
       )
     clientActor ! ClientApi.WebConnect(messageHandler)
+
+    system.eventStream.publish(ClientConnected(Client(clientId, clientActor)))
 
     languageServer ! LanguageProtocol.Connect(clientId, clientActor)
 

@@ -4,8 +4,10 @@ import org.enso.languageserver.data.Client
 
 object client {
 
-  case class ClientConnected(client: Client)
+  sealed trait ClientEvent extends Event
 
-  case class ClientDisconnected(clientId: Client.Id)
+  case class ClientConnected(client: Client) extends ClientEvent
+
+  case class ClientDisconnected(clientId: Client.Id) extends ClientEvent
 
 }

@@ -54,7 +54,7 @@ class CollaborativeBuffer(bufferPath: Path, fileManager: ActorRef)(
         Right(OpenFileResult(buffer, Some(cap)))
       )
       unstashAll()
-      context.become(editing(buffer, Set(client), Some(client)))
+      context.become(editing(buffer, Map(client.id -> client), Some(client)))
 
     case ReadFileResult(Left(failure)) =>
       originalSender ! OpenFileResponse(Left(failure))
@@ -69,7 +69,7 @@ class CollaborativeBuffer(bufferPath: Path, fileManager: ActorRef)(
 
   private def editing(
     buffer: Buffer,
-    clients: Set[Client],
+    clients: Map[Client.Id, Client],
     maybeWriteLock: Option[Client]
   ): Receive = {
     case OpenFile(client, _) =>
@@ -79,7 +79,9 @@ class CollaborativeBuffer(bufferPath: Path, fileManager: ActorRef)(
         else
           None
       sender ! OpenFileResponse(Right(OpenFileResult(buffer, writeCapability)))
-      context.become(editing(buffer, clients + client, maybeWriteLock))
+      context.become(
+        editing(buffer, clients + (client.id -> client), maybeWriteLock)
+      )
 
     case AcquireCapability(clientId, CapabilityRegistration(CanEdit(path))) =>
       acquireWriteLock(buffer, clients, maybeWriteLock, clientId, path)
@@ -91,7 +93,7 @@ class CollaborativeBuffer(bufferPath: Path, fileManager: ActorRef)(
 
   private def releaseWriteLock(
     buffer: Buffer,
-    clients: Set[Client],
+    clients: Map[Client.Id, Client],
     maybeWriteLock: Option[Client],
     clientId: Id
   ): Unit = {
@@ -112,7 +114,7 @@ class CollaborativeBuffer(bufferPath: Path, fileManager: ActorRef)(
 
   private def acquireWriteLock(
     buffer: Buffer,
-    clients: Set[Client],
+    clients: Map[Client.Id, Client],
     maybeWriteLock: Option[Client],
     clientId: Client,
     path: Path

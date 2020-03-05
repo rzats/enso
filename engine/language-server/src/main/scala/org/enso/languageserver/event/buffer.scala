@@ -4,8 +4,10 @@ import org.enso.languageserver.filemanager.Path
 
 object buffer {
 
-  case class BufferCreated(path: Path) extends Event
+  sealed trait BufferEvent extends Event
 
-  case class BufferClosed(path: Path) extends Event
+  case class BufferCreated(path: Path) extends BufferEvent
+
+  case class BufferClosed(path: Path) extends BufferEvent
 
 }

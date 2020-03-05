@@ -1,7 +1,5 @@
 package org.enso.languageserver
 
-import java.util.UUID
-
 import akka.actor.{Actor, ActorLogging, ActorRef, Stash}
 import cats.effect.IO
 import org.enso.languageserver.data._
@@ -108,28 +106,6 @@ class LanguageServer(config: Config, fs: FileSystemApi[IO])
     case Disconnect(clientId) =>
       log.debug("Client disconnected [{}].", clientId)
       context.become(initialized(config, env.removeClient(clientId)))
-
-//    case AcquireCapability(
-//        clientId,
-//        reg @ CapabilityRegistration(capability: CanEdit)
-//        ) =>
-//      val (envWithoutCapability, releasingClients) = env.removeCapabilitiesBy {
-//        case CapabilityRegistration(CanEdit(file)) => file == capability.path
-//        case _                                     => false
-//      }
-//      releasingClients.foreach {
-//        case (client: Client, capabilities) =>
-//          capabilities.foreach { registration =>
-//            client.actor ! CapabilityForceReleased(UUID.randomUUID()) //todo fix me
-//          }
-//      }
-//      val newEnv = envWithoutCapability.grantCapability(clientId, reg)
-//      context.become(initialized(config, newEnv))
-//
-//    case ReleaseCapability(clientId, capabilityId) =>
-//      context.become(
-//        initialized(config, env.releaseCapability(clientId, capabilityId))
-//      )
 
     case WriteFile(path, content) =>
       val result =
