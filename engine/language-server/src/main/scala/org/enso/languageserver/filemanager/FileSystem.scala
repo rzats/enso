@@ -6,7 +6,7 @@ import java.nio.file._
 import cats.data.EitherT
 import cats.effect.Sync
 import cats.implicits._
-import org.apache.commons.io.FileUtils
+import org.apache.commons.io.{FileExistsException, FileUtils}
 
 /**
   * File manipulation facility.
@@ -150,7 +150,7 @@ class FileSystem[F[_]: Sync] extends FileSystemApi[F] {
     * @param to a path to the destination
     * @return either [[FileSystemFailure]] or Unit
     */
-  def move(
+  override def move(
     from: File,
     to: File
   ): F[Either[FileSystemFailure, Unit]] =
@@ -168,6 +168,7 @@ class FileSystem[F[_]: Sync] extends FileSystemApi[F] {
   private val errorHandling: IOException => FileSystemFailure = {
     case _: FileNotFoundException => FileNotFound
     case _: NoSuchFileException   => FileNotFound
+    case _: FileExistsException   => FileExists
     case _: AccessDeniedException => AccessDenied
     case ex                       => GenericFileSystemFailure(ex.getMessage)
   }
