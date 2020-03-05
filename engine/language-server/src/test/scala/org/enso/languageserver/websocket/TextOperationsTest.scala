@@ -1,5 +1,7 @@
 package org.enso.languageserver.websocket
 
+import java.util.UUID
+
 import io.circe.literal._
 
 class TextOperationsTest extends WebSocketServerTest {
@@ -315,4 +317,143 @@ class TextOperationsTest extends WebSocketServerTest {
           }
           """)
   }
+
+  "take canEdit capability away from clients when another client registers for it" in {
+    val client1       = new WsTestClient(address)
+    val client2       = new WsTestClient(address)
+    val client3       = new WsTestClient(address)
+    val capability1Id = UUID.randomUUID()
+    val capability2Id = UUID.randomUUID()
+    val capability3Id = UUID.randomUUID()
+
+    client1.send(json"""
+          { "jsonrpc": "2.0",
+            "method": "file/write",
+            "id": 0,
+            "params": {
+              "path": {
+                "rootId": $testContentRootId,
+                "segments": [ "foo.txt" ]
+              },
+              "contents": "123456789"
+            }
+          }
+          """)
+
+    client1.expectJson(json"""
+          { "jsonrpc": "2.0",
+            "id": 0,
+            "result": null
+          }
+          """)
+
+    client1.send(json"""
+          { "jsonrpc": "2.0",
+            "method": "text/openFile",
+            "id": 1,
+            "params": {
+              "path": {
+                "rootId": $testContentRootId,
+                "segments": [ "foo.txt" ]
+              }
+            }
+          }
+          """)
+
+    client1.expectJson(json"""
+          { "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+              "writeCapability": {
+                "method": "canEdit",
+                "registerOptions": { "path": {
+                  "rootId": $testContentRootId,
+                  "segments": ["foo.txt"]
+                } }
+              },
+              "content": "123456789",
+              "currentVersion": "5795c3d628fd638c9835a4c79a55809f265068c88729a1a3fcdf8522"
+            }
+          }
+          """)
+    client2.expectNoMessage()
+    client3.expectNoMessage()
+
+    client2.send(json"""
+          { "jsonrpc": "2.0",
+            "method": "capability/acquire",
+            "id": 2,
+            "params": {
+              "method": "canEdit",
+              "registerOptions": { 
+                "path": {
+                  "rootId": $testContentRootId,
+                  "segments": [ "foo.txt" ]
+                }
+              }
+            }
+          }
+          """)
+
+    client1.expectJson(json"""
+          { "jsonrpc": "2.0",
+            "method": "capability/forceReleased",
+            "params": {
+              "method": "canEdit",
+              "registerOptions": { 
+                "path": {
+                  "rootId": $testContentRootId,
+                  "segments": [ "foo.txt" ]
+                }
+              }
+            }
+          }
+          """)
+    client2.expectJson(json"""
+          { "jsonrpc": "2.0",
+            "id": 2,
+            "result": null
+          }
+          """)
+    client3.expectNoMessage()
+
+    client3.send(json"""
+          { "jsonrpc": "2.0",
+            "method": "capability/acquire",
+            "id": 3,
+            "params": {
+              "method": "canEdit",
+              "registerOptions": {
+                "path": {
+                  "rootId": $testContentRootId,
+                  "segments": [ "foo.txt" ]
+                }
+              }
+            }
+          }
+          """)
+
+    client1.expectNoMessage()
+    client2.expectJson(json"""
+          { "jsonrpc": "2.0",
+            "method": "capability/forceReleased",
+            "params": {
+              "method": "canEdit",
+              "registerOptions": { 
+                "path": {
+                  "rootId": $testContentRootId,
+                  "segments": [ "foo.txt" ]
+                }
+              }
+            }
+          }
+          """)
+    client3.expectJson(json"""
+          { "jsonrpc": "2.0",
+            "id": 3,
+            "result": null
+          }
+          """)
+  }
+
 }
