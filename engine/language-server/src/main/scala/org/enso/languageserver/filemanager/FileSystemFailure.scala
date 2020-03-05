@@ -21,6 +21,11 @@ case object AccessDenied extends FileSystemFailure
 case object FileNotFound extends FileSystemFailure
 
 /**
+  * Signals that the file already exists.
+  */
+case object FileExists extends FileSystemFailure
+
+/**
   * Signal that the operation timed out.
   */
 case object OperationTimeout extends FileSystemFailure

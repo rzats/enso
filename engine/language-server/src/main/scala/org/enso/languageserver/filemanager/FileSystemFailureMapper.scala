@@ -3,6 +3,7 @@ package org.enso.languageserver.filemanager
 import org.enso.languageserver.filemanager.FileManagerApi.{
   AccessDeniedError,
   ContentRootNotFoundError,
+  FileExistsError,
   FileNotFoundError,
   FileSystemError,
   OperationTimeoutError
@@ -22,6 +23,7 @@ object FileSystemFailureMapper {
       case ContentRootNotFound              => ContentRootNotFoundError
       case AccessDenied                     => AccessDeniedError
       case FileNotFound                     => FileNotFoundError
+      case FileExists                       => FileExistsError
       case OperationTimeout                 => OperationTimeoutError
       case GenericFileSystemFailure(reason) => FileSystemError(reason)
     }

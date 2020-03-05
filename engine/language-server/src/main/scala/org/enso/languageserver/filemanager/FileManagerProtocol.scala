@@ -45,4 +45,33 @@ object FileManagerProtocol {
     */
   case class CreateFileResult(result: Either[FileSystemFailure, Unit])
 
+  /**
+    * Requests the Language Server delete a file system object.
+    *
+    * @param path a path to a file
+    */
+  case class DeleteFile(path: Path)
+
+  /**
+    * Returns a result of deleting a file system object.
+    *
+    * @param result either file system failure or unit representing success
+    */
+  case class DeleteFileResult(result: Either[FileSystemFailure, Unit])
+
+  /**
+    * Requests the Language Server copy a file system object.
+    *
+    * @param from a path to the source
+    * @param to a path to the destination
+    */
+  case class CopyFile(from: Path, to: Path)
+
+  /**
+    * Returns a result of copying a file system object.
+    *
+    * @param result either file system failure or unit representing success
+    */
+  case class CopyFileResult(result: Either[FileSystemFailure, Unit])
+
 }

@@ -73,6 +73,8 @@ object ClientApi {
     .registerRequest(ReadFile)
     .registerRequest(CreateFile)
     .registerRequest(OpenFile)
+    .registerRequest(DeleteFile)
+    .registerRequest(CopyFile)
     .registerNotification(ForceReleaseCapability)
     .registerNotification(GrantCapability)
 
@@ -141,6 +143,12 @@ class ClientController(
 
     case Request(CreateFile, id, params: CreateFile.Params) =>
       createFile(webActor, id, params)
+
+    case Request(DeleteFile, id, params: DeleteFile.Params) =>
+      deleteFile(webActor, id, params)
+
+    case Request(CopyFile, id, params: CopyFile.Params) =>
+      copyFile(webActor, id, params)
   }
 
   private def readFile(
@@ -206,6 +214,50 @@ class ClientController(
 
         case Failure(th) =>
           log.error("An exception occurred during creating a file", th)
+          webActor ! ResponseError(Some(id), ServiceError)
+      }
+  }
+
+  private def deleteFile(
+    webActor: ActorRef,
+    id: Id,
+    params: DeleteFile.Params
+  ): Unit = {
+    (server ? FileManagerProtocol.DeleteFile(params.path))
+      .onComplete {
+        case Success(FileManagerProtocol.DeleteFileResult(Right(()))) =>
+          webActor ! ResponseResult(DeleteFile, id, Unused)
+
+        case Success(FileManagerProtocol.DeleteFileResult(Left(failure))) =>
+          webActor ! ResponseError(
+            Some(id),
+            FileSystemFailureMapper.mapFailure(failure)
+          )
+
+        case Failure(th) =>
+          log.error("An exception occurred during deleting a file", th)
+          webActor ! ResponseError(Some(id), ServiceError)
+      }
+  }
+
+  private def copyFile(
+    webActor: ActorRef,
+    id: Id,
+    params: CopyFile.Params
+  ): Unit = {
+    (server ? FileManagerProtocol.CopyFile(params.from, params.to))
+      .onComplete {
+        case Success(FileManagerProtocol.CopyFileResult(Right(()))) =>
+          webActor ! ResponseResult(CopyFile, id, Unused)
+
+        case Success(FileManagerProtocol.CopyFileResult(Left(failure))) =>
+          webActor ! ResponseError(
+            Some(id),
+            FileSystemFailureMapper.mapFailure(failure)
+          )
+
+        case Failure(th) =>
+          log.error("An exception occured during copying a file", th)
           webActor ! ResponseError(Some(id), ServiceError)
       }
   }

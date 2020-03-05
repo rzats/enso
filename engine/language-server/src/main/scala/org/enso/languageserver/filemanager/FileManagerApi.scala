@@ -53,6 +53,32 @@ object FileManagerApi {
     }
   }
 
+  case object DeleteFile extends Method("file/delete") {
+
+    case class Params(path: Path)
+
+    implicit val hasParams = new HasParams[this.type] {
+      type Params = DeleteFile.Params
+    }
+    implicit val hasResult = new HasResult[this.type] {
+      type Result = Unused.type
+    }
+  }
+
+  case object CopyFile extends Method("file/copy") {
+
+    case class Params(from: Path, to: Path)
+
+    implicit val hasParams = new HasParams[this.type] {
+      type Params = CopyFile.Params
+    }
+    implicit val hasResult = new HasResult[this.type] {
+      type Result = Unused.type
+    }
+  }
+
+  // Errors
+
   case class FileSystemError(override val message: String)
       extends Error(1000, message)
 
@@ -64,5 +90,7 @@ object FileManagerApi {
   case object FileNotFoundError extends Error(1003, "File not found")
 
   case object OperationTimeoutError extends Error(1003, "IO operation timeout")
+
+  case object FileExistsError extends Error(1004, "File already exists")
 
 }
