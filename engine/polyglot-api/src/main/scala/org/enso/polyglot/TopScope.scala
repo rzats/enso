@@ -7,7 +7,7 @@ import org.graalvm.polyglot.Value
   *
   * @param value the polyglot value of this scope
   */
-class TopScope(private val value: Value) {
+class TopScope(val value: Value) {
   import MethodNames.TopScope._
 
   /** Gets a module by name.

@@ -56,7 +56,7 @@ public class Context {
                             srcFile.qualifiedName(),
                             getEnvironment()
                                 .getInternalTruffleFile(srcFile.file().getAbsolutePath()))));
-    TopLevelScope topLevelScope = new TopLevelScope(new Builtins(language), knownFiles);
+    TopLevelScope topLevelScope = new TopLevelScope(new Builtins(language), knownFiles, this);
 
     this.compiler = new Compiler(this.language, topLevelScope, this);
   }
