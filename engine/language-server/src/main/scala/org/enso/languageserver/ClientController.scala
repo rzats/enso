@@ -21,6 +21,7 @@ import org.enso.languageserver.jsonrpc.Errors.ServiceError
 import org.enso.languageserver.jsonrpc._
 import org.enso.languageserver.requesthandler.{
   AcquireCapabilityHandler,
+  OpenFileHandler,
   ReleaseCapabilityHandler
 }
 import org.enso.languageserver.text.{TextApi, TextProtocol}
@@ -109,7 +110,8 @@ class ClientController(
       AcquireCapability -> AcquireCapabilityHandler
         .props(capabilityRouter, requestTimeout, client),
       ReleaseCapability -> ReleaseCapabilityHandler
-        .props(capabilityRouter, requestTimeout, client)
+        .props(capabilityRouter, requestTimeout, client),
+      OpenFile -> OpenFileHandler.props(bufferRegistry, requestTimeout, client)
     )
 
   override def receive: Receive = {
@@ -135,9 +137,6 @@ class ClientController(
       val handler = context.actorOf(requestHandlers(method))
       handler.forward(r)
 
-    case Request(OpenFile, id, params: OpenFile.Params) =>
-      openFile(webActor, id, params)
-
     case Request(WriteFile, id, params: WriteFile.Params) =>
       writeFile(webActor, id, params)
 
@@ -146,39 +145,6 @@ class ClientController(
 
     case Request(CreateFile, id, params: CreateFile.Params) =>
       createFile(webActor, id, params)
-  }
-
-  private def openFile(
-    webActor: ActorRef,
-    id: Id,
-    params: OpenFile.Params
-  ): Unit = {
-    (bufferRegistry ? TextProtocol.OpenFile(
-      Client(clientId, self),
-      params.path
-    )).onComplete {
-      case Success(
-          TextProtocol.OpenFileResponse(
-            Right(TextProtocol.OpenFileResult(buffer, capability))
-          )
-          ) =>
-        webActor ! ResponseResult(
-          OpenFile,
-          id,
-          OpenFile
-            .Result(capability, buffer.contents.toString, buffer.version)
-        )
-
-      case Success(TextProtocol.OpenFileResponse(Left(failure))) =>
-        webActor ! ResponseError(
-          Some(id),
-          FileSystemFailureMapper.mapFailure(failure)
-        )
-
-      case Failure(th) =>
-        log.error("An exception occurred during opening file", th)
-        webActor ! ResponseError(Some(id), ServiceError)
-    }
   }
 
   private def readFile(

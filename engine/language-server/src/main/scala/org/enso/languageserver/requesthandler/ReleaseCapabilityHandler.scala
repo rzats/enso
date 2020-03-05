@@ -32,7 +32,7 @@ class ReleaseCapabilityHandler(
   }
   private def responseStage(id: Id, replyTo: ActorRef): Receive = {
     case RequestTimeout =>
-      log.error(s"Acquiring capability for ${client.id} timed out")
+      log.error(s"Releasing capability for ${client.id} timed out")
       replyTo ! ResponseError(Some(id), ServiceError)
       context.stop(self)
 
@@ -43,7 +43,6 @@ class ReleaseCapabilityHandler(
     case CapabilityReleaseBadRequest =>
       replyTo ! ResponseError(Some(id), ServiceError)
       context.stop(self)
-
   }
 
 }

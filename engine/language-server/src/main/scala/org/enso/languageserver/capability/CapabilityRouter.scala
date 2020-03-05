@@ -15,7 +15,6 @@ class CapabilityRouter(bufferRegistry: ActorRef) extends Actor {
 
     case msg @ ReleaseCapability(_, CapabilityRegistration(CanEdit(_))) =>
       bufferRegistry.forward(msg)
-
   }
 
 }

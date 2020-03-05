@@ -63,4 +63,6 @@ object FileManagerApi {
 
   case object FileNotFoundError extends Error(1003, "File not found")
 
+  case object OperationTimeoutError extends Error(1003, "IO operation timeout")
+
 }
