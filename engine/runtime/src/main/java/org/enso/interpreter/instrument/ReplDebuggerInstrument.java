@@ -3,14 +3,8 @@ package org.enso.interpreter.instrument;
 import com.oracle.truffle.api.debug.DebuggerTags;
 import com.oracle.truffle.api.frame.MaterializedFrame;
 import com.oracle.truffle.api.frame.VirtualFrame;
-import com.oracle.truffle.api.instrumentation.EventContext;
-import com.oracle.truffle.api.instrumentation.ExecutionEventNode;
-import com.oracle.truffle.api.instrumentation.Instrumenter;
-import com.oracle.truffle.api.instrumentation.SourceSectionFilter;
-import com.oracle.truffle.api.instrumentation.TruffleInstrument;
-
-import java.util.HashMap;
-import java.util.Map;
+import com.oracle.truffle.api.instrumentation.*;
+import org.enso.interpeter.instrument.ReplHandler;
 import org.enso.interpreter.Language;
 import org.enso.interpreter.node.expression.debug.CaptureResultScopeNode;
 import org.enso.interpreter.node.expression.debug.EvalNode;
@@ -19,62 +13,21 @@ import org.enso.interpreter.runtime.callable.CallerInfo;
 import org.enso.interpreter.runtime.callable.function.Function;
 import org.enso.interpreter.runtime.scope.FramePointer;
 import org.enso.interpreter.runtime.state.Stateful;
+import org.enso.polyglot.ReplInfo;
+import org.graalvm.polyglot.io.MessageEndpoint;
+import org.graalvm.polyglot.io.MessageTransport;
+
+import java.io.IOException;
+import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
 
 /** The Instrument implementation for the interactive debugger REPL. */
 @TruffleInstrument.Registration(
-    id = ReplDebuggerInstrument.INSTRUMENT_ID,
+    id = ReplInfo.INSTRUMENT_ID,
     services = ReplDebuggerInstrument.class)
 public class ReplDebuggerInstrument extends TruffleInstrument {
-  /** This instrument's registration id. */
-  public static final String INSTRUMENT_ID = "enso-repl";
-
-  /**
-   * Internal reference type to store session manager and get the current version on each execution
-   * of this instrument.
-   */
-  private static class SessionManagerReference {
-    private SessionManager sessionManager;
-
-    /**
-     * Create a new instanc of this class
-     *
-     * @param sessionManager the session manager to initially store
-     */
-    private SessionManagerReference(SessionManager sessionManager) {
-      this.sessionManager = sessionManager;
-    }
-
-    /**
-     * Get the current session manager
-     *
-     * @return the current session manager
-     */
-    private SessionManager get() {
-      return sessionManager;
-    }
-
-    /**
-     * Set a new session manager for subsequent {@link #get()} calls.
-     *
-     * @param sessionManager the new session manager
-     */
-    private void set(SessionManager sessionManager) {
-      this.sessionManager = sessionManager;
-    }
-  }
-
-  /** An object controlling the execution of REPL. */
-  public interface SessionManager {
-    /**
-     * Starts a new session with the provided execution node.
-     *
-     * @param executionNode the execution node that should be used for the duration of this session.
-     */
-    void startSession(ReplExecutionEventNode executionNode);
-  }
-
-  private SessionManagerReference sessionManagerReference =
-      new SessionManagerReference(ReplExecutionEventNode::exit);
+  private ReplHandler replHandler;
 
   /**
    * Called by Truffle when this instrument is installed.
@@ -83,21 +36,42 @@ public class ReplDebuggerInstrument extends TruffleInstrument {
    */
   @Override
   protected void onCreate(Env env) {
-    SourceSectionFilter filter =
-        SourceSectionFilter.newBuilder().tagIs(DebuggerTags.AlwaysHalt.class).build();
-    Instrumenter instrumenter = env.getInstrumenter();
     env.registerService(this);
-    instrumenter.attachExecutionEventFactory(
-        filter, ctx -> new ReplExecutionEventNode(ctx, sessionManagerReference));
+    try {
+      ReplHandler handler = new ReplHandler();
+      MessageEndpoint client =
+          env.startServer(URI.create(ReplInfo.URI), replHandler.replEndpoint());
+      if (client != null) {
+        handler.replEndpoint().setClient(client);
+        this.replHandler = handler;
+      }
+
+      SourceSectionFilter filter =
+          SourceSectionFilter.newBuilder().tagIs(DebuggerTags.AlwaysHalt.class).build();
+      Instrumenter instrumenter = env.getInstrumenter();
+      instrumenter.attachExecutionEventFactory(
+          filter, ctx -> new ReplExecutionEventNode(ctx, this));
+    } catch (MessageTransport.VetoException | IOException e) {
+      throw new RuntimeException(e);
+    }
   }
 
   /**
-   * Registers the session manager to use whenever this instrument is activated.
+   * Closes the connection to the message endpoint alongside the instrument.
    *
-   * @param sessionManager the session manager to use
+   * @param env the instrumentation environment
    */
-  public void setSessionManager(SessionManager sessionManager) {
-    this.sessionManagerReference.set(sessionManager);
+  @Override
+  protected void onDispose(Env env) {
+    if (replHandler != null) {
+      try {
+        replHandler.replEndpoint().client().sendClose();
+      } catch (IOException e) {
+        env.getLogger(RuntimeServerInstrument.class)
+            .warning("Sending close message to the client failed, because of: " + e.getMessage());
+      }
+    }
+    super.onDispose(env);
   }
 
   /** The actual node that's installed as a probe on any node the instrument was launched for. */
@@ -109,12 +83,12 @@ public class ReplDebuggerInstrument extends TruffleInstrument {
     private CallerInfo lastScope;
 
     private EventContext eventContext;
-    private SessionManagerReference sessionManagerReference;
+    private ReplDebuggerInstrument replDebuggerInstrument;
 
     private ReplExecutionEventNode(
-        EventContext eventContext, SessionManagerReference sessionManagerReference) {
+        EventContext eventContext, ReplDebuggerInstrument replDebuggerInstrument) {
       this.eventContext = eventContext;
-      this.sessionManagerReference = sessionManagerReference;
+      this.replDebuggerInstrument = replDebuggerInstrument;
     }
 
     private Object getValue(MaterializedFrame frame, FramePointer ptr) {
@@ -186,7 +160,7 @@ public class ReplDebuggerInstrument extends TruffleInstrument {
       lastScope = Function.ArgumentsHelper.getCallerInfo(frame.getArguments());
       lastReturn = lookupContextReference(Language.class).get().getUnit().newInstance();
       lastState = lastScope.getFrame().getValue(lastScope.getLocalScope().getStateFrameSlot());
-      sessionManagerReference.get().startSession(this);
+      replDebuggerInstrument.replHandler.setExecutionNode(this);
     }
 
     /**
